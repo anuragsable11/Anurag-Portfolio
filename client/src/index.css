@@ -19,6 +19,8 @@
   --robot-plate: #8d99ab;
 
   /* Hero character — change these to restyle the samurai. */
+  --samurai-fabric: #171a21; /* the body under the armour */
+  --samurai-rope: #b8935a; /* lacing cord */
   --samurai-accent: #c0392b; /* red lacquer */
   --samurai-accent-dark: #8e2a1e;
   --samurai-armor: #39414f; /* dark metal */
@@ -64,6 +66,8 @@
   --robot-plate: #2b3540;
 
   /* Hero character — change these to restyle the samurai. */
+  --samurai-fabric: #171a21; /* the body under the armour */
+  --samurai-rope: #b8935a; /* lacing cord */
   --samurai-accent: #c0392b; /* red lacquer */
   --samurai-accent-dark: #8e2a1e;
   --samurai-armor: #39414f; /* dark metal */
