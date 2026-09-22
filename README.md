@@ -149,12 +149,74 @@ Accepts a contact-form submission.
 - Validates name, email format and message length server-side.
 - Rate limited to **5 submissions per IP per 15 minutes**.
 - Appends the message to `server/data/messages.json` (gitignored) and logs it to the console.
+- Emails it via `api/_lib/mailer.js` when configured — see below. The response includes
+  a `delivered` boolean so you can tell whether mail actually went out.
 
 Returns `201` on success, `400` on validation failure, `429` when rate limited.
 
-> **Note:** the local Express server stores messages in a JSON file rather than emailing
-> them. On Vercel the same endpoint is served by `api/contact.js`, which can forward
-> messages by email — see [Deploying to Vercel](#deploying-to-vercel).
+---
+
+## Getting the contact form to email you
+
+**By default it does not email anyone.** Messages are saved and logged, but nothing is
+sent until you add a Resend API key. That is the single most common reason for "I filled
+in the form and got no mail".
+
+### Check which state you are in
+
+```
+curl http://localhost:5000/api/health
+```
+
+`email.configured: false` with a `missing` list means no mail will go out. The server
+also prints this at boot:
+
+```
+Contact email OFF (missing RESEND_API_KEY, CONTACT_TO_EMAIL)
+```
+
+### Turn it on (about two minutes)
+
+1. Sign up at **https://resend.com** using the address you want messages delivered to.
+2. Create an API key at **https://resend.com/api-keys**.
+3. **Locally** — copy the example env file and fill in the two values:
+
+   ```bash
+   cp server/.env.example server/.env
+   ```
+
+   ```
+   RESEND_API_KEY=re_your_key_here
+   CONTACT_TO_EMAIL=you@example.com
+   ```
+
+   Restart the API. It should now print `Contact email -> you@example.com`.
+
+4. **On Vercel** — add the same two variables under
+   Settings → **Environment Variables**, then redeploy.
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `RESEND_API_KEY` | yes | From resend.com/api-keys |
+| `CONTACT_TO_EMAIL` | yes | Where messages are delivered |
+| `CONTACT_FROM_EMAIL` | no | Defaults to Resend's shared test sender |
+
+> On the default sender (`onboarding@resend.dev`), Resend only delivers to the address
+> that owns the API key. That is fine for a personal portfolio. To send anywhere else,
+> verify your own domain in Resend and set `CONTACT_FROM_EMAIL` to an address on it.
+
+### If it still does not arrive
+
+The server never hides a delivery failure. Check the logs — locally in the terminal, on
+Vercel under your project → **Logs**:
+
+```
+[contact] emailed to you@example.com (3f2a...)      <- delivered
+[contact] NOT EMAILED — resend responded 401: ...   <- the actual cause
+```
+
+A failed send never loses the message: it is stored (locally) and logged (everywhere)
+before delivery is even attempted, and the visitor still sees a success message.
 
 ---
 

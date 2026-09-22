@@ -87,10 +87,12 @@ export default function Robot3D() {
     controls.autoRotate = true
     controls.autoRotateSpeed = 0.9
 
-    // On touch, one-finger drag would block page scrolling — leave it spinning.
-    const finePointer =
-      typeof window !== 'undefined' && window.matchMedia('(pointer: fine)').matches
-    controls.enabled = finePointer
+    // Touch drags orbit as well. OrbitControls otherwise pins the canvas to
+    // `touch-action: none`, which swallows page scrolling, so it is put back
+    // to `pan-y`: a sideways drag spins the robot, while a vertical swipe is
+    // claimed by the browser to scroll and cancels the drag mid-gesture.
+    controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: null }
+    renderer.domElement.style.touchAction = 'pan-y'
 
     let interacting = false
     let resumeTimer

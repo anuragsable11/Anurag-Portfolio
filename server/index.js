@@ -10,6 +10,7 @@ import {
   pruneRateLimits,
   validateContact,
 } from '../api/_lib/contact.js'
+import { mailerStatus, sendContactEmail } from '../api/_lib/mailer.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = process.env.PORT || 5000
@@ -65,7 +66,18 @@ async function saveMessage(entry) {
    Routes
    ------------------------------------------------------------------ */
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, service: 'portfolio-api', time: new Date().toISOString() })
+  const mail = mailerStatus()
+  res.json({
+    ok: true,
+    service: 'portfolio-api',
+    time: new Date().toISOString(),
+    email: {
+      configured: mail.configured,
+      to: mail.to,
+      from: mail.from,
+      missing: mail.missing,
+    },
+  })
 })
 
 app.post('/api/contact', rateLimit, async (req, res) => {
@@ -82,16 +94,26 @@ app.post('/api/contact', rateLimit, async (req, res) => {
   try {
     await saveMessage(entry)
     console.log(`[contact] ${entry.name} <${entry.email}> — ${entry.subject}`)
-
-    res.status(201).json({
-      ok: true,
-      id: entry.id,
-      message: 'Thanks for reaching out. I will get back to you soon.',
-    })
   } catch (err) {
     console.error('[contact] failed to store message:', err)
-    res.status(500).json({ error: 'Could not save your message right now.' })
+    return res.status(500).json({ error: 'Could not save your message right now.' })
   }
+
+  // The message is safely stored, so a delivery failure is logged loudly but
+  // never shown to the visitor — their message did get through.
+  const delivery = await sendContactEmail(entry)
+  if (delivery.sent) {
+    console.log(`[contact] emailed to ${mailerStatus().to} (${delivery.id ?? 'no id'})`)
+  } else {
+    console.warn(`[contact] NOT EMAILED — ${delivery.reason}`)
+  }
+
+  res.status(201).json({
+    ok: true,
+    id: entry.id,
+    delivered: delivery.sent,
+    message: 'Thanks for reaching out. I will get back to you soon.',
+  })
 })
 
 /* ------------------------------------------------------------------
@@ -106,5 +128,15 @@ app.use((req, res) => res.status(404).json({ error: 'Not found' }))
 
 app.listen(PORT, () => {
   console.log(`\n  Portfolio API running on http://localhost:${PORT}`)
-  console.log(`  Health check: http://localhost:${PORT}/api/health\n`)
+  console.log(`  Health check: http://localhost:${PORT}/api/health`)
+
+  // State the email state at boot — this is the thing that silently does
+  // nothing when it is unconfigured.
+  const mail = mailerStatus()
+  if (mail.configured) {
+    console.log(`  Contact email -> ${mail.to}\n`)
+  } else {
+    console.log(`  Contact email OFF (missing ${mail.missing.join(', ')})`)
+    console.log(`  Messages still saved to server/data/messages.json\n`)
+  }
 })
