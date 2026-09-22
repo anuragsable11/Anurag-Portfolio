@@ -8,7 +8,8 @@ import { profile } from '../data/content.js'
 import { supports3D } from '../lib/capabilities.js'
 
 // Three.js is a large dependency — only fetch it when the scene can run.
-const Robot3D = lazy(() => import('./Robot3D.jsx'))
+// Swap this for './Robot3D.jsx' to put the robot character back instead.
+const Samurai3D = lazy(() => import('./Samurai3D.jsx'))
 
 /** Rotating type-on / type-off effect for the role line. */
 function useTypewriter(words, typeMs = 75, eraseMs = 40, holdMs = 1700) {
@@ -124,7 +125,7 @@ export default function Hero() {
             </div>
           </motion.div>
 
-          {/* ---- Right: the robot ---- */}
+          {/* ---- Right: the samurai ---- */}
           <motion.div
             initial={{ opacity: 0, y: 36 }}
             animate={{ opacity: 1, y: 0 }}
@@ -132,7 +133,7 @@ export default function Hero() {
           >
             {can3D ? (
               <Suspense fallback={<div className="robot3d" aria-hidden="true" />}>
-                <Robot3D />
+                <Samurai3D />
               </Suspense>
             ) : (
               <CodePanel />

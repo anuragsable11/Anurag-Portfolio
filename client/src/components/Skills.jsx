@@ -59,7 +59,7 @@ export default function Skills() {
           eyebrow="Skills"
           title="Tools I"
           highlight="work with"
-          sub="The stack behind my projects — backend services, LLM orchestration and the data layers underneath. Drag the cluster to spin it, or hover a tile to name it."
+          sub="The stack behind my projects — backend services, LLM orchestration and the data layers underneath. Watch them drop in, then grab one and throw it."
         />
 
         <TechLabels />
