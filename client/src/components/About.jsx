@@ -1,7 +1,11 @@
+import { Suspense, lazy, useState } from 'react'
 import { FiCpu, FiLayers, FiZap } from 'react-icons/fi'
 import Reveal from './Reveal.jsx'
 import SectionHead from './SectionHead.jsx'
 import { profile, stats } from '../data/content.js'
+import { supports3D } from '../lib/capabilities.js'
+
+const AgentGraph3D = lazy(() => import('./AgentGraph3D.jsx'))
 
 const focus = [
   {
@@ -22,6 +26,8 @@ const focus = [
 ]
 
 export default function About() {
+  const [can3D] = useState(supports3D)
+
   return (
     <section id="about" className="section">
       <div className="container">
@@ -66,6 +72,14 @@ export default function About() {
                 </Reveal>
               ))}
             </div>
+
+            {can3D && (
+              <Reveal delay={0.24}>
+                <Suspense fallback={<div className="graph3d" aria-hidden="true" />}>
+                  <AgentGraph3D />
+                </Suspense>
+              </Reveal>
+            )}
 
             <Reveal delay={0.3}>
               <div className="quote-card">

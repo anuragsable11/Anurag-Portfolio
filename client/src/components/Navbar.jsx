@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { HiOutlineMenuAlt4, HiX } from 'react-icons/hi'
 import { FiArrowUpRight } from 'react-icons/fi'
+import ThemeToggle from './ThemeToggle.jsx'
 import { navLinks, profile } from '../data/content.js'
 import { useActiveSection, useScrolled } from '../hooks/useActiveSection.js'
 
@@ -57,12 +58,12 @@ export default function Navbar() {
           </ul>
 
           <div className="nav-cta">
+            <ThemeToggle />
             <a
               className="btn btn-primary"
               href={profile.resume}
               target="_blank"
               rel="noreferrer"
-              style={{ padding: '10px 20px', fontSize: '0.86rem' }}
             >
               Resume <FiArrowUpRight />
             </a>

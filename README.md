@@ -11,7 +11,7 @@ receives contact-form submissions.
 
 | Layer    | Technology                                            |
 | -------- | ----------------------------------------------------- |
-| Frontend | React 18, Vite 6, Framer Motion, React Icons, plain CSS |
+| Frontend | React 18, Vite 6, Three.js, Framer Motion, React Icons, plain CSS |
 | Backend  | Node.js, Express 4, CORS, dotenv                       |
 
 ---
@@ -77,11 +77,18 @@ client/src/data/content.js
 | ---------------- | ----------------------------------------------------- |
 | `profile`        | Name, role, tagline, contact details, resume path      |
 | `stats`          | The four number tiles in the About section             |
-| `skillGroups`    | The six skill cards                                    |
+| `skillGroups`    | Grouped skill lists (not currently rendered — see below) |
 | `projects`       | Project cards (set `featured: true` for the wide layout) |
 | `timeline`       | Training + education entries                           |
 | `certifications` | Certificate cards                                      |
 | `navLinks`       | Navbar items (each `id` must match a section `id`)     |
+
+The skills cloud logos live separately in `client/src/data/tech.js`, since each one
+needs an icon component as well as a label.
+
+`skillGroups` is kept but unused: the Skills section is now the logo cloud alone. To show
+the grouped chip cards again, render `skillGroups` beneath `<ToolsCloud3D />` in
+`components/Skills.jsx`.
 
 No component edits are needed for normal content changes.
 
@@ -90,12 +97,29 @@ No component edits are needed for normal content changes.
 The palette lives in the `:root` block at the top of `client/src/index.css`:
 
 ```css
---cyan: #22d3ee;
---violet: #a78bfa;
---grad: linear-gradient(120deg, #22d3ee 0%, #818cf8 50%, #a78bfa 100%);
+:root, :root[data-theme='light'] {
+  --bg: #ffffff;
+  --fg: #0a0a0a;
+  --brand: #2584f5;      /* fills, rules, focus rings */
+  --brand-text: #1069d2; /* text — darker so it clears AA on white */
+}
+:root[data-theme='dark'] {
+  --bg: #0a0a0a;
+  --fg: #fafafa;
+  --brand: #569fff;
+}
 ```
 
-Change those two accents and the whole site follows.
+The palette is a neutral grayscale base with a single blue accent, in both a light and a
+dark theme. `--brand` is split in two on purpose: the bright blue is fine for fills and
+borders but falls short of WCAG AA as text on white, so text uses the darker
+`--brand-text`. Keep that split if you change the accent.
+
+### Theme toggle
+
+The site ships light and dark themes. An inline script in `index.html` resolves the theme
+before first paint (saved choice, else the OS preference) so there is no flash of the
+wrong one; `src/hooks/useTheme.js` handles toggling and persistence.
 
 ---
 
@@ -212,8 +236,11 @@ Portfolio/
 │   ├── public/               # favicon.svg — put your resume PDF here
 │   └── src/
 │       ├── components/       # Navbar, Hero, About, Skills, Projects, Journey, Contact, Footer
+│       │                     #   Robot3D · ToolsCloud3D · AgentGraph3D (three.js)
 │       ├── data/content.js   # ← all site content
-│       ├── hooks/            # scroll-position hooks
+│       ├── data/tech.js      # skills-cloud logos
+│       ├── hooks/            # scroll-position + theme hooks
+│       ├── lib/              # WebGL / reduced-motion capability checks
 │       ├── index.css         # design tokens + all styles
 │       ├── App.jsx
 │       └── main.jsx
@@ -229,10 +256,22 @@ Portfolio/
 
 ## Features
 
+- Light and dark themes with a toggle, no flash on load
 - Animated hero with a rotating role typewriter and a syntax-highlighted code panel
-- Aurora-orb + grid background, scroll progress bar, section-aware navbar with a sliding pill
+- Three original Three.js scenes, all built from primitives and driven by the theme tokens:
+  - **Hero** — a hovering robot: boxy head and visor, lamp eyes that track the cursor and
+    blink on an irregular schedule, signal antenna, chest indicator, swaying arms
+  - **Skills** — the tech stack as solid 3D tiles orbiting a sphere. Drag to spin, hover a
+    tile to lift and name it. Each logo is rasterised from its SVG onto a canvas texture.
+  - **About** — the agent runtime as a node graph: client, API, queue, model and memory
+    wired in a loop, with request pulses travelling the edges
+- Scenes pause their render loop while off screen, so three canvases never animate at once
+- three.js is code-split into one shared chunk: first paint ships ~118kB gzipped
+- Scroll progress bar, section-aware navbar with a sliding pill
 - Scroll-reveal animations throughout (Framer Motion), fully disabled under
-  `prefers-reduced-motion`
+  `prefers-reduced-motion`. Without WebGL (or with reduced motion) the hero falls back to a
+  syntax-highlighted code panel, the skills cloud to a flat logo grid, and the About graph
+  is simply omitted — none of which downloads three.js at all
 - Filterable project cards with expandable detail and a pipeline diagram for featured work
 - Working contact form with client-side and server-side validation
 - Responsive down to 360px; keyboard-accessible with visible focus rings

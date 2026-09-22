@@ -1,9 +1,14 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { FiArrowDown, FiMail, FiMapPin } from 'react-icons/fi'
 import { FaLinkedinIn, FaGithub } from 'react-icons/fa'
 import { HiOutlineDocumentArrowDown } from 'react-icons/hi2'
+import CodePanel from './CodePanel.jsx'
 import { profile } from '../data/content.js'
+import { supports3D } from '../lib/capabilities.js'
+
+// Three.js is a large dependency — only fetch it when the scene can run.
+const Robot3D = lazy(() => import('./Robot3D.jsx'))
 
 /** Rotating type-on / type-off effect for the role line. */
 function useTypewriter(words, typeMs = 75, eraseMs = 40, holdMs = 1700) {
@@ -38,89 +43,9 @@ function useTypewriter(words, typeMs = 75, eraseMs = 40, holdMs = 1700) {
   return text
 }
 
-const codeLines = [
-  { t: 'cmt', v: '# agent.py — orchestrate model, tools and memory' },
-  { t: 'raw', v: [['key', 'class '], ['fn', 'AgentRuntime'], ['op', ':']] },
-  {
-    t: 'raw',
-    v: [
-      ['op', '    '],
-      ['key', 'def '],
-      ['fn', '__init__'],
-      ['op', '(self, llm, tools, memory):'],
-    ],
-  },
-  { t: 'raw', v: [['op', '        self.llm    = llm        '], ['cmt', '# Qwen3 via Ollama']] },
-  { t: 'raw', v: [['op', '        self.tools  = tools      '], ['cmt', '# RAG · retrieval']] },
-  { t: 'raw', v: [['op', '        self.memory = memory     '], ['cmt', '# Redis context']] },
-  { t: 'blank' },
-  {
-    t: 'raw',
-    v: [['op', '    '], ['key', 'async def '], ['fn', 'run'], ['op', '(self, turn):']],
-  },
-  {
-    t: 'raw',
-    v: [
-      ['op', '        ctx     = '],
-      ['key', 'await '],
-      ['var', 'self.memory.'],
-      ['fn', 'load'],
-      ['op', '(turn.session)'],
-    ],
-  },
-  {
-    t: 'raw',
-    v: [
-      ['op', '        grounded= '],
-      ['key', 'await '],
-      ['var', 'self.tools.'],
-      ['fn', 'retrieve'],
-      ['op', '(turn.query, k='],
-      ['num', '5'],
-      ['op', ')'],
-    ],
-  },
-  {
-    t: 'raw',
-    v: [
-      ['op', '        answer  = '],
-      ['key', 'await '],
-      ['var', 'self.llm.'],
-      ['fn', 'generate'],
-      ['op', '(ctx, grounded)'],
-    ],
-  },
-  {
-    t: 'raw',
-    v: [
-      ['op', '        '],
-      ['key', 'await '],
-      ['var', 'self.memory.'],
-      ['fn', 'append'],
-      ['op', '(turn, answer)'],
-    ],
-  },
-  { t: 'raw', v: [['op', '        '], ['key', 'return '], ['var', 'answer']] },
-  { t: 'blank' },
-  { t: 'cmt', v: '# queued on Celery → never blocks the request cycle' },
-]
-
-function CodeLine({ line }) {
-  if (line.t === 'blank') return <div className="ln">&nbsp;</div>
-  if (line.t === 'cmt') return <div className="ln tk-cmt">{line.v}</div>
-  return (
-    <div className="ln">
-      {line.v.map(([tone, txt], i) => (
-        <span key={i} className={`tk-${tone}`}>
-          {txt}
-        </span>
-      ))}
-    </div>
-  )
-}
-
 export default function Hero() {
   const typed = useTypewriter(profile.roles)
+  const [can3D] = useState(supports3D)
 
   return (
     <section id="home" className="hero">
@@ -199,25 +124,19 @@ export default function Hero() {
             </div>
           </motion.div>
 
-          {/* ---- Right: terminal ---- */}
+          {/* ---- Right: the robot ---- */}
           <motion.div
-            initial={{ opacity: 0, y: 40, rotateX: 8 }}
-            animate={{ opacity: 1, y: 0, rotateX: 0 }}
+            initial={{ opacity: 0, y: 36 }}
+            animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.9, delay: 0.32, ease: [0.22, 1, 0.36, 1] }}
           >
-            <div className="terminal">
-              <div className="terminal-bar">
-                <span className="term-dot r" />
-                <span className="term-dot y" />
-                <span className="term-dot g" />
-                <span className="terminal-title">anurag@backend ~ /agent.py</span>
-              </div>
-              <div className="terminal-body">
-                {codeLines.map((line, i) => (
-                  <CodeLine key={i} line={line} />
-                ))}
-              </div>
-            </div>
+            {can3D ? (
+              <Suspense fallback={<div className="robot3d" aria-hidden="true" />}>
+                <Robot3D />
+              </Suspense>
+            ) : (
+              <CodePanel />
+            )}
 
             <div className="pipeline">
               {['Client', 'API', 'Queue', 'LLM', 'Memory'].map((node, i, arr) => (
@@ -230,18 +149,6 @@ export default function Hero() {
           </motion.div>
         </div>
       </div>
-
-      <motion.a
-        href="#about"
-        className="scroll-hint"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 1.3, duration: 0.8 }}
-        aria-label="Scroll to about section"
-      >
-        <span className="scroll-mouse" />
-        Scroll
-      </motion.a>
     </section>
   )
 }

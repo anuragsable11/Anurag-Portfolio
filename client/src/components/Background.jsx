@@ -7,13 +7,7 @@ export default function Background() {
   return (
     <>
       <motion.div className="scroll-progress" style={{ scaleX }} aria-hidden="true" />
-      <div className="bg-layer" aria-hidden="true">
-        <div className="bg-grid" />
-        <div className="bg-orb one" />
-        <div className="bg-orb two" />
-        <div className="bg-orb three" />
-        <div className="bg-noise" />
-      </div>
+      <div className="bg-layer" aria-hidden="true" />
     </>
   )
 }
