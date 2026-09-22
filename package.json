@@ -1,0 +1,19 @@
+{
+  "name": "anurag-sable-portfolio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Personal portfolio of Anurag Sable — Backend & Agentic AI Engineer",
+  "scripts": {
+    "install:all": "npm install && npm --prefix client install && npm --prefix server install",
+    "dev": "concurrently -n \"API,WEB\" -c \"magenta,cyan\" \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "dev:client": "npm --prefix client run dev",
+    "dev:server": "npm --prefix server run dev",
+    "build": "npm --prefix client run build",
+    "start": "npm --prefix server start",
+    "preview": "npm --prefix client run preview"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": { "node": ">=18" }
+}
