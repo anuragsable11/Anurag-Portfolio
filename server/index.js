@@ -4,6 +4,12 @@ import { fileURLToPath } from 'node:url'
 import express from 'express'
 import cors from 'cors'
 import 'dotenv/config'
+import {
+  WINDOW_MS,
+  checkRateLimit,
+  pruneRateLimits,
+  validateContact,
+} from '../api/_lib/contact.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = process.env.PORT || 5000
@@ -19,59 +25,23 @@ app.use(
 )
 
 /* ------------------------------------------------------------------
-   Rate limiting — 5 submissions per IP per 15 minutes, in memory.
+   Rate limiting — rules live in api/_lib/contact.js so that this server
+   and the Vercel function enforce exactly the same limits.
    ------------------------------------------------------------------ */
-const WINDOW_MS = 15 * 60 * 1000
-const MAX_HITS = 5
-const hits = new Map()
-
 function rateLimit(req, res, next) {
   const ip = req.ip || req.socket.remoteAddress || 'unknown'
-  const now = Date.now()
-  const record = hits.get(ip)
+  const limit = checkRateLimit(ip)
 
-  if (!record || now > record.resetAt) {
-    hits.set(ip, { count: 1, resetAt: now + WINDOW_MS })
-    return next()
-  }
-
-  if (record.count >= MAX_HITS) {
-    const minutes = Math.ceil((record.resetAt - now) / 60000)
+  if (!limit.ok) {
     return res.status(429).json({
-      error: `Too many messages sent. Please try again in ${minutes} minute(s).`,
+      error: `Too many messages sent. Please try again in ${limit.retryMinutes} minute(s).`,
     })
   }
 
-  record.count += 1
   next()
 }
 
-// Drop expired buckets every so often so the map cannot grow unbounded.
-setInterval(() => {
-  const now = Date.now()
-  for (const [ip, record] of hits) if (now > record.resetAt) hits.delete(ip)
-}, WINDOW_MS).unref()
-
-/* ------------------------------------------------------------------
-   Validation
-   ------------------------------------------------------------------ */
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
-
-function validateContact(body) {
-  const name = String(body?.name ?? '').trim()
-  const email = String(body?.email ?? '').trim()
-  const subject = String(body?.subject ?? '').trim()
-  const message = String(body?.message ?? '').trim()
-
-  if (name.length < 2 || name.length > 80) return { error: 'Please provide a valid name.' }
-  if (!EMAIL_RE.test(email) || email.length > 160)
-    return { error: 'Please provide a valid email address.' }
-  if (message.length < 10 || message.length > 4000)
-    return { error: 'Message must be between 10 and 4000 characters.' }
-  if (subject.length > 160) return { error: 'Subject is too long.' }
-
-  return { data: { name, email, subject: subject || '(no subject)', message } }
-}
+setInterval(pruneRateLimits, WINDOW_MS).unref()
 
 /* ------------------------------------------------------------------
    Storage — appends to server/data/messages.json

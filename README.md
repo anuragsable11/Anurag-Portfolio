@@ -128,9 +128,9 @@ Accepts a contact-form submission.
 
 Returns `201` on success, `400` on validation failure, `429` when rate limited.
 
-> **Note:** messages are stored in a JSON file, not emailed. To get email notifications,
-> add `nodemailer` to `server/` and send a mail inside the `/api/contact` handler after
-> `saveMessage(entry)`.
+> **Note:** the local Express server stores messages in a JSON file rather than emailing
+> them. On Vercel the same endpoint is served by `api/contact.js`, which can forward
+> messages by email — see [Deploying to Vercel](#deploying-to-vercel).
 
 ---
 
@@ -149,15 +149,55 @@ whole site runs from a single port.
 $env:NODE_ENV="production"; npm start
 ```
 
-### Deploying
+---
 
-- **Frontend only** (Vercel / Netlify / GitHub Pages): build `client/` and deploy `client/dist`.
-  The contact form then needs the API hosted separately — point it at the deployed API URL.
-- **Both together** (Render / Railway / Fly.io): build command `npm run install:all && npm run build`,
-  start command `npm start`, with `NODE_ENV=production`.
+## Deploying to Vercel
 
-Set `CORS_ORIGIN` in the server environment to your deployed frontend origin.
-See `server/.env.example`.
+`vercel.json` in the project root already configures this — import the repo and deploy,
+no dashboard settings needed:
+
+```json
+{
+  "buildCommand": "npm --prefix client install && npm --prefix client run build",
+  "outputDirectory": "client/dist"
+}
+```
+
+The `client` install is explicit because Vercel only installs the **root** `package.json`
+by default, which would leave `vite` missing at build time.
+
+### The contact form on Vercel
+
+Vercel is serverless, so `server/index.js` does **not** run there. The same endpoint is
+provided by `api/contact.js`, which Vercel deploys automatically as a function at
+`/api/contact`. Both share their validation and rate-limiting rules from
+`api/_lib/contact.js`, so the two can never drift apart.
+
+| | Local (`npm run dev`) | Vercel |
+| --- | --- | --- |
+| Handler | `server/index.js` (Express) | `api/contact.js` (function) |
+| Messages go to | `server/data/messages.json` | Function logs, + email if configured |
+
+Serverless filesystems are ephemeral, so the Vercel function cannot write to disk.
+Submissions are always written to the function logs (Vercel dashboard → your project →
+**Logs**). To also receive them by email, add a free [Resend](https://resend.com) key under
+Vercel → Settings → **Environment Variables**:
+
+| Variable | Example | Required |
+| --- | --- | --- |
+| `RESEND_API_KEY` | `re_...` | yes, for email |
+| `CONTACT_TO_EMAIL` | `anuragsable01@gmail.com` | yes, for email |
+| `CONTACT_FROM_EMAIL` | `Portfolio <onboarding@resend.dev>` | optional |
+
+Without them the form still works and still returns success — the message just lands in
+the logs rather than your inbox.
+
+### Deploying elsewhere
+
+- **Render / Railway / Fly.io** (runs the real Express server): build command
+  `npm run install:all && npm run build`, start command `npm start`, with
+  `NODE_ENV=production`. Express then serves `client/dist` too, so everything runs on one port.
+- Set `CORS_ORIGIN` to your deployed frontend origin. See `server/.env.example`.
 
 ---
 
@@ -165,6 +205,9 @@ See `server/.env.example`.
 
 ```
 Portfolio/
+├── api/                      # Vercel serverless functions
+│   ├── _lib/contact.js       # shared validation + rate limiting
+│   └── contact.js            # POST /api/contact on Vercel
 ├── client/                   # React + Vite frontend
 │   ├── public/               # favicon.svg — put your resume PDF here
 │   └── src/
@@ -178,6 +221,7 @@ Portfolio/
 │   ├── data/                 # messages.json (created on first submission)
 │   ├── .env.example
 │   └── index.js
+├── vercel.json               # Vercel build config
 └── package.json              # orchestration scripts
 ```
 

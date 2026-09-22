@@ -2,6 +2,7 @@
   "name": "anurag-sable-portfolio",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "Personal portfolio of Anurag Sable — Backend & Agentic AI Engineer",
   "scripts": {
     "install:all": "npm install && npm --prefix client install && npm --prefix server install",
