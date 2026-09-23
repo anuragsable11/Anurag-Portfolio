@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { FiArrowUpRight, FiCheck, FiChevronDown, FiMaximize2, FiX } from 'react-icons/fi'
+import { FiArrowUpRight, FiCheck, FiChevronDown, FiExternalLink, FiMaximize2, FiX } from 'react-icons/fi'
 import { FaGithub } from 'react-icons/fa'
 import Reveal from './Reveal.jsx'
 import SectionHead from './SectionHead.jsx'
@@ -160,18 +160,34 @@ function ProjectCard({ project }) {
             </div>
             <div className="project-meta">
               <span className="project-year">{project.year}</span>
-              {project.links?.github && (
-                <a
-                  className="project-link"
-                  href={project.links.github}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={`${project.name} source code on GitHub (opens in a new tab)`}
-                >
-                  <FaGithub aria-hidden="true" />
-                  Code
-                  <FiArrowUpRight aria-hidden="true" />
-                </a>
+              {(project.links?.live || project.links?.github) && (
+                <div className="project-links">
+                  {project.links.live && (
+                    <a
+                      className="project-link live"
+                      href={project.links.live}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`${project.name} live demo (opens in a new tab)`}
+                    >
+                      <FiExternalLink aria-hidden="true" />
+                      Live
+                    </a>
+                  )}
+                  {project.links.github && (
+                    <a
+                      className="project-link"
+                      href={project.links.github}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`${project.name} source code on GitHub (opens in a new tab)`}
+                    >
+                      <FaGithub aria-hidden="true" />
+                      Code
+                      <FiArrowUpRight aria-hidden="true" />
+                    </a>
+                  )}
+                </div>
               )}
             </div>
           </div>

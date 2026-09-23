@@ -6,6 +6,8 @@ import docmindLanding from '../assets/projects/docmind-landing-1600.webp'
 import docmindLandingSmall from '../assets/projects/docmind-landing-800.webp'
 import omnichatLanding from '../assets/projects/omnichat-landing-1600.webp'
 import omnichatLandingSmall from '../assets/projects/omnichat-landing-800.webp'
+import todoLanding from '../assets/projects/todo-landing-1600.webp'
+import todoLandingSmall from '../assets/projects/todo-landing-800.webp'
 
 export const profile = {
   name: 'Anurag Sable',
@@ -197,7 +199,21 @@ export const projects = [
       'Structured the backend with a clean model-view-template architecture ensuring smooth data handling.',
     ],
     stack: ['Django', 'Python', 'PostgreSQL', 'HTML', 'CSS'],
-    links: {},
+    showcase: {
+      image: todoLanding,
+      imageSmall: todoLandingSmall,
+      width: 1581,
+      height: 765,
+      address: 'django-to-do-list-gules.vercel.app',
+      alt: 'To-Do landing page in a comic-book style: the headline "Get stuff done!" over a blue sunburst, Join free and Log in buttons, and a “Today’s missions” card with a task being typed in.',
+      headline: 'Get stuff done!',
+      pitch:
+        'A to-do list with super powers. Add your tasks, knock them out one by one, and celebrate every win.',
+      promises: ['Add, edit and delete tasks', 'Mark tasks complete', 'Your own account'],
+    },
+    links: {
+      live: 'https://django-to-do-list-gules.vercel.app/',
+    },
   },
   {
     id: 'sms',

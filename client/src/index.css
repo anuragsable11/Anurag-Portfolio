@@ -1156,6 +1156,30 @@ ul {
   color: var(--muted-fg);
 }
 
+.project-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* The live demo is the primary action, so it takes the brand colour. */
+.project-link.live {
+  color: var(--brand-fg);
+  background: var(--brand);
+  border-color: var(--brand);
+}
+
+.project-link.live svg {
+  color: inherit;
+}
+
+.project-link.live:hover {
+  background: var(--brand);
+  border-color: var(--brand);
+  filter: brightness(1.08);
+}
+
 .project-summary {
   color: var(--muted-fg);
   font-size: 0.94rem;

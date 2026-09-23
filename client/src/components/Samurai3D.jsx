@@ -31,7 +31,7 @@ import envUrl from '../assets/samurai-env.png'
  *    add grain, mottling and fine scratches so nothing looks factory-clean.
  *  - On desktop, ambient occlusion darkens the gaps between plates.
  *
- * He idles standing, then periodically sits cross-legged to meditate — the
+ * He idles standing, then periodically kneels into seiza to meditate — the
  * katana laid across his lap, eyes dimmed to slits that glow with each
  * breath — and later rises again. Click / tap / Enter toggles it at once.
  *
@@ -61,8 +61,10 @@ const TRANSITION = 2.4
 const FIRST_SIT_AT = 7
 const MEDITATE_FOR = 9
 const STAND_FOR = 13
-// How far the whole figure drops to sit on the floor.
-const SIT_DROP = HIP_Y - 0.24
+// Seated, the legs attach lower on the pelvis (so the kusazuri drape over
+// the thighs) and the whole figure drops to sit on its heels.
+const LEG_DROP = 0.18
+const SIT_DROP = 0.49
 
 // Partial-cylinder helpers. three.js starts theta at +Z (the front) and
 // sweeps toward +X, so each arc is described by the angle it centres on.
@@ -447,7 +449,7 @@ export default function Samurai3D() {
 
     /* ---- Controls ---- */
     const STAND_TARGET_Y = 1.95
-    const SIT_TARGET_Y = 1.45
+    const SIT_TARGET_Y = 1.62
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.target.set(0, STAND_TARGET_Y, 0)
     controls.enableDamping = true
@@ -455,8 +457,8 @@ export default function Samurai3D() {
     controls.enablePan = false
     controls.enableZoom = false
     controls.rotateSpeed = 0.85
-    controls.minPolarAngle = 0.55
-    controls.maxPolarAngle = Math.PI / 2 + 0.14
+    controls.minPolarAngle = 0.35
+    controls.maxPolarAngle = Math.PI / 2 + 0.3
     controls.autoRotate = true
     controls.autoRotateSpeed = 0.7
 
@@ -714,7 +716,7 @@ export default function Samurai3D() {
 
     /* ================================================================
        Legs — fabric underneath, laced thigh lames, splinted shins.
-       Each leg bends at the knee so he can sit cross-legged.
+       Hip, knee and ankle each bend, so he can kneel into seiza.
        ================================================================ */
     const legs = [-1, 1].map((side) => {
       const hip = new THREE.Group()
@@ -771,19 +773,23 @@ export default function Samurai3D() {
       shinTrim.position.y = -0.12
       knee.add(shinTrim)
 
+      const ankle = new THREE.Group()
+      ankle.position.y = -0.5
+      knee.add(ankle)
+
       const foot = mesh(new RoundedBoxGeometry(0.4, 0.15, 0.54, 4, 0.06), mats.metalDark)
-      foot.position.set(0, -0.52, 0.09)
-      knee.add(foot)
+      foot.position.set(0, -0.02, 0.09)
+      ankle.add(foot)
 
       const sole = mesh(new RoundedBoxGeometry(0.42, 0.05, 0.56, 3, 0.02), mats.leather)
-      sole.position.set(0, -0.6, 0.09)
-      knee.add(sole)
+      sole.position.set(0, -0.1, 0.09)
+      ankle.add(sole)
 
       const toeStrap = mesh(new RoundedBoxGeometry(0.28, 0.06, 0.12, 3, 0.03), mats.leather)
-      toeStrap.position.set(0, -0.46, 0.29)
-      knee.add(toeStrap)
+      toeStrap.position.set(0, 0.04, 0.29)
+      ankle.add(toeStrap)
 
-      return { hip, knee, side }
+      return { hip, knee, ankle, side }
     })
 
     /* ================================================================
@@ -912,8 +918,10 @@ export default function Samurai3D() {
         hang: 0.07,
         cordsPer: 2,
       })
-      // Front panels rest on the thighs; the rest fan out on the floor.
-      panels.push({ flap, spread: Math.cos(center) > 0.4 ? 1.3 : 1.12 })
+      // Kneeling: the front panel lies over the thighs, the side panels drape
+      // down their outsides, and the rear ones hang almost straight behind.
+      const facing = Math.cos(center)
+      panels.push({ flap, spread: facing > 0.9 ? 1.35 : facing > 0 ? 0.95 : facing > -0.9 ? 0.45 : 0.35 })
     }
 
     /* ================================================================
@@ -1051,9 +1059,12 @@ export default function Samurai3D() {
     chin.rotation.x = Math.PI
     headRig.add(chin)
 
-    const scarf = mesh(new THREE.TorusGeometry(0.34, 0.1, 16, 48), mats.cloth)
-    scarf.position.y = -0.4
+    // A cloth collar draped round the neck, flattened so it hangs rather
+    // than inflates.
+    const scarf = mesh(new THREE.TorusGeometry(0.33, 0.095, 16, 48), mats.cloth)
+    scarf.position.y = -0.41
     scarf.rotation.x = Math.PI / 2
+    scarf.scale.set(1, 1, 0.62)
     headRig.add(scarf)
 
     const tails = [0.1, -0.06].map((x, i) => {
@@ -1136,19 +1147,15 @@ export default function Samurai3D() {
     tehen.rotation.x = Math.PI / 2
     helmet.add(tehen)
 
-    // Mabisashi: a front visor rather than a full brim
-    const visorRig = new THREE.Group()
-    visorRig.position.set(0, 0.26, 0.02)
-    visorRig.rotation.x = -0.32
-    helmet.add(visorRig)
+    // Mabisashi: a peak that grows out of the bowl just above the band and
+    // sweeps forward and down, edged in gold along its outer rim.
+    const visor = plate(0.6, 0.76, 0.1, arc(FRONT, Math.PI * 0.82), mats.redDark, 0.022, 28)
+    visor.position.y = 0.23
+    helmet.add(visor)
 
-    const visor = plate(0.8, 0.62, 0.12, arc(FRONT, Math.PI * 1.05), mats.redDark, 0.024, 28)
-    visorRig.add(visor)
-
-    // Gold binding along the visor's outer rim
-    const visorEdge = plate(0.812, 0.8, 0.024, arc(FRONT, Math.PI * 1.05), mats.gold, 0.036, 28)
-    visorEdge.position.y = 0.06
-    visorRig.add(visorEdge)
+    const visorEdge = plate(0.76, 0.775, 0.026, arc(FRONT, Math.PI * 0.82), mats.gold, 0.034, 28)
+    visorEdge.position.y = 0.181
+    helmet.add(visorEdge)
 
     // Shikoro: three laced lames guarding the back of the neck
     const shikoro = lamellar(helmet, {
@@ -1467,7 +1474,7 @@ export default function Samurai3D() {
       look.x += (target.x - look.x) * 0.05
       look.y += (target.y - look.y) * 0.05
       headRig.rotation.y = (look.x * 0.34 + Math.sin(t * 0.33) * 0.03) * stand
-      headRig.rotation.x = look.y * 0.14 * stand + (0.2 + breath * 0.025) * w
+      headRig.rotation.x = look.y * 0.14 * stand + (0.13 + breath * 0.025) * w
       headRig.rotation.z = Math.sin(t * 0.47) * 0.016 * stand
 
       // Eyes narrow to slits in meditation and glow with each breath
@@ -1480,20 +1487,23 @@ export default function Samurai3D() {
         eye.scale.y = lerp(1 + Math.sin(t * 0.85 + i) * 0.03, 0.3, w)
       })
 
-      // Arms hang and sway; seated, the hands come to rest on the lap
+      // Arms hang and sway; seated, the hands come to rest on the thighs
       arms.forEach(({ shoulder, elbow, side }) => {
         const idle = Math.sin(t * 1.05 + side) * 0.035 * stand
-        shoulder.rotation.z = side * lerp(0.16, 0.3, w) + idle * 0.5
-        shoulder.rotation.x = idle - 0.52 * w
-        elbow.rotation.x = -0.1 + idle * 0.4 - 1.05 * w
-        elbow.rotation.z = side * -0.35 * w
+        shoulder.rotation.z = side * lerp(0.16, 0.2, w) + idle * 0.5
+        shoulder.rotation.x = idle - 0.12 * w
+        elbow.rotation.x = -0.1 + idle * 0.4 - 1.25 * w
+        elbow.rotation.z = side * -0.3 * w
       })
 
-      // Cross-legged: thighs lift forward and splay out, shins fold inward
-      legs.forEach(({ hip, knee, side }) => {
+      // Seiza: thighs swing forward, shins fold back underneath, and the
+      // feet turn soles-up so he sits on his heels.
+      legs.forEach(({ hip, knee, ankle, side }) => {
         const sway = Math.sin(t * 0.5 + side * 1.6) * 0.012 * stand
-        hip.rotation.set(sway - 1.42 * w, side * lerp(0.1, 0.8, w), side * 0.05 * stand)
-        knee.rotation.set(side * 0.1 * w, 0, -side * 2.5 * w)
+        hip.position.y = HIP_Y - LEG_DROP * w
+        hip.rotation.set(sway - 1.52 * w, side * lerp(0.1, 0.16, w), side * 0.05 * stand)
+        knee.rotation.x = 2.42 * w
+        ankle.rotation.x = 2.29 * w
       })
 
       // Sitting lowers his head, so the camera's aim follows him down
