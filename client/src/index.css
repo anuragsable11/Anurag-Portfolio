@@ -1988,17 +1988,39 @@ a.contact-link:hover {
   touch-action: pan-y;
 }
 
+/* A soft pool of light on the floor the tiles land on. */
+.cloud3d::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(48% 62% at 50% 100%, var(--brand-soft), transparent 72%);
+  pointer-events: none;
+}
+
+/* Fades in once the shaders are compiled, just as the first tiles drop. */
 .cloud3d canvas {
+  position: relative;
   display: block;
   width: 100% !important;
   height: 100% !important;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+
+.cloud3d.is-ready canvas {
+  opacity: 1;
 }
 
 .cloud3d-label {
   position: absolute;
+  z-index: 1;
   left: 50%;
   bottom: 14px;
   transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
   font-family: var(--mono);
   font-size: 0.76rem;
   letter-spacing: 0.02em;
@@ -2014,6 +2036,13 @@ a.contact-link:hover {
 .cloud3d-label.on {
   color: var(--brand-text);
   border-color: var(--brand-border);
+}
+
+/* The hovered tool's own colour. */
+.cloud3d-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
 }
 
 .cloud-tile.static {
