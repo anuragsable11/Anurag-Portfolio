@@ -1,0 +1,40 @@
+<!doctype html>
+<!--
+  Bakes the samurai's reflection environment to src/assets/samurai-env.png.
+
+  Run `npm run dev` in client/, open http://localhost:5173/tools/bake-samurai-env.html
+  and save the downloaded file over src/assets/samurai-env.png. Re-run it only
+  after changing studioEnvironment() or the constants in src/lib/studio-env.js.
+-->
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Bake samurai environment</title>
+    <style>
+      body { background: #111; color: #ddd; font: 14px system-ui; padding: 24px; }
+      img { display: block; margin-top: 16px; max-width: 100%; image-rendering: pixelated; }
+    </style>
+  </head>
+  <body>
+    <p id="status">Baking…</p>
+    <a id="save" download="samurai-env.png" hidden>Download samurai-env.png</a>
+    <img id="preview" alt="" />
+    <script type="module">
+      import * as THREE from 'three'
+      import { encodePMREM, renderStudioPMREM } from '/src/lib/studio-env.js'
+
+      const renderer = new THREE.WebGLRenderer()
+      const target = renderStudioPMREM(renderer)
+      const url = encodePMREM(renderer, target)
+      target.dispose()
+      renderer.dispose()
+
+      window.__bakedEnv = url
+      const save = document.getElementById('save')
+      save.href = url
+      save.hidden = false
+      document.getElementById('preview').src = url
+      document.getElementById('status').textContent = `Baked ${target.width}×${target.height}.`
+    </script>
+  </body>
+</html>

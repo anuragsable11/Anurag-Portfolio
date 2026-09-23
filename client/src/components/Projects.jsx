@@ -1,17 +1,152 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { FiChevronDown } from 'react-icons/fi'
+import { FiArrowUpRight, FiCheck, FiChevronDown, FiMaximize2, FiX } from 'react-icons/fi'
+import { FaGithub } from 'react-icons/fa'
 import Reveal from './Reveal.jsx'
 import SectionHead from './SectionHead.jsx'
 import { projects } from '../data/content.js'
 
 const ease = [0.22, 1, 0.36, 1]
 
+/** Full-size view of a landing page screenshot. Esc, the button or the backdrop closes it. */
+function Lightbox({ showcase, name, onClose }) {
+  const closeRef = useRef(null)
+
+  useEffect(() => {
+    const returnTo = document.activeElement
+    closeRef.current?.focus()
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = ''
+      returnTo?.focus?.()
+    }
+  }, [onClose])
+
+  return (
+    <motion.div
+      className="lightbox"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${name} landing page`}
+      onClick={onClose}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.25 }}
+    >
+      <motion.figure
+        className="lightbox-figure"
+        onClick={(e) => e.stopPropagation()}
+        initial={{ scale: 0.96, y: 12 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.97, y: 8 }}
+        transition={{ duration: 0.35, ease }}
+      >
+        <div className="browser-bar">
+          <span className="browser-dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+          <span className="browser-address">{showcase.address}</span>
+          <button
+            ref={closeRef}
+            className="lightbox-close"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            <FiX />
+          </button>
+        </div>
+        <img
+          src={showcase.image}
+          width={showcase.width}
+          height={showcase.height}
+          alt={showcase.alt}
+        />
+      </motion.figure>
+    </motion.div>
+  )
+}
+
+/**
+ * The product as a user meets it: its landing page in a browser frame, beside
+ * the promise it makes. The engineering write-up follows below.
+ */
+function ProjectShowcase({ project }) {
+  const { showcase } = project
+  const [zoomed, setZoomed] = useState(false)
+  const close = useCallback(() => setZoomed(false), [])
+
+  return (
+    <div className="project-showcase">
+      <button
+        className="showcase-shot"
+        onClick={() => setZoomed(true)}
+        aria-label={`View the ${project.name} landing page full size`}
+      >
+        <span className="browser-bar" aria-hidden="true">
+          <span className="browser-dots">
+            <i />
+            <i />
+            <i />
+          </span>
+          <span className="browser-address">{showcase.address}</span>
+        </span>
+        <img
+          src={showcase.image}
+          srcSet={`${showcase.imageSmall} 800w, ${showcase.image} 1600w`}
+          sizes="(max-width: 1024px) 100vw, 720px"
+          width={showcase.width}
+          height={showcase.height}
+          alt={showcase.alt}
+          loading="lazy"
+          decoding="async"
+        />
+        <span className="showcase-zoom" aria-hidden="true">
+          <FiMaximize2 /> View full size
+        </span>
+      </button>
+
+      <div className="showcase-copy">
+        <h5>{project.name} · landing page</h5>
+        <p className="showcase-headline">“{showcase.headline}”</p>
+        <p className="showcase-pitch">{showcase.pitch}</p>
+        <ul className="showcase-promises">
+          {showcase.promises.map((promise) => (
+            <li key={promise}>
+              <FiCheck aria-hidden="true" />
+              {promise}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Portalled: the card sits inside transformed layout wrappers, which
+          would otherwise trap a position: fixed overlay. */}
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <AnimatePresence>
+            {zoomed && <Lightbox showcase={showcase} name={project.name} onClose={close} />}
+          </AnimatePresence>,
+          document.body
+        )}
+    </div>
+  )
+}
+
 function ProjectCard({ project }) {
   const [open, setOpen] = useState(project.featured)
 
   return (
     <div className={`card project-card ${project.featured ? 'featured' : ''}`}>
+      {project.showcase && <ProjectShowcase project={project} />}
       <div className="project-inner">
         <div className="project-main">
           <span className="project-tag" data-accent={project.accent}>
@@ -23,7 +158,22 @@ function ProjectCard({ project }) {
               <h3 className="project-title">{project.name}</h3>
               <p className="project-subtitle">{project.subtitle}</p>
             </div>
-            <span className="project-year">{project.year}</span>
+            <div className="project-meta">
+              <span className="project-year">{project.year}</span>
+              {project.links?.github && (
+                <a
+                  className="project-link"
+                  href={project.links.github}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`${project.name} source code on GitHub (opens in a new tab)`}
+                >
+                  <FaGithub aria-hidden="true" />
+                  Code
+                  <FiArrowUpRight aria-hidden="true" />
+                </a>
+              )}
+            </div>
           </div>
 
           <p className="project-summary">{project.summary}</p>

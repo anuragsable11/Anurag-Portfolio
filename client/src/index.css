@@ -1118,6 +1118,44 @@ ul {
   padding-top: 4px;
 }
 
+.project-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.project-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--fg);
+  white-space: nowrap;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.project-link:hover {
+  border-color: var(--border-hi);
+  background: var(--card);
+  transform: translateY(-1px);
+}
+
+.project-link:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.project-link svg:last-child {
+  color: var(--muted-fg);
+}
+
 .project-summary {
   color: var(--muted-fg);
   font-size: 0.94rem;
@@ -1215,6 +1253,209 @@ ul {
 
 .details-wrap {
   overflow: hidden;
+}
+
+/* Landing-page showcase on featured projects: the screenshot in a browser
+   frame, beside the product's own pitch. Columns match the card below. */
+.project-showcase {
+  display: grid;
+  grid-template-columns: 1.3fr 0.7fr;
+  border-bottom: 1px solid var(--border);
+}
+
+.showcase-shot {
+  position: relative;
+  display: block;
+  margin: 22px 0 22px 22px;
+  padding: 0;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: #0b0c10;
+  overflow: hidden;
+  cursor: zoom-in;
+  text-align: left;
+  box-shadow: var(--shadow-md);
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease,
+    border-color 0.2s ease;
+}
+
+.showcase-shot:hover {
+  transform: translateY(-3px);
+  border-color: var(--border-hi);
+  box-shadow: var(--shadow-lg);
+}
+
+.showcase-shot:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+
+.showcase-shot img,
+.lightbox-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.browser-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  background: #16181d;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.browser-dots {
+  display: inline-flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.browser-dots i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ff5f57;
+}
+
+.browser-dots i:nth-child(2) {
+  background: #febc2e;
+}
+
+.browser-dots i:nth-child(3) {
+  background: #28c840;
+}
+
+.browser-address {
+  flex: 1;
+  max-width: 260px;
+  margin-inline: auto;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: #9aa0aa;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.showcase-zoom {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(10, 10, 12, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(6px);
+  color: #f2f2f2;
+  font-size: 0.72rem;
+  font-weight: 500;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.showcase-shot:hover .showcase-zoom,
+.showcase-shot:focus-visible .showcase-zoom {
+  opacity: 1;
+  transform: none;
+}
+
+.showcase-copy {
+  padding: 26px 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+}
+
+.showcase-copy h5 {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-fg);
+}
+
+.showcase-headline {
+  font-size: 1.12rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+  color: var(--fg);
+}
+
+.showcase-pitch {
+  font-size: 0.87rem;
+  line-height: 1.6;
+  color: var(--muted-fg);
+}
+
+.showcase-promises {
+  display: grid;
+  gap: 7px;
+  margin-top: 2px;
+}
+
+.showcase-promises li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.84rem;
+  color: var(--fg);
+}
+
+.showcase-promises svg {
+  flex-shrink: 0;
+  color: var(--success);
+}
+
+/* Full-size screenshot overlay */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(5, 6, 8, 0.82);
+  backdrop-filter: blur(4px);
+  cursor: zoom-out;
+}
+
+.lightbox-figure {
+  width: min(1280px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #0b0c10;
+  box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.6);
+  cursor: default;
+}
+
+.lightbox-close {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  color: #c9ccd2;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
 }
 
 /* ============================================================
@@ -1581,8 +1822,17 @@ a.contact-link:hover {
     gap: 40px;
   }
 
-  .project-card.featured .project-inner {
+  .project-card.featured .project-inner,
+  .project-showcase {
     grid-template-columns: 1fr;
+  }
+
+  .showcase-shot {
+    margin: 20px 20px 0;
+  }
+
+  .showcase-copy {
+    padding: 20px 24px 22px;
   }
 
   .project-side {
@@ -1628,6 +1878,18 @@ a.contact-link:hover {
 
   .project-side {
     padding: 20px 18px;
+  }
+
+  .showcase-shot {
+    margin: 16px 16px 0;
+  }
+
+  .showcase-copy {
+    padding: 18px 18px 20px;
+  }
+
+  .lightbox {
+    padding: 12px;
   }
 
   .form-card {
@@ -1788,6 +2050,61 @@ a.contact-link:hover {
   display: block;
   width: 100% !important;
   height: 100% !important;
+}
+
+/* The samurai fades in once its shaders are compiled; until then a soft
+   glow breathes where he will stand, so the space never looks broken. */
+.samurai3d canvas {
+  opacity: 0;
+  transition: opacity 0.7s ease;
+}
+
+.samurai3d.is-ready canvas {
+  opacity: 1;
+}
+
+.samurai3d::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 150px;
+  height: 150px;
+  margin: -75px 0 0 -75px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(224, 166, 58, 0.22), rgba(192, 57, 43, 0.08) 45%, transparent 70%);
+  pointer-events: none;
+  animation: samurai-summon 1.6s ease-in-out infinite;
+  transition: opacity 0.5s ease;
+}
+
+.samurai3d.is-ready::after {
+  opacity: 0;
+  animation: none;
+}
+
+.samurai3d:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 4px;
+  border-radius: var(--radius-lg);
+}
+
+@keyframes samurai-summon {
+  0%,
+  100% {
+    transform: scale(0.85);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .samurai3d::after {
+    animation: none;
+  }
 }
 
 /* The agent graph now lives in the About column. */

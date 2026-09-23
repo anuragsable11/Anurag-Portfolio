@@ -1,14 +1,18 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
-import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import {
+  mergeGeometries,
+  toCreasedNormals,
+} from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { createVisibilityGate, cssColor } from '../lib/three-utils.js'
+import { loadBakedEnvironment, renderStudioPMREM } from '../lib/studio-env.js'
+import envUrl from '../assets/samurai-env.png'
 
 /**
  * An original stylised samurai mascot, modelled from primitives.
@@ -27,20 +31,38 @@ import { createVisibilityGate, cssColor } from '../lib/three-utils.js'
  *    add grain, mottling and fine scratches so nothing looks factory-clean.
  *  - On desktop, ambient occlusion darkens the gaps between plates.
  *
- * Layout, bottom to top (world units, floor at y = 0):
+ * He idles standing, then periodically sits cross-legged to meditate — the
+ * katana laid across his lap, eyes dimmed to slits that glow with each
+ * breath — and later rises again. Click / tap / Enter toggles it at once.
+ *
+ * Load time is dominated by GPU shader compilation, so the scene is built to
+ * keep that small: the reflection map is baked offline (see studio-env.js),
+ * every material shares one of three shader programs, repeated pieces are
+ * merged rather than instanced, shaders compile in parallel off the main
+ * thread, and the AO pass is only switched on once the character is already
+ * on screen, with its shader variants compiled in the background first.
+ *
+ * Layout, standing, bottom to top (world units, floor at y = 0):
  *   0.04  sandals        1.15  hips / sash (HIP_Y)
  *   0.65  knees          1.87  shoulders
  *   2.32  eye line       2.95  helmet crown
  *   3.78  crest tips
  *
- * The katana is held low in the right hand, blade down — relaxed, not
- * brandished. Drag to orbit a full 360°. Colours come from the --samurai-*
- * CSS tokens.
+ * Drag to orbit a full 360°. Colours come from the --samurai-* CSS tokens.
  */
 
 const HIP_Y = 1.15
 const HEAD_Y = 2.22
 const KATANA_TILT = -0.5
+
+// Actions: seconds for a sit / stand transition, and how long each pose holds
+// before the automatic cycle moves on.
+const TRANSITION = 2.4
+const FIRST_SIT_AT = 7
+const MEDITATE_FOR = 9
+const STAND_FOR = 13
+// How far the whole figure drops to sit on the floor.
+const SIT_DROP = HIP_Y - 0.24
 
 // Partial-cylinder helpers. three.js starts theta at +Z (the front) and
 // sweeps toward +X, so each arc is described by the angle it centres on.
@@ -53,6 +75,13 @@ const LEFT = -Math.PI / 2
 // Extruded geometry gets UVs in world units; plates are a fraction of a unit,
 // so this brings their texel density in line with the primitive geometries.
 const UV_SCALE = 3
+
+// Start fetching the baked reflection map as soon as this chunk loads, in
+// parallel with React mounting the component.
+const bakedEnv = loadBakedEnvironment(envUrl).catch(() => null)
+
+const lerp = THREE.MathUtils.lerp
+const smootherstep = (k) => k * k * k * (k * (k * 6 - 15) + 10)
 
 /* ================================================================
    Procedural surface maps
@@ -290,6 +319,14 @@ function taperTube(geo, curve, tubular, radial, taper) {
   return geo
 }
 
+/** Bakes copies of `base` at each matrix into a single geometry. */
+function mergeCopies(base, matrices) {
+  const parts = matrices.map((m) => base.clone().applyMatrix4(m))
+  const merged = mergeGeometries(parts)
+  parts.forEach((p) => p.dispose())
+  return merged
+}
+
 /** A katana blade with sori (curvature) and a swept kissaki point. */
 function bladeGeometry(length) {
   const w0 = 0.078
@@ -351,6 +388,7 @@ export default function Samurai3D() {
       return
     }
 
+    let disposed = false
     const dpr = Math.min(window.devicePixelRatio, 2)
     renderer.setPixelRatio(dpr)
     renderer.setSize(mount.clientWidth, mount.clientHeight)
@@ -360,7 +398,10 @@ export default function Samurai3D() {
     // approach clipping. A darker exposure keeps the lacquer red.
     renderer.toneMappingExposure = 0.92
     renderer.shadowMap.enabled = true
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap
+    // Not PCFSoftShadowMap: three.js r18x silently swaps that for PCF at
+    // render time, which changes every shader's cache key and throws away the
+    // programs compiled ahead of time. `key.shadow.radius` still softens PCF.
+    renderer.shadowMap.type = THREE.PCFShadowMap
     mount.appendChild(renderer.domElement)
 
     const scene = new THREE.Scene()
@@ -375,12 +416,12 @@ export default function Samurai3D() {
     /* ================================================================
        Studio lighting: warm key, two cool rims, dim fill
        ================================================================ */
-    const pmrem = new THREE.PMREMGenerator(renderer)
-    const envRT = pmrem.fromScene(new RoomEnvironment(), 0.04)
-    scene.environment = envRT.texture
-    // Metals are lit mostly by what they reflect, so the room carries more
-    // weight than it would for a matte scene.
+    // The reflection map arrives asynchronously (see start() below). Metals
+    // are lit mostly by what they reflect, so it carries more weight than it
+    // would in a matte scene.
     scene.environmentIntensity = 0.6
+    let envTexture = null
+    let envFallback = null
 
     const key = new THREE.DirectionalLight(0xfff3e6, 2.5)
     key.position.set(3.6, 6.5, 5.2)
@@ -405,8 +446,10 @@ export default function Samurai3D() {
     scene.add(key, rimL, rimR, fill)
 
     /* ---- Controls ---- */
+    const STAND_TARGET_Y = 1.95
+    const SIT_TARGET_Y = 1.45
     const controls = new OrbitControls(camera, renderer.domElement)
-    controls.target.set(0, 1.95, 0)
+    controls.target.set(0, STAND_TARGET_Y, 0)
     controls.enableDamping = true
     controls.dampingFactor = 0.06
     controls.enablePan = false
@@ -438,36 +481,8 @@ export default function Samurai3D() {
       }, 2500)
     })
 
-    /* ---- Ambient occlusion: desktop only, it costs a second scene pass ---- */
-    const finePointer = window.matchMedia('(pointer: fine)').matches
-    let composer = null
-    let gtao = null
-    let outputPass = null
-    if (finePointer) {
-      const target = new THREE.WebGLRenderTarget(1, 1, {
-        type: THREE.HalfFloatType,
-        samples: 4,
-      })
-      composer = new EffectComposer(renderer, target)
-      composer.setPixelRatio(dpr)
-      composer.setSize(mount.clientWidth, mount.clientHeight)
-      composer.addPass(new RenderPass(scene, camera))
-      gtao = new GTAOPass(scene, camera, mount.clientWidth, mount.clientHeight)
-      gtao.updateGtaoMaterial({
-        radius: 0.3,
-        distanceExponent: 1,
-        thickness: 1,
-        scale: 3,
-        samples: 16,
-      })
-      gtao.updatePdMaterial({ radius: 6, rings: 2, samples: 16 })
-      composer.addPass(gtao)
-      outputPass = new OutputPass()
-      composer.addPass(outputPass)
-    }
-
     /* ================================================================
-       Materials
+       Materials — three shader programs between them
        ================================================================ */
     const maps = makeSurfaceMaps()
     const geos = new Set()
@@ -476,84 +491,92 @@ export default function Samurai3D() {
       return g
     }
 
-    const phys = (token, fallback, extra = {}) =>
-      new THREE.MeshPhysicalMaterial({ color: cssColor(token, fallback), ...extra })
+    // three.js compiles one program per distinct feature set, and on many
+    // GPUs each compile costs hundreds of milliseconds. Every material below
+    // is one of three families with identical map slots, so they share
+    // programs: vary colours and scalars freely, but keep the slots the same.
+    const surface = { map: maps.mottle, roughnessMap: maps.grain }
 
-    // Urushi lacquer: a pigmented base under a hard, glossy clear coat.
-    const lacquer = {
-      roughness: 0.4,
-      metalness: 0,
-      clearcoat: 1,
-      clearcoatRoughness: 0.07,
-      envMapIntensity: 0.55,
-      map: maps.mottle,
-      roughnessMap: maps.grain,
-      clearcoatRoughnessMap: maps.grain,
-    }
-    // Forged iron: hammer-marked, satin rather than mirror.
-    const iron = {
-      metalness: 0.88,
-      map: maps.mottle,
-      roughnessMap: maps.grain,
-      bumpMap: maps.hammer,
-      bumpScale: 1.2,
-    }
-    const textile = {
-      metalness: 0,
-      sheen: 1,
-      sheenRoughness: 0.6,
-      bumpMap: maps.weave,
-      bumpScale: 0.7,
-    }
+    // Urushi lacquer (and waxed leather): pigment under a hard clear coat.
+    const lacquered = (token, fallback, extra = {}) =>
+      new THREE.MeshPhysicalMaterial({
+        color: cssColor(token, fallback),
+        metalness: 0,
+        roughness: 0.4,
+        clearcoat: 1,
+        clearcoatRoughness: 0.07,
+        envMapIntensity: 0.55,
+        ...surface,
+        ...extra,
+      })
+
+    // Metals: forged iron with hammer marks, gold, steel.
+    const metallic = (token, fallback, extra = {}) =>
+      new THREE.MeshStandardMaterial({
+        color: cssColor(token, fallback),
+        metalness: 0.88,
+        ...surface,
+        bumpMap: maps.hammer,
+        bumpScale: 1.2,
+        ...extra,
+      })
+
+    // Fabric and silk cord: a plain weave with a soft sheen.
+    const woven = (token, fallback, extra = {}) =>
+      new THREE.MeshPhysicalMaterial({
+        color: cssColor(token, fallback),
+        metalness: 0,
+        roughness: 0.9,
+        sheen: 1,
+        sheenRoughness: 0.6,
+        bumpMap: maps.weave,
+        bumpScale: 0.7,
+        ...extra,
+      })
 
     const mats = {
-      fabric: phys('--samurai-fabric', '#171a21', {
-        ...textile,
+      fabric: woven('--samurai-fabric', '#171a21', {
         roughness: 0.95,
         sheenColor: new THREE.Color(0x4a5566),
       }),
-      red: phys('--samurai-accent', '#c0392b', lacquer),
-      redDark: phys('--samurai-accent-dark', '#8e2a1e', lacquer),
-      metal: phys('--samurai-armor', '#39414f', { ...iron, roughness: 0.46 }),
-      metalDark: phys('--samurai-armor-dark', '#22272f', { ...iron, roughness: 0.4 }),
-      gold: phys('--samurai-gold', '#e0a63a', {
-        metalness: 1,
-        roughness: 0.26,
-        map: maps.mottle,
-        roughnessMap: maps.grain,
-      }),
-      rope: phys('--samurai-rope', '#b8935a', {
-        ...textile,
+      cloth: woven('--samurai-cloth', '#a8322a', { sheenColor: new THREE.Color(0xff9d8a) }),
+      rope: woven('--samurai-rope', '#b8935a', {
         roughness: 0.62,
         sheenRoughness: 0.35,
         sheenColor: new THREE.Color(0xfff0d8),
         bumpScale: 0.8,
       }),
-      bowl: phys('--samurai-bowl', '#e8e1d4', { ...lacquer, roughness: 0.42 }),
-      steel: phys('--samurai-steel', '#e9edf4', {
+      red: lacquered('--samurai-accent', '#c0392b'),
+      redDark: lacquered('--samurai-accent-dark', '#8e2a1e'),
+      bowl: lacquered('--samurai-bowl', '#e8e1d4', { roughness: 0.42 }),
+      leather: lacquered('--samurai-leather', '#4a3b33', {
+        roughness: 0.62,
+        clearcoat: 0.25,
+        clearcoatRoughness: 0.5,
+        envMapIntensity: 1,
+      }),
+      metal: metallic('--samurai-armor', '#39414f', { roughness: 0.46 }),
+      metalDark: metallic('--samurai-armor-dark', '#22272f', { roughness: 0.4 }),
+      face: metallic('--samurai-face', '#2f3642', { roughness: 0.5 }),
+      // Polished metals get a stronger reflection than the forged iron.
+      gold: metallic('--samurai-gold', '#e0a63a', {
+        metalness: 1,
+        roughness: 0.24,
+        bumpScale: 0.3,
+        envMapIntensity: 1.8,
+      }),
+      steel: metallic('--samurai-steel', '#e9edf4', {
         metalness: 1,
         roughness: 0.16,
         roughnessMap: maps.brushed,
-        anisotropy: 0.6,
+        bumpScale: 0,
+        envMapIntensity: 1.5,
       }),
-      cloth: phys('--samurai-cloth', '#a8322a', {
-        ...textile,
-        roughness: 0.9,
-        sheenColor: new THREE.Color(0xff9d8a),
-      }),
-      leather: phys('--samurai-leather', '#4a3b33', {
-        roughness: 0.62,
-        metalness: 0,
-        clearcoat: 0.25,
-        clearcoatRoughness: 0.5,
-        bumpMap: maps.grain,
-        bumpScale: 1.5,
-      }),
-      face: phys('--samurai-face', '#2f3642', { ...iron, roughness: 0.5 }),
-      eye: new THREE.MeshStandardMaterial({
-        color: cssColor('--samurai-eye', '#ffb347'),
-        roughness: 0.3,
+      // Rides on the metal program: the emissive term is always compiled in.
+      eye: metallic('--samurai-eye', '#ffb347', {
         metalness: 0.1,
+        roughness: 0.3,
+        bumpScale: 0,
         emissive: cssColor('--samurai-eye', '#ffb347'),
         emissiveIntensity: 0.8,
       }),
@@ -570,9 +593,25 @@ export default function Samurai3D() {
       return m
     }
 
-    /** A solid curved armour plate. */
-    const plate = (rTop, rBottom, height, span, material, thickness = 0.026, segs = 14) =>
-      mesh(shellGeometry(rTop, rBottom, height, span, thickness, segs), material)
+    /**
+     * A solid curved armour plate. Geometry is built centred on the front and
+     * cached by shape, then rotated into place — the six kusazuri panels, both
+     * sode and both legs all reuse the same few shells.
+     */
+    const shellCache = new Map()
+    const plate = (rTop, rBottom, height, [start, sweep], material, thickness = 0.026, segs = 14) => {
+      const key = [rTop, rBottom, height, sweep, thickness, segs].map((v) => v.toFixed(4)).join()
+      let geo = shellCache.get(key)
+      if (!geo) {
+        geo = track(shellGeometry(rTop, rBottom, height, arc(0, sweep), thickness, segs))
+        shellCache.set(key, geo)
+      }
+      const m = new THREE.Mesh(geo, material)
+      m.castShadow = true
+      m.receiveShadow = true
+      m.rotation.y = start + sweep / 2
+      return m
+    }
 
     const STUD = track(new THREE.SphereGeometry(0.026, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2))
     const stud = (parent, x, y, z, rotY = 0) => {
@@ -584,30 +623,22 @@ export default function Samurai3D() {
       return s
     }
 
-    /* ---- Silk lacing: one instanced mesh per animated group ---- */
+    /* ---- Silk lacing: every cord of a group merged into one mesh ---- */
     const CORD = track(new THREE.CylinderGeometry(0.0085, 0.0085, 1, 6, 1))
     const UP = new THREE.Vector3(0, 1, 0)
-    const instanced = []
     const lace = (parent, segments) => {
       if (!segments.length) return
-      const cords = new THREE.InstancedMesh(CORD, mats.rope, segments.length)
-      cords.castShadow = true
-      cords.receiveShadow = true
-      const m = new THREE.Matrix4()
       const q = new THREE.Quaternion()
-      const s = new THREE.Vector3()
       const mid = new THREE.Vector3()
       const dir = new THREE.Vector3()
-      segments.forEach(([a, b], i) => {
+      const matrices = segments.map(([a, b]) => {
         dir.subVectors(b, a)
         const len = dir.length()
         q.setFromUnitVectors(UP, dir.normalize())
         mid.addVectors(a, b).multiplyScalar(0.5)
-        s.set(1, len, 1)
-        cords.setMatrixAt(i, m.compose(mid, q, s))
+        return new THREE.Matrix4().compose(mid, q, new THREE.Vector3(1, len, 1))
       })
-      parent.add(cords)
-      instanced.push(cords)
+      parent.add(mesh(mergeCopies(CORD, matrices), mats.rope))
     }
 
     /**
@@ -682,11 +713,15 @@ export default function Samurai3D() {
     }
 
     /* ================================================================
-       Legs — fabric underneath, laced thigh lames, splinted shins
+       Legs — fabric underneath, laced thigh lames, splinted shins.
+       Each leg bends at the knee so he can sit cross-legged.
        ================================================================ */
     const legs = [-1, 1].map((side) => {
       const hip = new THREE.Group()
       hip.position.set(side * 0.32, HIP_Y, 0)
+      // Splay (Y) is applied outside the lift (X), so a raised thigh still
+      // swings out sideways rather than twisting.
+      hip.rotation.order = 'YXZ'
       samurai.add(hip)
 
       const thigh = mesh(new THREE.CylinderGeometry(0.18, 0.16, 0.46, 24), mats.fabric)
@@ -708,45 +743,47 @@ export default function Samurai3D() {
         cordsPer: 2,
       })
 
+      const knee = new THREE.Group()
+      knee.position.y = -0.5
+      hip.add(knee)
+
       const kneeCop = mesh(new THREE.SphereGeometry(0.15, 32, 20), mats.red)
-      kneeCop.position.set(0, -0.5, 0.06)
+      kneeCop.position.set(0, 0, 0.06)
       kneeCop.scale.z = 0.8
-      hip.add(kneeCop)
+      knee.add(kneeCop)
 
       const kneeTrim = mesh(new THREE.TorusGeometry(0.14, 0.016, 10, 40), mats.gold)
-      kneeTrim.position.set(0, -0.5, 0.13)
-      hip.add(kneeTrim)
+      kneeTrim.position.set(0, 0, 0.13)
+      knee.add(kneeTrim)
 
       const shin = mesh(new THREE.CylinderGeometry(0.15, 0.14, 0.4, 24), mats.fabric)
-      shin.position.y = -0.77
-      hip.add(shin)
+      shin.position.y = -0.27
+      knee.add(shin)
 
       // Suneate: three separate iron splints, fabric showing between them
       ;[-1, 0, 1].forEach((k) => {
         const splint = plate(0.172, 0.18, 0.32, arc(FRONT + k * 0.64, 0.5), mats.metal, 0.022)
-        splint.position.y = -0.79
-        hip.add(splint)
+        splint.position.y = -0.29
+        knee.add(splint)
       })
 
       const shinTrim = plate(0.188, 0.19, 0.03, arc(FRONT, Math.PI * 0.86), mats.gold, 0.014)
-      shinTrim.position.y = -0.62
-      hip.add(shinTrim)
+      shinTrim.position.y = -0.12
+      knee.add(shinTrim)
 
       const foot = mesh(new RoundedBoxGeometry(0.4, 0.15, 0.54, 4, 0.06), mats.metalDark)
-      foot.position.set(0, -1.02, 0.09)
-      hip.add(foot)
+      foot.position.set(0, -0.52, 0.09)
+      knee.add(foot)
 
       const sole = mesh(new RoundedBoxGeometry(0.42, 0.05, 0.56, 3, 0.02), mats.leather)
-      sole.position.set(0, -1.1, 0.09)
-      hip.add(sole)
+      sole.position.set(0, -0.6, 0.09)
+      knee.add(sole)
 
       const toeStrap = mesh(new RoundedBoxGeometry(0.28, 0.06, 0.12, 3, 0.03), mats.leather)
-      toeStrap.position.set(0, -0.96, 0.29)
-      hip.add(toeStrap)
+      toeStrap.position.set(0, -0.46, 0.29)
+      knee.add(toeStrap)
 
-      hip.rotation.z = side * 0.05
-      hip.rotation.y = side * 0.1
-      return { hip, side }
+      return { hip, knee, side }
     })
 
     /* ================================================================
@@ -836,26 +873,47 @@ export default function Samurai3D() {
     sashTail.rotation.z = 0.2
     body.add(sashTail)
 
-    // Kusazuri: six separate laced panels hanging off the sash
+    // Kusazuri: six separate laced panels hanging off the sash. Each hangs
+    // from a hinge along its top edge, so it can fan out over the floor and
+    // thighs when he sits.
     const skirt = new THREE.Group()
     skirt.position.y = -0.04
     skirt.scale.z = 0.76
     body.add(skirt)
 
+    const SKIRT_R = 0.44
+    const panels = []
     for (let i = 0; i < 6; i++) {
-      lamellar(skirt, {
+      const center = (i / 6) * Math.PI * 2
+      const hinge = new THREE.Group()
+      hinge.position.set(Math.sin(center) * SKIRT_R, 0.01, Math.cos(center) * SKIRT_R)
+      hinge.rotation.y = center
+      skirt.add(hinge)
+
+      const flap = new THREE.Group()
+      hinge.add(flap)
+
+      // Undo the hinge transform, so the panel is authored in skirt space.
+      const unhinge = new THREE.Group()
+      unhinge.position.set(0, -0.01, -SKIRT_R)
+      unhinge.rotation.y = -center
+      flap.add(unhinge)
+
+      lamellar(unhinge, {
         rows: 3,
         rowH: 0.1,
         gap: 0.024,
-        rTop: 0.44,
+        rTop: SKIRT_R,
         flare: 0.24,
-        span: arc((i / 6) * Math.PI * 2, Math.PI * 0.25),
+        span: arc(center, Math.PI * 0.25),
         y: 0.01,
         material: mats.red,
         trim: mats.gold,
         hang: 0.07,
         cordsPer: 2,
       })
+      // Front panels rest on the thighs; the rest fan out on the floor.
+      panels.push({ flap, spread: Math.cos(center) > 0.4 ? 1.3 : 1.12 })
     }
 
     /* ================================================================
@@ -927,8 +985,6 @@ export default function Samurai3D() {
       tekko.position.y = -0.38
       elbow.add(tekko)
 
-      shoulder.rotation.z = side * 0.16
-      elbow.rotation.x = -0.1
       return { shoulder, elbow, side }
     })
 
@@ -978,13 +1034,17 @@ export default function Samurai3D() {
     guard.position.set(0, -0.19, 0.26)
     headRig.add(guard)
 
-    const ventGeo = track(new RoundedBoxGeometry(0.3, 0.024, 0.032, 3, 0.01))
-    for (let i = 0; i < 3; i++) {
-      const vent = new THREE.Mesh(ventGeo, mats.metal)
-      vent.castShadow = true
-      vent.position.set(0, -0.1 - i * 0.052, 0.4)
-      headRig.add(vent)
-    }
+    const vent = new RoundedBoxGeometry(0.3, 0.024, 0.032, 3, 0.01)
+    headRig.add(
+      mesh(
+        mergeCopies(
+          vent,
+          [0, 1, 2].map((i) => new THREE.Matrix4().makeTranslation(0, -0.1 - i * 0.052, 0.4))
+        ),
+        mats.metal
+      )
+    )
+    vent.dispose()
 
     const chin = mesh(new THREE.ConeGeometry(0.17, 0.19, 8), mats.metalDark)
     chin.position.set(0, -0.31, 0.21)
@@ -1029,40 +1089,47 @@ export default function Samurai3D() {
         return new THREE.Vector3(Math.sin(phi) * 0.598, Math.cos(phi) * 0.598, 0)
       })
     )
-    const ribGeo = track(
-      taperTube(new THREE.TubeGeometry(ribCurve, 24, 0.012, 6), ribCurve, 24, 6, (t) =>
-        0.55 + t * 0.45
-      )
+    const rib = taperTube(new THREE.TubeGeometry(ribCurve, 24, 0.012, 6), ribCurve, 24, 6, (t) =>
+      0.55 + t * 0.45
     )
     const RIBS = 16
-    const ribs = new THREE.InstancedMesh(ribGeo, mats.bowl, RIBS)
-    ribs.castShadow = true
-    ribs.receiveShadow = true
-    const ribMatrix = new THREE.Matrix4()
-    for (let i = 0; i < RIBS; i++) {
-      ribs.setMatrixAt(i, ribMatrix.makeRotationY((i / RIBS) * Math.PI * 2))
-    }
-    bowlRig.add(ribs)
-    instanced.push(ribs)
+    bowlRig.add(
+      mesh(
+        mergeCopies(
+          rib,
+          Array.from({ length: RIBS }, (_, i) =>
+            new THREE.Matrix4().makeRotationY((i / RIBS) * Math.PI * 2)
+          )
+        ),
+        mats.bowl
+      )
+    )
+    rib.dispose()
 
     // Koshimaki: the iron band around the base, with a row of gold rivets
     const band = plate(0.615, 0.615, 0.06, [0, Math.PI * 2], mats.metalDark, 0.03, 64)
     band.position.y = 0.19
     helmet.add(band)
 
-    const rivetGeo = track(new THREE.SphereGeometry(0.016, 10, 6))
+    const rivet = new THREE.SphereGeometry(0.016, 10, 6)
     const RIVETS = 24
-    const rivets = new THREE.InstancedMesh(rivetGeo, mats.gold, RIVETS)
-    rivets.castShadow = true
-    for (let i = 0; i < RIVETS; i++) {
-      const a = (i / RIVETS) * Math.PI * 2
-      rivets.setMatrixAt(
-        i,
-        ribMatrix.makeTranslation(Math.sin(a) * 0.622, 0.19, Math.cos(a) * 0.622)
+    helmet.add(
+      mesh(
+        mergeCopies(
+          rivet,
+          Array.from({ length: RIVETS }, (_, i) => {
+            const a = (i / RIVETS) * Math.PI * 2
+            return new THREE.Matrix4().makeTranslation(
+              Math.sin(a) * 0.622,
+              0.19,
+              Math.cos(a) * 0.622
+            )
+          })
+        ),
+        mats.gold
       )
-    }
-    helmet.add(rivets)
-    instanced.push(rivets)
+    )
+    rivet.dispose()
 
     const tehen = mesh(new THREE.TorusGeometry(0.09, 0.028, 16, 40), mats.gold)
     tehen.position.y = 0.66
@@ -1150,40 +1217,34 @@ export default function Samurai3D() {
     crest.add(crestBase)
 
     /* ================================================================
-       Katana — held low in the right hand, blade down
+       Katana — held low in the right hand
        ================================================================ */
     const katana = new THREE.Group()
     arms[1].elbow.add(katana)
     katana.position.set(0.02, -0.4, 0.04)
-    // Rotated past vertical so the blade points down, angled out and forward.
-    katana.rotation.set(KATANA_TILT, 0, Math.PI + 0.58)
 
     // Tsuka: white ray skin under a crossed black silk wrap
     const core = mesh(new RoundedBoxGeometry(0.086, 0.5, 0.072, 3, 0.03), mats.bowl)
     core.position.y = -0.12
     katana.add(core)
 
-    const wrapGeo = track(new RoundedBoxGeometry(0.108, 0.024, 0.018, 2, 0.008))
-    const WRAPS = 6
-    const wraps = new THREE.InstancedMesh(wrapGeo, mats.fabric, WRAPS * 4)
-    wraps.castShadow = true
-    const wrapM = new THREE.Matrix4()
-    const wrapQ = new THREE.Quaternion()
-    const wrapE = new THREE.Euler()
-    const wrapP = new THREE.Vector3()
-    const wrapS = new THREE.Vector3(1, 1, 1)
-    let w = 0
-    for (let i = 0; i < WRAPS; i++) {
+    const wrap = new RoundedBoxGeometry(0.108, 0.024, 0.018, 2, 0.008)
+    const wrapMatrices = []
+    for (let i = 0; i < 6; i++) {
       for (const z of [0.038, -0.038]) {
         for (const tilt of [0.6, -0.6]) {
-          wrapP.set(0, 0.09 - i * 0.07, z)
-          wrapQ.setFromEuler(wrapE.set(0, 0, tilt))
-          wraps.setMatrixAt(w++, wrapM.compose(wrapP, wrapQ, wrapS))
+          wrapMatrices.push(
+            new THREE.Matrix4().compose(
+              new THREE.Vector3(0, 0.09 - i * 0.07, z),
+              new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, tilt)),
+              new THREE.Vector3(1, 1, 1)
+            )
+          )
         }
       }
     }
-    katana.add(wraps)
-    instanced.push(wraps)
+    katana.add(mesh(mergeCopies(wrap, wrapMatrices), mats.fabric))
+    wrap.dispose()
 
     const menuki = mesh(new THREE.OctahedronGeometry(0.035, 1), mats.gold)
     menuki.position.set(0, -0.13, 0.046)
@@ -1245,6 +1306,31 @@ export default function Samurai3D() {
     pool.position.y = 0.012
     scene.add(pool)
 
+    /* ================================================================
+       Actions — meditate and stand up
+       ================================================================ */
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    // `w` runs 0 (standing) → 1 (seated in meditation).
+    const pose = { w: 0, from: 0, to: 0, start: -TRANSITION, next: FIRST_SIT_AT }
+    let now = 0
+
+    const toggleMeditation = () => {
+      pose.from = pose.w
+      pose.to = pose.to ? 0 : 1
+      pose.start = now
+      pose.next = now + TRANSITION + (pose.to ? MEDITATE_FOR : STAND_FOR)
+    }
+
+    // Standing, the blade hangs down and out; seated, it lies across the lap
+    // (blade toward his left, edge up). The lap pose is held in body space and
+    // converted into the moving hand's frame every frame.
+    const katanaStand = new THREE.Quaternion()
+    const katanaLap = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0.12, Math.PI / 2))
+    const handQ = new THREE.Quaternion()
+    const rootQ = new THREE.Quaternion()
+    const lapLocal = new THREE.Quaternion()
+    const standEuler = new THREE.Euler()
+
     /* ---- Cursor tracking ---- */
     const look = { x: 0, y: 0 }
     const target = { x: 0, y: 0 }
@@ -1258,53 +1344,178 @@ export default function Samurai3D() {
       target.x = 0
       target.y = 0
     }
+
+    // A tap or click — not a drag — toggles meditation.
+    let press = null
+    const onPointerDown = (e) => {
+      press = { x: e.clientX, y: e.clientY, t: performance.now() }
+    }
+    const onPointerUp = (e) => {
+      if (!press) return
+      const moved = Math.hypot(e.clientX - press.x, e.clientY - press.y)
+      if (moved < 6 && performance.now() - press.t < 450) toggleMeditation()
+      press = null
+    }
+    const onKeyDown = (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return
+      e.preventDefault()
+      toggleMeditation()
+    }
     mount.addEventListener('pointermove', onPointerMove)
     mount.addEventListener('pointerleave', onPointerLeave)
+    mount.addEventListener('pointerdown', onPointerDown)
+    mount.addEventListener('pointerup', onPointerUp)
+    mount.addEventListener('keydown', onKeyDown)
 
-    /* ---- Animation: a relaxed idle, nothing brandished ---- */
+    /* ---- Ambient occlusion: desktop only, switched on after first paint ---- */
+    let composer = null
+    let aoParts = null
+    const enableAO = async () => {
+      const aoTarget = new THREE.WebGLRenderTarget(1, 1, {
+        type: THREE.HalfFloatType,
+        samples: 4,
+      })
+      const c = new EffectComposer(renderer, aoTarget)
+      c.setPixelRatio(dpr)
+      c.setSize(mount.clientWidth, mount.clientHeight)
+      c.addPass(new RenderPass(scene, camera))
+      const gtao = new GTAOPass(scene, camera, mount.clientWidth, mount.clientHeight)
+      gtao.updateGtaoMaterial({
+        radius: 0.3,
+        distanceExponent: 1,
+        thickness: 1,
+        scale: 3,
+        samples: 16,
+      })
+      gtao.updatePdMaterial({ radius: 6, rings: 2, samples: 16 })
+      c.addPass(gtao)
+      const output = new OutputPass()
+      c.addPass(output)
+      aoParts = { composer: c, gtao, output }
+
+      // Rendering into an off-screen target needs different variants of every
+      // shader (no tone mapping, linear output), plus the pass shaders. Compile
+      // them all in parallel before swapping the composer in, so turning AO on
+      // never stalls a frame. Each warm-up has to match how the pass really
+      // draws, or its cache key differs and the work is wasted:
+      //  - the normal pass draws the real scene, so it takes the scene's lights;
+      //  - the fullscreen passes draw one triangle through an orthographic
+      //    camera, with no lights.
+      // compile() runs synchronously for whichever target is bound, so the
+      // target only needs binding around the calls.
+      const tri = new THREE.BufferGeometry()
+      tri.setAttribute('position', new THREE.Float32BufferAttribute([-1, 3, 0, -1, -1, 0, 3, -1, 0], 3))
+      tri.setAttribute('uv', new THREE.Float32BufferAttribute([0, 2, 0, 0, 2, 0], 2))
+      const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
+      const normals = new THREE.Mesh(tri, gtao.normalMaterial)
+      const passes = new THREE.Scene()
+      ;[gtao.gtaoMaterial, gtao.pdMaterial, gtao.copyMaterial, gtao.blendMaterial].forEach((m) =>
+        passes.add(new THREE.Mesh(tri, m))
+      )
+      renderer.setRenderTarget(aoTarget)
+      const compiling = Promise.all([
+        renderer.compileAsync(scene, camera),
+        renderer.compileAsync(normals, camera, scene),
+        renderer.compileAsync(passes, ortho),
+      ])
+      renderer.setRenderTarget(null)
+      try {
+        await compiling
+      } catch {
+        // Worst case the shaders compile on first use instead.
+      }
+      tri.dispose()
+      if (!disposed) composer = c
+    }
+
+    /* ---- Animation: a relaxed idle, and the meditation cycle ---- */
     const clock = new THREE.Clock()
     let frame = null
+    let started = false
 
     const tick = () => {
       frame = requestAnimationFrame(tick)
-      if (!gate.visible) return
+      if (!started || !gate.visible) return
 
       clock.getDelta()
-      const t = clock.elapsedTime
+      const t = (now = clock.elapsedTime)
 
-      samurai.position.y = Math.sin(t * 1.1) * 0.022
-      samurai.rotation.z = Math.sin(t * 0.5) * 0.01
-      body.rotation.y = Math.sin(t * 0.42) * 0.045
-      torso.scale.set(1, 1 + Math.sin(t * 1.45) * 0.012, 1)
-      skirt.rotation.y = Math.sin(t * 0.42) * 0.03
+      if (!reducedMotion && t >= pose.next) toggleMeditation()
+      const k = THREE.MathUtils.clamp((t - pose.start) / TRANSITION, 0, 1)
+      const w = (pose.w = lerp(pose.from, pose.to, smootherstep(k)))
+      const stand = 1 - w
+      // Peaks mid-transition: he leans into the motion of sitting or rising.
+      const effort = Math.sin(Math.PI * k) * Math.abs(pose.to - pose.from)
+
+      samurai.position.y = -SIT_DROP * w + Math.sin(t * 1.1) * 0.022 * stand
+      samurai.rotation.z = Math.sin(t * 0.5) * 0.01 * stand
+      body.rotation.y = Math.sin(t * 0.42) * 0.045 * stand
+      body.rotation.x = 0.04 * w + effort * 0.22
+
+      // Breathing: shallow while standing, slow and deep in meditation
+      const breath = Math.sin(t * 1.0)
+      torso.scale.set(1, 1 + Math.sin(t * 1.45) * 0.012 * stand + breath * 0.028 * w, 1)
+      skirt.rotation.y = Math.sin(t * 0.42) * 0.03 * stand
+      panels.forEach(({ flap, spread }) => {
+        flap.rotation.x = -spread * w
+      })
 
       tails.forEach((tail, i) => {
-        tail.rotation.x = Math.sin(t * 1.2 + i * 0.8) * 0.1
+        tail.rotation.x = Math.sin(t * 1.2 + i * 0.8) * 0.1 * stand + 0.35 * w
       })
 
       look.x += (target.x - look.x) * 0.05
       look.y += (target.y - look.y) * 0.05
-      headRig.rotation.y = look.x * 0.34 + Math.sin(t * 0.33) * 0.03
-      headRig.rotation.x = look.y * 0.14
-      headRig.rotation.z = Math.sin(t * 0.47) * 0.016
+      headRig.rotation.y = (look.x * 0.34 + Math.sin(t * 0.33) * 0.03) * stand
+      headRig.rotation.x = look.y * 0.14 * stand + (0.2 + breath * 0.025) * w
+      headRig.rotation.z = Math.sin(t * 0.47) * 0.016 * stand
 
-      mats.eye.emissiveIntensity = 0.78 + Math.sin(t * 0.85) * 0.1
+      // Eyes narrow to slits in meditation and glow with each breath
+      mats.eye.emissiveIntensity = lerp(
+        0.78 + Math.sin(t * 0.85) * 0.1,
+        0.45 + breath * 0.3,
+        w
+      )
       eyes.forEach((eye, i) => {
-        eye.scale.y = 1 + Math.sin(t * 0.85 + i) * 0.03
+        eye.scale.y = lerp(1 + Math.sin(t * 0.85 + i) * 0.03, 0.3, w)
       })
 
-      // Arms hang and sway; the blade drifts with them
+      // Arms hang and sway; seated, the hands come to rest on the lap
       arms.forEach(({ shoulder, elbow, side }) => {
-        const idle = Math.sin(t * 1.05 + side) * 0.035
-        shoulder.rotation.z = side * 0.16 + idle * 0.5
-        shoulder.rotation.x = idle
-        elbow.rotation.x = -0.1 + idle * 0.4
+        const idle = Math.sin(t * 1.05 + side) * 0.035 * stand
+        shoulder.rotation.z = side * lerp(0.16, 0.3, w) + idle * 0.5
+        shoulder.rotation.x = idle - 0.52 * w
+        elbow.rotation.x = -0.1 + idle * 0.4 - 1.05 * w
+        elbow.rotation.z = side * -0.35 * w
       })
-      katana.rotation.x = KATANA_TILT + Math.sin(t * 0.9) * 0.03
 
-      legs.forEach(({ hip, side }) => {
-        hip.rotation.x = Math.sin(t * 0.5 + side * 1.6) * 0.012
+      // Cross-legged: thighs lift forward and splay out, shins fold inward
+      legs.forEach(({ hip, knee, side }) => {
+        const sway = Math.sin(t * 0.5 + side * 1.6) * 0.012 * stand
+        hip.rotation.set(sway - 1.42 * w, side * lerp(0.1, 0.8, w), side * 0.05 * stand)
+        knee.rotation.set(side * 0.1 * w, 0, -side * 2.5 * w)
       })
+
+      // Sitting lowers his head, so the camera's aim follows him down
+      const aimY = lerp(STAND_TARGET_Y, SIT_TARGET_Y, w)
+      camera.position.y += aimY - controls.target.y
+      controls.target.y = aimY
+
+      standEuler.set(KATANA_TILT + Math.sin(t * 0.9) * 0.03 * stand, 0, Math.PI + 0.58)
+      katanaStand.setFromEuler(standEuler)
+      // The blade swings onto the lap during the first half of sitting (and
+      // leaves it late when rising), so it never dips through the floor.
+      const kw = THREE.MathUtils.smoothstep(w, 0, 0.55)
+      if (kw > 0) {
+        samurai.updateMatrixWorld(true)
+        arms[1].elbow.getWorldQuaternion(handQ)
+        samurai.getWorldQuaternion(rootQ)
+        // hand orientation relative to the body, inverted, then the lap pose
+        lapLocal.copy(rootQ.invert()).multiply(handQ).invert().multiply(katanaLap)
+        katana.quaternion.slerpQuaternions(katanaStand, lapLocal, kw)
+      } else {
+        katana.quaternion.copy(katanaStand)
+      }
 
       controls.update()
       if (composer) composer.render()
@@ -1315,6 +1526,33 @@ export default function Samurai3D() {
       if (frame === null) tick()
     })
     tick()
+
+    // Compile every shader in parallel (without blocking the page), then
+    // start drawing and fade the canvas in. AO follows once the page is idle.
+    const start = async () => {
+      envTexture = await bakedEnv
+      if (disposed) return
+      if (!envTexture) {
+        envFallback = renderStudioPMREM(renderer)
+        envTexture = envFallback.texture
+      }
+      scene.environment = envTexture
+      try {
+        await renderer.compileAsync(scene, camera)
+      } catch {
+        // Fall back to compiling on first render.
+      }
+      if (disposed) return
+      started = true
+      mount.classList.add('is-ready')
+      if (window.matchMedia('(pointer: fine)').matches) {
+        const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 400))
+        idle(() => {
+          if (!disposed) enableAO()
+        })
+      }
+    }
+    start()
 
     /* ---- Theme ---- */
     const applyTheme = () => {
@@ -1348,13 +1586,14 @@ export default function Samurai3D() {
       camera.aspect = w / h
       camera.updateProjectionMatrix()
       renderer.setSize(w, h)
-      composer?.setSize(w, h)
+      aoParts?.composer.setSize(w, h)
     }
     const resizeWatcher = new ResizeObserver(onResize)
     resizeWatcher.observe(mount)
 
     /* ---- Teardown ---- */
     return () => {
+      disposed = true
       if (frame !== null) cancelAnimationFrame(frame)
       clearTimeout(resumeTimer)
       gate.dispose()
@@ -1362,9 +1601,12 @@ export default function Samurai3D() {
       resizeWatcher.disconnect()
       mount.removeEventListener('pointermove', onPointerMove)
       mount.removeEventListener('pointerleave', onPointerLeave)
+      mount.removeEventListener('pointerdown', onPointerDown)
+      mount.removeEventListener('pointerup', onPointerUp)
+      mount.removeEventListener('keydown', onKeyDown)
+      mount.classList.remove('is-ready')
       controls.dispose()
 
-      instanced.forEach((m) => m.dispose())
       geos.forEach((g) => g.dispose())
       geos.clear()
       allMats.forEach((m) => m.dispose())
@@ -1372,11 +1614,15 @@ export default function Samurai3D() {
       shadowMat.dispose()
       poolMat.dispose()
       poolTex.dispose()
-      gtao?.dispose()
-      outputPass?.dispose()
-      composer?.dispose()
-      envRT.texture.dispose()
-      pmrem.dispose()
+      if (aoParts) {
+        aoParts.gtao.dispose()
+        aoParts.output.dispose()
+        aoParts.composer.dispose()
+      }
+      // The baked texture is shared across mounts; this only frees this
+      // renderer's GPU copy; it re-uploads if the component mounts again.
+      envTexture?.dispose()
+      envFallback?.dispose()
       renderer.dispose()
       if (renderer.domElement.parentNode === mount) {
         mount.removeChild(renderer.domElement)
@@ -1384,5 +1630,13 @@ export default function Samurai3D() {
     }
   }, [])
 
-  return <div className="robot3d" ref={mountRef} />
+  return (
+    <div
+      className="robot3d samurai3d"
+      ref={mountRef}
+      role="button"
+      tabIndex={0}
+      aria-label="3D samurai. Drag to turn him; click, tap or press Enter to meditate or stand up."
+    />
+  )
 }

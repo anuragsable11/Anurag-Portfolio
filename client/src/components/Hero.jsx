@@ -132,7 +132,7 @@ export default function Hero() {
             transition={{ duration: 0.9, delay: 0.32, ease: [0.22, 1, 0.36, 1] }}
           >
             {can3D ? (
-              <Suspense fallback={<div className="robot3d" aria-hidden="true" />}>
+              <Suspense fallback={<div className="robot3d samurai3d" aria-hidden="true" />}>
                 <Samurai3D />
               </Suspense>
             ) : (

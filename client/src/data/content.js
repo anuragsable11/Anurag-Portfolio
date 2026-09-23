@@ -2,6 +2,10 @@
  * Single source of truth for every piece of content on the site.
  * Edit this file to update the portfolio — no component changes needed.
  */
+import docmindLanding from '../assets/projects/docmind-landing-1600.webp'
+import docmindLandingSmall from '../assets/projects/docmind-landing-800.webp'
+import omnichatLanding from '../assets/projects/omnichat-landing-1600.webp'
+import omnichatLandingSmall from '../assets/projects/omnichat-landing-800.webp'
 
 export const profile = {
   name: 'Anurag Sable',
@@ -19,7 +23,7 @@ export const profile = {
   phone: '+91 7045877301',
   email: 'anuragsable01@gmail.com',
   linkedin: 'https://linkedin.com/in/anurag-sable-4181382a6/',
-  github: 'https://github.com/',
+  github: 'https://github.com/anuragsable11',
   resume: '/Anurag_Sable_Resume.pdf',
   availability: 'Open to backend / AI engineering roles',
   summary: [
@@ -113,7 +117,20 @@ export const projects = [
       'Ollama (Qwen3)',
     ],
     flow: ['Client', 'REST / WS', 'Celery queue', 'Qwen3 via Ollama', 'Stream back'],
-    links: {},
+    // The product's own landing page, shown above the engineering write-up.
+    showcase: {
+      image: omnichatLanding,
+      imageSmall: omnichatLandingSmall,
+      width: 1599,
+      height: 759,
+      address: 'omnichat.local',
+      alt: 'OmniChat landing page: the headline "Private AI chat, on your own terms." above Continue chatting and Explore features buttons, with a badge reading "Qwen3 via Ollama — zero cloud calls".',
+      headline: 'Private AI chat, on your own terms.',
+      pitch:
+        'A language model running on your own server, with answers streamed live to the browser. No API keys, no per-token bills, and not a single message leaves your infrastructure.',
+      promises: ['Self-hosted', 'Conversation memory', 'Live WebSocket replies'],
+    },
+    links: { github: 'https://github.com/anuragsable11/OmniChat-AI' },
   },
   {
     id: 'docmind',
@@ -134,7 +151,19 @@ export const projects = [
     ],
     stack: ['FastAPI', 'Python', 'PyMuPDF', 'Sentence Transformers', 'ChromaDB', 'Ollama (Qwen3)'],
     flow: ['Extract', 'Chunk', 'Embed', 'Retrieve', 'Generate'],
-    links: {},
+    showcase: {
+      image: docmindLanding,
+      imageSmall: docmindLandingSmall,
+      width: 1585,
+      height: 761,
+      address: 'docmind.local',
+      alt: 'DocMind landing page: the headline "Ask your PDFs anything. Get answers you can check." beside a mock chat over annual-report-2025.pdf, where the answer cites pages 4 and 12.',
+      headline: 'Ask your PDFs anything. Get answers you can check.',
+      pitch:
+        "Upload a PDF and ask in plain language. Every answer cites the page it came from, and if the document doesn't say it, DocMind won't make it up.",
+      promises: ['Page citations', 'No cloud upload', 'No account needed'],
+    },
+    links: { github: 'https://github.com/anuragsable11/DocMind' },
   },
   {
     id: 'skysnap',
