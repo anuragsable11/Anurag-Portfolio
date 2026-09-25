@@ -7,15 +7,19 @@ import {
   SiFlask,
   SiGit,
   SiHtml5,
+  SiHuggingface,
   SiJavascript,
   SiMysql,
   SiOllama,
   SiPostgresql,
   SiPostman,
   SiPython,
+  SiPytorch,
   SiRedis,
   SiSqlite,
+  SiTensorflow,
 } from 'react-icons/si'
+import { RiChatAi3Fill } from 'react-icons/ri'
 
 /** Logos shown in the skills cloud. `color: null` means follow the theme. */
 export const TECH = [
@@ -29,6 +33,12 @@ export const TECH = [
   { name: 'MySQL', Icon: SiMysql, color: '#0E7490' },
   { name: 'SQLite', Icon: SiSqlite, color: '#1A7FB5' },
   { name: 'Ollama', Icon: SiOllama, color: null },
+  { name: 'Hugging Face', Icon: SiHuggingface, color: '#F5B400' },
+  { name: 'PyTorch', Icon: SiPytorch, color: '#EE4C2C' },
+  { name: 'TensorFlow', Icon: SiTensorflow, color: '#FF6F00' },
+  // No brand mark exists, so a chat bubble with an AI spark stands in. It is
+  // a filled icon, so it extrudes into 3D like the logos do.
+  { name: 'Prompt Engineering', Icon: RiChatAi3Fill, color: '#8B5CF6' },
   { name: 'Docker', Icon: SiDocker, color: '#2496ED' },
   { name: 'Git', Icon: SiGit, color: '#E44C30' },
   { name: 'Postman', Icon: SiPostman, color: '#F0642A' },

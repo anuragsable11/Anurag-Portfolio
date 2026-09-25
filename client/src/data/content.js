@@ -56,6 +56,7 @@ export const skillGroups = [
     blurb: 'Orchestrating models, tools and context',
     items: [
       'LLM Orchestration (Ollama, Qwen3)',
+      'Prompt Engineering',
       'Tool Integration',
       'Stateful Context Management',
       'RAG Pipelines',
@@ -68,6 +69,13 @@ export const skillGroups = [
     icon: 'sparkles',
     blurb: 'The retrieval half of the pipeline',
     items: ['Sentence Transformers', 'Embeddings', 'Semantic Search', 'Document Retrieval'],
+  },
+  {
+    id: 'ml',
+    title: 'ML Frameworks',
+    icon: 'brain',
+    blurb: 'The libraries under the models',
+    items: ['Hugging Face', 'PyTorch', 'TensorFlow'],
   },
   {
     id: 'db',
