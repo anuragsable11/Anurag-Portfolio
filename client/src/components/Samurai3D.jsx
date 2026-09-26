@@ -520,7 +520,7 @@ const MOOD_POSES = {
   calm: {},
   // Free hand to the chin, head cocked, gaze drifting.
   thinking: {
-    L: [-0.12, 0.6, 0.5],
+    L: [-0.13, 0.58, 0.56],
     blade: [[0.32, -0.92, 0.22]],
     headTilt: 0.1,
     headPitch: -0.05,
@@ -782,29 +782,123 @@ const ACTIONS = Object.fromEntries(
   ])
 )
 
+/* ---- Arm IK that knows where the body is ---- */
+
+// Where each elbow points by default: down, out and back, as a relaxed arm's
+// does. [viewer's left arm, katana arm]
+const ARM_POLES = [-1, 1].map((side) => new THREE.Vector3(side * 0.5, -0.5, -0.7).normalize())
+// Swivel angles to try around the reach, nearest the default first.
+const SWIVELS = [0, 0.26, -0.26, 0.52, -0.52, 0.79, -0.79, 1.05, -1.05, 1.31, -1.31, 1.57, -1.57]
+
 /**
- * Two-bone IK for the arm rig: shoulder rotates about X then Z (Euler XYZ,
- * so Z applies first), elbow bends about X. Writes the three angles to `out`.
- * Out-of-reach targets are pulled in to the arm's length.
+ * The body, in body space, as an elliptic column: the dō above the waist,
+ * flaring over the kusazuri below it. Radii are the armour's surface.
  */
-function solveArm(target, side, out) {
-  const tx = target.x - side * SHOULDER_X
-  const ty = target.y - SHOULDER_Y
-  const tz = target.z
-  const len = Math.hypot(tx, ty, tz) || 1e-6
+function bodyRadii(y) {
+  const t = clamp((0.05 - y) / 0.5, 0, 1)
+  return [0.4 + 0.1 * t, 0.33 + 0.08 * t]
+}
+
+/** How deep a sphere of radius r at p sits inside the body; 0 when clear. */
+function penetration(p, r) {
+  if (p.y < -0.5 || p.y > 0.86) return 0
+  const [bx, bz] = bodyRadii(p.y)
+  return Math.max(0, 1 - Math.hypot(p.x / (bx + r), p.z / (bz + r)))
+}
+
+/** Moves a hand target straight out to the body's surface if it is inside. */
+function keepOutOfBody(p, r) {
+  if (p.y < -0.5 || p.y > 0.86) return p
+  const [bx, bz] = bodyRadii(p.y)
+  const q = Math.hypot(p.x / (bx + r), p.z / (bz + r))
+  if (q >= 1) return p
+  if (q < 1e-4) p.z = bz + r
+  else {
+    p.x /= q
+    p.z /= q
+  }
+  return p
+}
+
+const ik_ = {
+  S: new THREE.Vector3(),
+  T: new THREE.Vector3(),
+  E: new THREE.Vector3(),
+  u: new THREE.Vector3(),
+  v: new THREE.Vector3(),
+  w: new THREE.Vector3(),
+  p: new THREE.Vector3(),
+  q: new THREE.Vector3(),
+  x: new THREE.Vector3(),
+  y: new THREE.Vector3(),
+  z: new THREE.Vector3(),
+  m: new THREE.Matrix4(),
+}
+
+/** The elbow for a swivel of the default pole about the reach. */
+function elbowAt(swivel, cosA, sinA) {
+  const { S, E, u, v, w, p } = ik_
+  p.copy(v).multiplyScalar(Math.cos(swivel)).addScaledVector(w, Math.sin(swivel))
+  return E.copy(S).addScaledVector(u, UPPER_ARM * cosA).addScaledVector(p, UPPER_ARM * sinA)
+}
+
+/** How much of an arm (elbow half of the upper arm, and the forearm) is in the body. */
+function armPenetration(swivel, cosA, sinA) {
+  const { S, T, q } = ik_
+  const E = elbowAt(swivel, cosA, sinA)
+  let pen = 0
+  for (const t of [0.55, 0.8, 1]) pen += penetration(q.lerpVectors(S, E, t), 0.09)
+  for (const t of [0.3, 0.55, 0.8]) pen += penetration(q.lerpVectors(E, T, t), 0.085)
+  return pen
+}
+
+/**
+ * Two-bone IK with a pole. The elbow sits in the plane of the reach and the
+ * pole, so it points down and out instead of wherever a fixed swivel would
+ * put it; of the swivels that keep the arm out of the armour, the one
+ * closest to that default wins, eased over a few frames so it never pops.
+ * Writes the shoulder's orientation (in body space: the upper arm runs down
+ * its local -Y and bends toward its local +Z) and the elbow's bend.
+ */
+function solveArm(target, side, state, dt, out) {
+  const { S, T, E, u, v, w, x, y, z, m } = ik_
+  S.set(side * SHOULDER_X, SHOULDER_Y, 0)
+  u.subVectors(target, S)
+  const len = u.length() || 1e-6
   const d = clamp(len, UPPER_ARM - FOREARM + 0.02, (UPPER_ARM + FOREARM) * 0.999)
-  const s = d / len
-  const cosInner = (UPPER_ARM ** 2 + FOREARM ** 2 - d * d) / (2 * UPPER_ARM * FOREARM)
-  const bend = Math.PI - Math.acos(clamp(cosInner, -1, 1))
-  const hy = -UPPER_ARM - FOREARM * Math.cos(bend)
-  const hz = FOREARM * Math.sin(bend)
-  const c = Math.asin(clamp((-tx * s) / hy, -1, 1))
-  let a = Math.atan2(tz * s, ty * s) - Math.atan2(hz, hy * Math.cos(c))
-  if (a > Math.PI) a -= Math.PI * 2
-  if (a < -Math.PI) a += Math.PI * 2
-  out.shX = a
-  out.shZ = c
-  out.elX = -bend
+  u.divideScalar(len)
+  T.copy(S).addScaledVector(u, d)
+  const cosA = clamp((UPPER_ARM ** 2 + d * d - FOREARM ** 2) / (2 * UPPER_ARM * d), -1, 1)
+  const sinA = Math.sqrt(1 - cosA * cosA)
+
+  v.copy(ARM_POLES[side > 0 ? 1 : 0])
+  v.addScaledVector(u, -v.dot(u))
+  if (v.lengthSq() < 1e-6) v.set(side, 0, 0).addScaledVector(u, -u.x * side)
+  v.normalize()
+  w.crossVectors(u, v)
+
+  let best = 0
+  let bestScore = Infinity
+  for (const sw of SWIVELS) {
+    const score = armPenetration(sw, cosA, sinA) + Math.abs(sw) * 0.015
+    if (score < bestScore) {
+      bestScore = score
+      best = sw
+    }
+  }
+  state.swivel += (best - state.swivel) * (dt > 0 ? 1 - Math.exp(-10 * dt) : 1)
+
+  elbowAt(state.swivel, cosA, sinA)
+  y.subVectors(E, S).normalize() // upper arm direction
+  z.subVectors(T, E).normalize() // forearm direction
+  out.bend = Math.acos(clamp(y.dot(z), -1, 1))
+  z.addScaledVector(y, -z.dot(y))
+  // A straight arm has no bend to face: keep the inside of the elbow forward.
+  if (z.lengthSq() < 1e-8) z.set(0, 0, 1).addScaledVector(y, -y.z)
+  z.normalize()
+  y.negate()
+  x.crossVectors(y, z)
+  out.q.setFromRotationMatrix(m.makeBasis(x, y, z))
   return out
 }
 
@@ -2834,7 +2928,11 @@ export default function Samurai3D() {
       new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, side * 0.16))
     )
     const sodeBaseQ = arms.map(({ sode }) => sode.quaternion.clone())
-    const ik = { shX: 0, shZ: 0, elX: 0 }
+    const ik = { q: new THREE.Quaternion(), bend: 0 }
+    const armState = [{ swivel: 0 }, { swivel: 0 }]
+    const seatedShoulderQ = [-1, 1].map((side) =>
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.12, 0, side * 0.2))
+    )
     const rHand = new THREE.Vector3()
     const lHand = new THREE.Vector3()
     const gripPoint = new THREE.Vector3()
@@ -2983,17 +3081,20 @@ export default function Samurai3D() {
       bladeQ.copy(out.q)
       bladeQ.premultiply(tmpQ.setFromAxisAngle(X_AXIS, Math.sin(t * 0.9) * 0.03 * sway))
       if (gripRoll) bladeQ.multiply(tmpQ.setFromAxisAngle(Y_AXIS, gripRoll))
+      // Hands never pass through the armour: between poses they slide round it.
       rHand.copy(out.R)
       rHand.z += Math.sin(t * 1.05 + 1) * 0.03 * sway
+      keepOutOfBody(rHand, 0.11)
       gripPoint.set(0, -GRIP_SPAN, 0).applyQuaternion(bladeQ).add(rHand)
       lHand.copy(out.L)
       lHand.z += Math.sin(t * 1.05 - 1) * 0.03 * sway
       lHand.lerp(gripPoint, clamp(P.twoHand, 0, 1))
+      keepOutOfBody(lHand, 0.11)
 
       arms.forEach(({ shoulder, elbow, side, sode }, i) => {
-        solveArm(side > 0 ? rHand : lHand, side, ik)
-        shoulder.rotation.set(lerp(ik.shX, -0.12, w), 0, lerp(ik.shZ, side * 0.2, w))
-        elbow.rotation.set(lerp(ik.elX, -1.35, w), 0, side * -0.3 * w)
+        solveArm(side > 0 ? rHand : lHand, side, armState[i], dt, ik)
+        shoulder.quaternion.slerpQuaternions(ik.q, seatedShoulderQ[i], w)
+        elbow.rotation.set(lerp(-ik.bend, -1.35, w), 0, side * -0.3 * w)
         // The sode hang from the shoulder: they follow the arm only a little.
         tmpQ.copy(shoulder.quaternion).invert().multiply(restShoulderQ[i])
         sode.quaternion.slerpQuaternions(IDENTITY, tmpQ, 0.8).multiply(sodeBaseQ[i])
