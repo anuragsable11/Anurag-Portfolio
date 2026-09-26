@@ -10,16 +10,19 @@ const AgentGraph3D = lazy(() => import('./AgentGraph3D.jsx'))
 const focus = [
   {
     icon: <FiCpu />,
+    group: 'ai',
     title: 'LLM Orchestration',
     body: 'Routing conversation turns between clients, queues, tools and a locally hosted model — with context that survives the turn.',
   },
   {
     icon: <FiLayers />,
+    group: 'ai',
     title: 'Retrieval-Augmented Generation',
     body: 'Extract, chunk, embed, retrieve, generate — grounding model answers in real documents with traceable sources.',
   },
   {
     icon: <FiZap />,
+    group: 'backend',
     title: 'Async Backend Design',
     body: 'Celery and Redis keep inference off the request cycle, so APIs stay fast while the heavy work runs in the background.',
   },
@@ -49,7 +52,7 @@ export default function About() {
             <div className="focus-list">
               {focus.map((f, i) => (
                 <Reveal key={f.title} delay={0.1 + i * 0.09} x={-14} y={0}>
-                  <div className="focus-item">
+                  <div className="focus-item" data-skill-group={f.group}>
                     <span className="focus-icon">{f.icon}</span>
                     <div>
                       <h4>{f.title}</h4>

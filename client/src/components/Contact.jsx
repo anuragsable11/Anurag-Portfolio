@@ -5,6 +5,7 @@ import { FaLinkedinIn } from 'react-icons/fa'
 import Reveal from './Reveal.jsx'
 import SectionHead from './SectionHead.jsx'
 import { profile } from '../data/content.js'
+import { celebrate, setMood } from '../lib/companion.js'
 
 const channels = [
   {
@@ -80,11 +81,13 @@ export default function Contact() {
         message: data.message || 'Message sent. I will get back to you soon.',
       })
       setValues(empty)
+      celebrate()
     } catch (err) {
       setStatus({
         state: 'error',
         message: `${err.message} You can also email me directly at ${profile.email}.`,
       })
+      setMood('thinking', 2600)
     }
   }
 

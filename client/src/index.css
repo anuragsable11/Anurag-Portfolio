@@ -2184,3 +2184,164 @@ a.contact-link:hover {
     height: 250px;
   }
 }
+
+/* ============================================================
+   Samurai companion — hero slot, corner dock, tooltip
+   ============================================================ */
+/* The slot holds the hero's layout; the frame inside it can leave to float
+   in the corner while the visitor reads the rest of the page. */
+.samurai-slot {
+  position: relative;
+  height: 430px;
+}
+
+.samurai-frame {
+  position: absolute;
+  inset: 0;
+}
+
+.samurai-frame > .samurai3d {
+  height: 100%;
+}
+
+.samurai-hit,
+.samurai-dismiss {
+  display: none;
+}
+
+.samurai-frame.is-docked {
+  position: fixed;
+  inset: auto 18px 74px auto;
+  width: 136px;
+  height: 180px;
+  z-index: 60;
+  /* Only his silhouette (the hit area) takes the pointer. */
+  pointer-events: none;
+  animation: samurai-dock-in 0.5s var(--ease) both;
+}
+
+.samurai-frame.is-docked > .samurai3d {
+  background: none;
+  pointer-events: none;
+}
+
+.samurai-frame.is-docked .samurai-hit {
+  display: block;
+  position: absolute;
+  inset: 8% 22% 4%;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.samurai-frame.is-docked .samurai-dismiss {
+  display: grid;
+  place-items: center;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted-fg);
+  font-size: 0.72rem;
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0;
+  transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.samurai-frame.is-docked:hover .samurai-dismiss,
+.samurai-frame.is-docked .samurai-dismiss:focus-visible {
+  opacity: 1;
+}
+
+.samurai-frame.is-docked .samurai-dismiss:hover {
+  color: var(--fg);
+}
+
+.samurai-frame.is-undocking > .samurai3d {
+  animation: samurai-fade-in 0.45s ease both;
+}
+
+@keyframes samurai-dock-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes samurai-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.samurai-tip {
+  position: absolute;
+  z-index: 2;
+  top: 6px;
+  left: 50%;
+  translate: -50% 0;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.02em;
+  color: var(--fg);
+  padding: 6px 12px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  animation: samurai-tip-in 0.25s var(--ease) both;
+}
+
+.samurai-frame.is-docked .samurai-tip {
+  top: auto;
+  bottom: calc(100% + 4px);
+  left: auto;
+  right: 0;
+  translate: none;
+}
+
+@keyframes samurai-tip-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 1024px) {
+  .samurai-slot {
+    height: 360px;
+  }
+}
+
+@media (max-width: 520px) {
+  .samurai-slot {
+    height: 300px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .samurai-frame.is-docked,
+  .samurai-frame.is-undocking > .samurai3d,
+  .samurai-tip {
+    animation: none;
+  }
+}

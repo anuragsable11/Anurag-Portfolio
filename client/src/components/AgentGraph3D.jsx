@@ -146,15 +146,17 @@ export default function AgentGraph3D() {
     mount.addEventListener('pointerleave', onPointerLeave)
 
     /* ---- Animate ---- */
-    const clock = new THREE.Clock()
+    // THREE.Clock is deprecated (and warns in the console); Timer replaces it.
+    const timer = new THREE.Timer()
     let frame = null
 
     const tick = () => {
       frame = requestAnimationFrame(tick)
       if (!gate.visible) return
 
-      const delta = Math.min(clock.getDelta(), 0.05)
-      const time = clock.elapsedTime
+      timer.update()
+      const delta = Math.min(timer.getDelta(), 0.05)
+      const time = timer.getElapsed()
 
       world.rotation.y += delta * 0.22
 

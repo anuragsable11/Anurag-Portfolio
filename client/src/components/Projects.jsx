@@ -6,6 +6,7 @@ import { FaGithub } from 'react-icons/fa'
 import Reveal from './Reveal.jsx'
 import SectionHead from './SectionHead.jsx'
 import { projects } from '../data/content.js'
+import { act, celebrate } from '../lib/companion.js'
 
 const ease = [0.22, 1, 0.36, 1]
 
@@ -88,7 +89,10 @@ function ProjectShowcase({ project }) {
     <div className="project-showcase">
       <button
         className="showcase-shot"
-        onClick={() => setZoomed(true)}
+        onClick={() => {
+          setZoomed(true)
+          celebrate()
+        }}
         aria-label={`View the ${project.name} landing page full size`}
       >
         <span className="browser-bar" aria-hidden="true">
@@ -169,6 +173,7 @@ function ProjectCard({ project }) {
                       target="_blank"
                       rel="noopener noreferrer"
                       aria-label={`${project.name} live demo (opens in a new tab)`}
+                      onClick={celebrate}
                     >
                       <FiExternalLink aria-hidden="true" />
                       Live
@@ -181,6 +186,7 @@ function ProjectCard({ project }) {
                       target="_blank"
                       rel="noopener noreferrer"
                       aria-label={`${project.name} source code on GitHub (opens in a new tab)`}
+                      onClick={celebrate}
                     >
                       <FaGithub aria-hidden="true" />
                       Code
@@ -222,7 +228,11 @@ function ProjectCard({ project }) {
 
           <button
             className="project-toggle"
-            onClick={() => setOpen((v) => !v)}
+            onClick={() => {
+              // Opening a project: a quick cut, then the blade goes up.
+              if (!open) celebrate()
+              setOpen(!open)
+            }}
             aria-expanded={open}
           >
             {open ? 'Hide details' : 'What I built'}
@@ -287,7 +297,10 @@ export default function Projects() {
               <button
                 key={cat}
                 className={`filter-btn ${filter === cat ? 'active' : ''}`}
-                onClick={() => setFilter(cat)}
+                onClick={() => {
+                  if (cat !== filter) act('nod')
+                  setFilter(cat)
+                }}
               >
                 {cat}
               </button>

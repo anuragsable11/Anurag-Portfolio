@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { FiX } from 'react-icons/fi'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
@@ -13,6 +14,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { createVisibilityGate, cssColor } from '../lib/three-utils.js'
 import { loadBakedEnvironment, renderStudioPMREM } from '../lib/studio-env.js'
 import envUrl from '../assets/samurai-env.png'
+import { getState, subscribe } from '../lib/companion.js'
 
 /**
  * An original stylised samurai mascot, modelled from primitives.
@@ -23,21 +25,41 @@ import envUrl from '../assets/samurai-env.png'
  *
  *  - Every plate is a solid, bevelled shell with real thickness, so its edges
  *    catch the light instead of reading as paper.
- *  - Sode, kusazuri, the lower dō and the shikoro are lamellar: rows of lames
- *    joined by vertical pairs of silk cord (sugake odoshi).
- *  - Shins and forearms are guarded by separate splints over the fabric.
+ *  - Sode, kusazuri, the lower dō, the shikoro, the haidate and the throat
+ *    guard are lamellar: rows of lames joined by flat silk braid (sugake
+ *    odoshi) that lies against the plates, finished with cross-knots
+ *    (hishinui) along the bottom lame.
+ *  - The menpō is a sculpted iron mask: a curved brow, an eye band with lit
+ *    slits, cheek plates, a tapered mouth guard with breathing slots, a
+ *    horsehair moustache and a laced throat guard beneath.
+ *  - Forearms and shins are chain mail (kusari) with iron splints laced over
+ *    them; the feet are leather boots on straw soles.
+ *  - The dō carries a decorative agemaki bow at the back, two small hanging
+ *    plates at the chest, flank plates and rivets; the kabuto has riveted
+ *    ridges with gold shinodare strips, a tiered tehen and a marked visor.
  *  - Materials are physical: clear-coated urushi lacquer, hammered iron,
- *    polished gold, brushed steel, woven fabric with sheen. Procedural maps
- *    add grain, mottling and fine scratches so nothing looks factory-clean.
- *  - On desktop, ambient occlusion darkens the gaps between plates.
+ *    polished gold, mail, woven fabric with sheen, and a blade with a real
+ *    hamon (temper line) — mirror-polished ji, cloudy matte ha.
+ *  - On desktop, ambient occlusion darkens the gaps between plates, shadows
+ *    are 4k and the frame is resolved with 8× MSAA.
  *
  * He idles standing, then periodically kneels into seiza to meditate — the
  * katana laid across his lap, eyes dimmed to slits that glow with each
  * breath — and later rises again. Click / tap / Enter toggles it at once.
  *
+ * He is also the site's companion (see lib/companion.js). The page reports
+ * which section is in view and what the visitor is doing; he answers with a
+ * mood — calm, thinking, focused, battle, victory — and short one-shot
+ * actions. Moods are whole-body poses (stance, arms via IK, blade, eyes)
+ * that he eases between on springs; actions are keyframes layered on top.
+ * Between them he breathes, blinks, glances about and shifts his weight,
+ * and his head follows a mouse cursor. On wide desktop screens he leaves the
+ * hero once it scrolls away and waits in the corner; reduced motion turns
+ * all of this down to plain pose changes.
+ *
  * Load time is dominated by GPU shader compilation, so the scene is built to
  * keep that small: the reflection map is baked offline (see studio-env.js),
- * every material shares one of three shader programs, repeated pieces are
+ * every material shares one of four shader programs, repeated pieces are
  * merged rather than instanced, shaders compile in parallel off the main
  * thread, and the AO pass is only switched on once the character is already
  * on screen, with its shader variants compiled in the background first.
@@ -83,6 +105,7 @@ const UV_SCALE = 3
 const bakedEnv = loadBakedEnvironment(envUrl).catch(() => null)
 
 const lerp = THREE.MathUtils.lerp
+const clamp = THREE.MathUtils.clamp
 const smootherstep = (k) => k * k * k * (k * (k * 6 - 15) + 10)
 
 /* ================================================================
@@ -129,14 +152,19 @@ function tileNoise(size, rand, octaves) {
   return out
 }
 
-function canvasTexture(size, draw, { srgb = false, repeat = 1 } = {}) {
+function canvasTexture(
+  width,
+  draw,
+  { srgb = false, repeat = 1, height = width, anisotropy = 4, clamp: clampEdges = false } = {}
+) {
   const canvas = document.createElement('canvas')
-  canvas.width = canvas.height = size
-  draw(canvas.getContext('2d'), size)
+  canvas.width = width
+  canvas.height = height
+  draw(canvas.getContext('2d'), width, height)
   const tex = new THREE.CanvasTexture(canvas)
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+  tex.wrapS = tex.wrapT = clampEdges ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping
   tex.repeat.set(repeat, repeat)
-  tex.anisotropy = 4
+  tex.anisotropy = anisotropy
   if (srgb) tex.colorSpace = THREE.SRGBColorSpace
   return tex
 }
@@ -152,97 +180,239 @@ function paintField(ctx, size, field, lo, hi) {
   ctx.putImageData(img, 0, 0)
 }
 
-function makeSurfaceMaps() {
-  // Roughness variation: broad patches plus fine grain.
-  const grain = canvasTexture(256, (ctx, size) => {
-    const field = tileNoise(size, rng(11), [[6, 0.5], [24, 0.3], [128, 0.2]])
-    paintField(ctx, size, field, 0.72, 1)
-  })
+function makeSurfaceMaps(anisotropy) {
+  const opts = (extra = {}) => ({ anisotropy, ...extra })
+
+  // Roughness variation: broad patches, mid-scale mottling and fine grain.
+  const grain = canvasTexture(
+    512,
+    (ctx, size) => {
+      const field = tileNoise(size, rng(11), [[6, 0.45], [24, 0.3], [96, 0.15], [256, 0.1]])
+      paintField(ctx, size, field, 0.74, 1)
+    },
+    opts()
+  )
 
   // Colour mottling and hairline scratches — handled, not factory-new.
   const mottle = canvasTexture(
-    256,
+    512,
     (ctx, size) => {
       const rand = rng(23)
-      const field = tileNoise(size, rand, [[4, 0.6], [16, 0.4]])
-      paintField(ctx, size, field, 0.86, 1)
+      const field = tileNoise(size, rand, [[4, 0.55], [16, 0.3], [64, 0.15]])
+      paintField(ctx, size, field, 0.88, 1)
       ctx.lineCap = 'round'
-      for (let i = 0; i < 70; i++) {
+      for (let i = 0; i < 110; i++) {
         const x = rand() * size
         const y = rand() * size
-        const len = 6 + rand() * 30
+        const len = 8 + rand() * 46
         const a = rand() * Math.PI
-        ctx.strokeStyle = `rgba(0,0,0,${0.08 + rand() * 0.14})`
-        ctx.lineWidth = 0.5 + rand() * 0.7
+        ctx.strokeStyle = `rgba(0,0,0,${0.04 + rand() * 0.09})`
+        ctx.lineWidth = 0.4 + rand() * 0.8
         ctx.beginPath()
         ctx.moveTo(x, y)
         ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len)
         ctx.stroke()
       }
     },
-    { srgb: true }
+    opts({ srgb: true })
   )
 
-  // Hammer marks for the iron: shallow dimples, wrapped so they tile.
-  const hammer = canvasTexture(256, (ctx, size) => {
-    const rand = rng(37)
-    ctx.fillStyle = '#808080'
-    ctx.fillRect(0, 0, size, size)
-    for (let i = 0; i < 160; i++) {
-      const x = rand() * size
-      const y = rand() * size
-      const r = 5 + rand() * 11
-      for (const ox of [-size, 0, size]) {
-        for (const oy of [-size, 0, size]) {
-          const g = ctx.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r)
-          g.addColorStop(0, 'rgba(0,0,0,0.22)')
-          g.addColorStop(1, 'rgba(0,0,0,0)')
-          ctx.fillStyle = g
-          ctx.fillRect(x + ox - r, y + oy - r, r * 2, r * 2)
+  // Hammer marks for the iron: a fine grain, then shallow overlapping dimples,
+  // wrapped so they tile.
+  const hammer = canvasTexture(
+    512,
+    (ctx, size) => {
+      const rand = rng(37)
+      paintField(ctx, size, tileNoise(size, rand, [[64, 0.5], [256, 0.5]]), 0.44, 0.56)
+      for (let i = 0; i < 620; i++) {
+        const x = rand() * size
+        const y = rand() * size
+        const r = 7 + rand() * 16
+        const depth = 0.12 + rand() * 0.16
+        for (const ox of [-size, 0, size]) {
+          for (const oy of [-size, 0, size]) {
+            const g = ctx.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r)
+            g.addColorStop(0, `rgba(0,0,0,${depth})`)
+            g.addColorStop(0.7, `rgba(0,0,0,${depth * 0.35})`)
+            g.addColorStop(1, 'rgba(0,0,0,0)')
+            ctx.fillStyle = g
+            ctx.fillRect(x + ox - r, y + oy - r, r * 2, r * 2)
+          }
         }
       }
-    }
-  })
+    },
+    opts()
+  )
 
-  // Plain weave for the fabric and silk cord.
+  // Plain weave for the fabric: each thread shaded across its width.
   const weave = canvasTexture(
-    64,
+    128,
     (ctx, size) => {
-      const cell = size / 8
-      for (let y = 0; y < 8; y++) {
-        for (let x = 0; x < 8; x++) {
+      const n = 8
+      const cell = size / n
+      for (let y = 0; y < n; y++) {
+        for (let x = 0; x < n; x++) {
           const across = (x + y) % 2 === 0
           const g = across
             ? ctx.createLinearGradient(0, y * cell, 0, (y + 1) * cell)
             : ctx.createLinearGradient(x * cell, 0, (x + 1) * cell, 0)
-          g.addColorStop(0, '#3a3a3a')
-          g.addColorStop(0.5, '#e0e0e0')
-          g.addColorStop(1, '#3a3a3a')
+          g.addColorStop(0, '#404040')
+          g.addColorStop(0.5, '#d8d8d8')
+          g.addColorStop(1, '#404040')
           ctx.fillStyle = g
           ctx.fillRect(x * cell, y * cell, cell, cell)
         }
       }
     },
-    { repeat: 14 }
+    opts({ repeat: 18 })
   )
 
-  // Polishing streaks running along the blade's length.
-  const brushed = canvasTexture(256, (ctx, size) => {
-    const rand = rng(53)
-    const img = ctx.createImageData(size, size)
-    const columns = Array.from({ length: size }, rand)
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const v = Math.round((0.55 + columns[x] * 0.3 + rand() * 0.15) * 255)
-        const i = (y * size + x) * 4
-        img.data[i] = img.data[i + 1] = img.data[i + 2] = v
+  // Flat silk braid for the lacing: a chevron of diagonal strands.
+  const braid = canvasTexture(
+    64,
+    (ctx, size) => {
+      ctx.fillStyle = '#707070'
+      ctx.fillRect(0, 0, size, size)
+      ctx.lineWidth = 3
+      for (let i = -size; i < size * 2; i += 8) {
+        ctx.strokeStyle = '#d0d0d0'
+        ctx.beginPath()
+        ctx.moveTo(i, 0)
+        ctx.lineTo(i + size / 2, size / 2)
+        ctx.lineTo(i, size)
+        ctx.stroke()
+        ctx.strokeStyle = '#303030'
+        ctx.beginPath()
+        ctx.moveTo(i + 3, 0)
+        ctx.lineTo(i + 3 + size / 2, size / 2)
+        ctx.lineTo(i + 3, size)
+        ctx.stroke()
+      }
+    },
+    opts({ repeat: 6 })
+  )
+
+  // Woven straw for the sandal soles: coarse diagonal plaits.
+  const straw = canvasTexture(
+    64,
+    (ctx, size) => {
+      ctx.fillStyle = '#6a6a6a'
+      ctx.fillRect(0, 0, size, size)
+      for (let i = -size; i < size * 2; i += 10) {
+        for (const [c, o] of [
+          ['#c8c8c8', 0],
+          ['#2e2e2e', 4],
+        ]) {
+          ctx.strokeStyle = c
+          ctx.lineWidth = 3
+          ctx.beginPath()
+          ctx.moveTo(i + o, 0)
+          ctx.lineTo(i + o + size, size)
+          ctx.stroke()
+        }
+      }
+    },
+    opts({ repeat: 26 })
+  )
+
+  // Kusari: butted rings in a 4-in-1 stagger, lit from the top-left.
+  const chain = canvasTexture(
+    128,
+    (ctx, size) => {
+      ctx.fillStyle = '#5c5c5c'
+      ctx.fillRect(0, 0, size, size)
+      const n = 6
+      const cw = size / n
+      const rh = size / n
+      ctx.lineWidth = 2.8
+      for (let y = -1; y <= n; y++) {
+        for (let x = -1; x <= n; x++) {
+          const cx = (x + (y % 2 ? 0.5 : 0)) * cw + cw / 2
+          const cy = y * rh + rh / 2
+          ctx.strokeStyle = '#2a2a2a'
+          ctx.beginPath()
+          ctx.ellipse(cx + 1.3, cy + 1.3, cw * 0.43, rh * 0.37, 0.55, 0, Math.PI * 2)
+          ctx.stroke()
+          ctx.strokeStyle = '#e0e0e0'
+          ctx.beginPath()
+          ctx.ellipse(cx, cy, cw * 0.43, rh * 0.37, 0.55, 0, Math.PI * 2)
+          ctx.stroke()
+        }
+      }
+    },
+    opts({ repeat: 9 })
+  )
+
+  // The blade, in blade space: u runs from the spine (0) to the edge (1),
+  // v along the length. The ji is mirror-polished steel with faint
+  // polishing streaks; the hamon is a wavy gunome line, beyond which the ha
+  // is cloudy, brighter and matte; a misty nioi line marks the boundary and
+  // the shinogi ridge shows as a crisp step.
+  const BLADE_W = 256
+  const BLADE_H = 1024
+  const bladeRand = rng(71)
+  const cloud = tileNoise(256, bladeRand, [[4, 0.45], [16, 0.3], [64, 0.25]])
+  const streak = Float32Array.from({ length: BLADE_W }, bladeRand)
+  const wobble = tileNoise(256, bladeRand, [[3, 0.6], [12, 0.4]])
+  const hamonAt = (v) =>
+    0.6 +
+    0.075 * Math.sin(v * Math.PI * 2 * 9.5) +
+    0.03 * Math.sin(v * Math.PI * 2 * 26 + 1.3) +
+    (wobble[Math.floor(v * 255) * 256] - 0.5) * 0.12
+  const bladeField = (fn) => (ctx, w, h) => {
+    const img = ctx.createImageData(w, h)
+    for (let y = 0; y < h; y++) {
+      const v = y / h
+      const hm = hamonAt(v)
+      for (let x = 0; x < w; x++) {
+        const u = x / w
+        const d = u - hm
+        const c = cloud[(y % 256) * 256 + (x % 256)]
+        const s = streak[x]
+        const val = fn(u, d, c, s)
+        const i = (y * w + x) * 4
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = Math.round(clamp(val, 0, 1) * 255)
         img.data[i + 3] = 255
       }
     }
     ctx.putImageData(img, 0, 0)
-  })
+  }
+  const nioi = (d) => Math.exp(-(d * d) / (2 * 0.011 * 0.011))
+  const ridge = (u) => Math.exp(-((u - 0.3) * (u - 0.3)) / (2 * 0.005 * 0.005))
+  const blade = canvasTexture(
+    BLADE_W,
+    bladeField((u, d, c, s) => {
+      let col = d < 0 ? 0.8 + s * 0.05 + (u < 0.3 ? 0.035 : 0) : 0.9 + c * 0.09
+      col = lerp(col, 1, nioi(d) * 0.9)
+      return lerp(col, 0.66, ridge(u) * 0.55)
+    }),
+    opts({ srgb: true, height: BLADE_H, clamp: true })
+  )
+  const bladeRough = canvasTexture(
+    BLADE_W,
+    bladeField((u, d, c, s) => {
+      const r = d < 0 ? 0.12 + s * 0.06 : 0.4 + c * 0.14
+      return lerp(r, 0.5, nioi(d))
+    }),
+    opts({ height: BLADE_H, clamp: true })
+  )
 
-  return { grain, mottle, hammer, weave, brushed }
+  // A soft halo for the eye slits.
+  const glow = canvasTexture(
+    64,
+    (ctx, size) => {
+      const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
+      g.addColorStop(0, 'rgba(255,255,255,1)')
+      g.addColorStop(0.3, 'rgba(255,255,255,0.4)')
+      g.addColorStop(0.7, 'rgba(255,255,255,0.08)')
+      g.addColorStop(1, 'rgba(255,255,255,0)')
+      ctx.fillStyle = g
+      ctx.fillRect(0, 0, size, size)
+    },
+    opts({ srgb: true, clamp: true })
+  )
+
+  return { grain, mottle, hammer, weave, braid, straw, chain, blade, bladeRough, glow }
 }
 
 /* ================================================================
@@ -288,7 +458,7 @@ function shellGeometry(rTop, rBottom, height, [start, sweep], thickness, segs) {
 
   const pos = geo.attributes.position
   for (let i = 0; i < pos.count; i++) {
-    const t = THREE.MathUtils.clamp(pos.getY(i) / height + 0.5, 0, 1)
+    const t = clamp(pos.getY(i) / height + 0.5, 0, 1)
     const k = (rBottom + (rTop - rBottom) * t) / r
     pos.setX(i, pos.getX(i) * k)
     pos.setZ(i, pos.getZ(i) * k)
@@ -318,6 +488,7 @@ function taperTube(geo, curve, tubular, radial, taper) {
       pos.setXYZ(idx, v.x, v.y, v.z)
     }
   }
+  geo.computeVertexNormals()
   return geo
 }
 
@@ -329,7 +500,11 @@ function mergeCopies(base, matrices) {
   return merged
 }
 
-/** A katana blade with sori (curvature) and a swept kissaki point. */
+/**
+ * A katana blade with sori (curvature) and a swept kissaki point. UVs are
+ * remapped into blade space (spine → edge, tang → tip) so the hamon texture
+ * lands where a real temper line would.
+ */
 function bladeGeometry(length) {
   const w0 = 0.078
   const w1 = 0.062
@@ -341,15 +516,15 @@ function bladeGeometry(length) {
 
   const shape = new THREE.Shape()
   shape.moveTo(spine(0), 0)
-  for (let i = 1; i <= 16; i++) {
-    const y = (length * i) / 16
+  for (let i = 1; i <= 24; i++) {
+    const y = (length * i) / 24
     shape.lineTo(spine(y), y)
   }
   shape.lineTo(spine(length) + 0.006, length + 0.035)
   const yp = length - point
   shape.quadraticCurveTo(edge(length) + 0.004, length, edge(yp), yp)
-  for (let i = 15; i >= 0; i--) {
-    const y = (yp * i) / 15
+  for (let i = 23; i >= 0; i--) {
+    const y = (yp * i) / 23
     shape.lineTo(edge(y), y)
   }
   shape.closePath()
@@ -359,21 +534,457 @@ function bladeGeometry(length) {
     bevelEnabled: true,
     bevelThickness: 0.008,
     bevelSize: 0.0065,
-    bevelSegments: 2,
-    curveSegments: 12,
+    bevelSegments: 3,
+    curveSegments: 16,
   })
   geo.translate(0, 0, -0.005)
+  const pos = geo.attributes.position
   const uv = geo.attributes.uv
-  for (let i = 0; i < uv.count; i++) {
-    uv.setXY(i, uv.getX(i) * UV_SCALE, uv.getY(i) * UV_SCALE * 0.5)
+  for (let i = 0; i < pos.count; i++) {
+    const y = clamp(pos.getY(i), 0, length)
+    const s = spine(y)
+    const e = edge(y)
+    uv.setXY(i, clamp((pos.getX(i) - s) / (e - s), 0, 1), pos.getY(i) / (length + 0.035))
   }
   const creased = toCreasedNormals(geo, 0.7)
   if (creased !== geo) geo.dispose()
   return creased
 }
 
+/** A round tsuba pierced with four sukashi openings. */
+function tsubaGeometry(radius, depth) {
+  const shape = new THREE.Shape()
+  shape.absarc(0, 0, radius, 0, Math.PI * 2, false)
+  for (let i = 0; i < 4; i++) {
+    const a = Math.PI / 4 + (i * Math.PI) / 2
+    const hole = new THREE.Path()
+    hole.absarc(Math.cos(a) * radius * 0.62, Math.sin(a) * radius * 0.62, radius * 0.15, 0, Math.PI * 2, true)
+    shape.holes.push(hole)
+  }
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth,
+    bevelEnabled: true,
+    bevelThickness: 0.005,
+    bevelSize: 0.005,
+    bevelSegments: 2,
+    curveSegments: 36,
+  })
+  geo.translate(0, 0, -depth / 2)
+  geo.rotateX(Math.PI / 2)
+  const uv = geo.attributes.uv
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * UV_SCALE, uv.getY(i) * UV_SCALE)
+  const creased = toCreasedNormals(geo, 0.8)
+  if (creased !== geo) geo.dispose()
+  return creased
+}
+
+/* ================================================================
+   Moods, actions and the arm rig
+   ================================================================ */
+
+// Poses are authored in body space: origin at the hips, +Y up, +Z forward,
+// +X toward the katana hand. Hands are IK targets for the centre of the fist;
+// the blade is a direction plus the way its edge faces.
+const SHOULDER_X = 0.46
+const SHOULDER_Y = 0.72
+const UPPER_ARM = 0.56
+const FOREARM = 0.4
+// From the katana hand down the grip to where the other hand closes.
+const GRIP_SPAN = 0.26
+
+/** Every scalar a pose can set. */
+const SCALARS = [
+  'lean', // forward bend at the hips
+  'twist', // body turn
+  'tilt', // body roll
+  'crouch', // knee bend
+  'splay', // stance width
+  'lift', // hop height
+  'headPitch',
+  'headYaw',
+  'headTilt',
+  'wander', // slow, absent-minded gaze drift
+  'eyeOpen',
+  'eyeGlow',
+  'eyeTilt', // + inner corners down (intent), − outer corners down (warmth)
+  'heat', // + eye colour toward red, − toward warm white
+  'glint', // extra reflection on the blade
+  'sway', // idle motion amount
+  'breathRate',
+  'breathDepth',
+  'lookGain', // how much he follows the cursor
+  'twoHand', // 1 = the free hand joins the grip
+]
+
+/** Blade orientation from where it points and which way its edge faces. */
+function bladeQuat(dir, edge = [0, 0, 1]) {
+  const y = new THREE.Vector3(...dir).normalize()
+  const x = new THREE.Vector3(...edge)
+  for (const fallback of [null, [0, -1, 0], [1, 0, 0]]) {
+    if (fallback) x.set(...fallback)
+    x.addScaledVector(y, -x.dot(y))
+    if (x.lengthSq() > 1e-4) break
+  }
+  x.normalize()
+  const z = new THREE.Vector3().crossVectors(x, y)
+  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z))
+}
+
+// The original relaxed pose, measured off the rig: arm hanging with a slight
+// outward splay, katana held low and out to the side.
+const REST = (() => {
+  const qS = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, 0.16))
+  const qE = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.1, 0, 0))
+  const qK = new THREE.Quaternion().setFromEuler(new THREE.Euler(KATANA_TILT, 0, Math.PI + 0.58))
+  const hand = new THREE.Vector3(0, -FOREARM, 0)
+    .applyQuaternion(qE)
+    .add(new THREE.Vector3(0, -UPPER_ARM, 0))
+    .applyQuaternion(qS)
+    .add(new THREE.Vector3(SHOULDER_X, SHOULDER_Y, 0))
+  return { hand, blade: qS.clone().multiply(qE).multiply(qK) }
+})()
+
+/** Where a hanging hand ends up, in body space, when the body leans forward. */
+const hangingHand = (side, lean) => {
+  const rel = new THREE.Vector3(REST.hand.x - SHOULDER_X, REST.hand.y - SHOULDER_Y, REST.hand.z)
+  rel.applyAxisAngle(new THREE.Vector3(1, 0, 0), -lean)
+  return [side * (SHOULDER_X + rel.x), SHOULDER_Y + rel.y, rel.z]
+}
+
+const CALM = {
+  lean: 0,
+  twist: 0,
+  tilt: 0,
+  crouch: 0,
+  splay: 0.05,
+  lift: 0,
+  headPitch: 0,
+  headYaw: 0,
+  headTilt: 0,
+  wander: 0,
+  eyeOpen: 1,
+  eyeGlow: 0.8,
+  eyeTilt: 0.06,
+  heat: 0,
+  glint: 0,
+  sway: 1,
+  breathRate: 1.45,
+  breathDepth: 0.012,
+  lookGain: 1,
+  twoHand: 0,
+}
+
+const MOOD_POSES = {
+  // The relaxed idle he has always had.
+  calm: {},
+  // Free hand to the chin, head cocked, gaze drifting.
+  thinking: {
+    L: [-0.12, 0.6, 0.5],
+    blade: [[0.32, -0.92, 0.22]],
+    headTilt: 0.1,
+    headPitch: -0.05,
+    headYaw: 0.1,
+    wander: 1,
+    eyeOpen: 0.78,
+    eyeGlow: 0.66,
+    eyeTilt: -0.03,
+    sway: 0.7,
+    breathRate: 1.2,
+    lookGain: 0.45,
+  },
+  // Chudan: both hands on the grip, the point level with his chin and
+  // aimed ahead, so the blade never covers his eyes.
+  focused: {
+    R: [0.04, 0.2, 0.62],
+    blade: [
+      [0.2, 0.42, 0.88],
+      [0, -0.9, 0.42],
+    ],
+    twoHand: 1,
+    lean: 0.06,
+    crouch: 0.14,
+    splay: 0.1,
+    eyeOpen: 0.62,
+    eyeGlow: 1,
+    eyeTilt: 0.13,
+    heat: 0.12,
+    sway: 0.35,
+    breathRate: 1.1,
+    breathDepth: 0.01,
+    lookGain: 1.15,
+  },
+  // A rising diagonal guard out past his katana side, low stance, eyes running hot.
+  battle: {
+    R: [-0.08, 0.28, 0.62],
+    blade: [[0.72, 0.56, 0.42]],
+    twoHand: 1,
+    lean: 0.1,
+    crouch: 0.24,
+    splay: 0.16,
+    eyeOpen: 0.55,
+    eyeGlow: 1.35,
+    eyeTilt: 0.2,
+    heat: 0.45,
+    sway: 0.5,
+    breathRate: 1.9,
+    breathDepth: 0.018,
+    lookGain: 0.85,
+  },
+  // Blade raised high, free fist on the hip, chin up.
+  victory: {
+    R: [0.9, 1.2, 0.14],
+    blade: [[0.2, 0.97, 0.1]],
+    L: [-0.5, 0.06, 0.16],
+    lean: -0.06,
+    headPitch: -0.14,
+    eyeOpen: 0.7,
+    eyeGlow: 1.3,
+    eyeTilt: -0.08,
+    heat: -0.5,
+    glint: 0.6,
+    sway: 0.8,
+    breathRate: 1.6,
+    lookGain: 0.6,
+  },
+}
+
+// One-shot performances: keyframes between the pose he was in and the pose
+// his mood calls for. A key sets only what it names; the rest follows the mood.
+const ACTION_DEFS = {
+  // A single diagonal cut: wind up over the shoulder, cut through, hold.
+  slash: {
+    duration: 0.95,
+    keys: [
+      {
+        t: 0.26,
+        R: [0.66, 0.85, 0.02],
+        blade: [[0.45, 0.6, -0.66]],
+        L: [-0.3, 0.3, 0.5],
+        twoHand: 0,
+        twist: 0.25,
+        lean: -0.04,
+        crouch: 0.12,
+        eyeGlow: 1.25,
+      },
+      {
+        t: 0.46,
+        R: [-0.1, 0.12, 0.62],
+        blade: [[-0.55, -0.45, 0.7]],
+        L: [-0.45, -0.1, 0.35],
+        twoHand: 0,
+        twist: -0.28,
+        lean: 0.16,
+        crouch: 0.22,
+        glint: 1,
+        eyeGlow: 1.6,
+        eyeOpen: 0.5,
+        eyeTilt: 0.2,
+      },
+      {
+        t: 0.7,
+        R: [-0.1, 0.12, 0.62],
+        blade: [[-0.55, -0.45, 0.7]],
+        L: [-0.45, -0.1, 0.35],
+        twoHand: 0,
+        twist: -0.24,
+        lean: 0.14,
+        crouch: 0.2,
+        glint: 0.3,
+        eyeGlow: 1.3,
+      },
+    ],
+  },
+  // The hidden one: a draw-cut from a low guard, then the flick to clear the blade.
+  draw: {
+    duration: 1.6,
+    keys: [
+      {
+        t: 0.14,
+        R: [0.52, 0.1, 0.32],
+        blade: [[0.3, -0.35, -0.89]],
+        L: [-0.35, 0.25, 0.48],
+        twoHand: 0,
+        crouch: 0.26,
+        twist: 0.2,
+        lean: 0.1,
+        eyeOpen: 0.5,
+        eyeGlow: 1.1,
+      },
+      {
+        t: 0.34,
+        R: [0.1, 0.4, 0.72],
+        blade: [[-0.75, 0.05, 0.66]],
+        L: [-0.55, 0.15, 0.2],
+        twoHand: 0,
+        twist: -0.3,
+        lean: 0.12,
+        crouch: 0.2,
+        glint: 1,
+        eyeGlow: 1.7,
+        eyeOpen: 0.45,
+        eyeTilt: 0.22,
+        heat: 0.5,
+      },
+      {
+        t: 0.5,
+        R: [0.1, 0.4, 0.72],
+        blade: [[-0.75, 0.05, 0.66]],
+        L: [-0.55, 0.15, 0.2],
+        twoHand: 0,
+        twist: -0.28,
+        lean: 0.1,
+        crouch: 0.18,
+        glint: 0.6,
+        eyeGlow: 1.5,
+        eyeOpen: 0.5,
+        heat: 0.4,
+      },
+      {
+        t: 0.72,
+        R: [0.62, 0.05, 0.38],
+        blade: [[0.45, -0.55, 0.7]],
+        twoHand: 0,
+        twist: 0.05,
+        crouch: 0.14,
+        glint: 0.2,
+        eyeGlow: 1.2,
+      },
+    ],
+  },
+  // A respectful bow: arms hang, blade low, eyes lowered.
+  bow: {
+    duration: 1.9,
+    keys: [0.32, 0.66].map((t) => ({
+      t,
+      lean: 0.4,
+      headPitch: 0.12,
+      R: hangingHand(1, 0.4),
+      L: hangingHand(-1, 0.4),
+      bladeLean: 0.4,
+      twoHand: 0,
+      crouch: 0,
+      eyeOpen: 0.55,
+      eyeGlow: 0.6,
+      sway: 0.3,
+      lookGain: 0,
+    })),
+  },
+  // A small acknowledgement.
+  nod: {
+    duration: 0.7,
+    keys: [{ t: 0.4, headPitch: 0.17, lookGain: 0.3 }],
+  },
+  // A small spring off the heels.
+  hop: {
+    duration: 0.6,
+    keys: [
+      { t: 0.28, crouch: 0.2, lift: 0 },
+      { t: 0.58, crouch: 0, lift: 0.08 },
+    ],
+  },
+}
+
+function makePose() {
+  return {
+    s: { ...CALM },
+    R: REST.hand.clone(),
+    L: REST.hand.clone().setX(-REST.hand.x),
+    q: REST.blade.clone(),
+  }
+}
+
+function copyPose(dst, src) {
+  for (const k of SCALARS) dst.s[k] = src.s[k]
+  dst.R.copy(src.R)
+  dst.L.copy(src.L)
+  dst.q.copy(src.q)
+  return dst
+}
+
+const MOOD_TARGETS = Object.fromEntries(
+  Object.entries(MOOD_POSES).map(([mood, def]) => {
+    const p = makePose()
+    for (const k of SCALARS) if (k in def) p.s[k] = def[k]
+    if (def.R) p.R.set(...def.R)
+    if (def.L) p.L.set(...def.L)
+    if (def.blade) p.q.copy(bladeQuat(...def.blade))
+    return [mood, p]
+  })
+)
+
+const ACTIONS = Object.fromEntries(
+  Object.entries(ACTION_DEFS).map(([name, def]) => [
+    name,
+    {
+      duration: def.duration,
+      keys: def.keys.map((k) => {
+        const s = {}
+        for (const ch of SCALARS) if (ch in k) s[ch] = k[ch]
+        let q = null
+        if (k.blade) q = bladeQuat(...k.blade)
+        else if (k.bladeLean) {
+          // The resting blade, carried forward with the bow.
+          q = new THREE.Quaternion()
+            .setFromAxisAngle(new THREE.Vector3(1, 0, 0), -k.bladeLean)
+            .multiply(REST.blade)
+        }
+        return {
+          t: k.t,
+          partial: true,
+          s,
+          R: k.R ? new THREE.Vector3(...k.R) : null,
+          L: k.L ? new THREE.Vector3(...k.L) : null,
+          q,
+        }
+      }),
+    },
+  ])
+)
+
+/**
+ * Two-bone IK for the arm rig: shoulder rotates about X then Z (Euler XYZ,
+ * so Z applies first), elbow bends about X. Writes the three angles to `out`.
+ * Out-of-reach targets are pulled in to the arm's length.
+ */
+function solveArm(target, side, out) {
+  const tx = target.x - side * SHOULDER_X
+  const ty = target.y - SHOULDER_Y
+  const tz = target.z
+  const len = Math.hypot(tx, ty, tz) || 1e-6
+  const d = clamp(len, UPPER_ARM - FOREARM + 0.02, (UPPER_ARM + FOREARM) * 0.999)
+  const s = d / len
+  const cosInner = (UPPER_ARM ** 2 + FOREARM ** 2 - d * d) / (2 * UPPER_ARM * FOREARM)
+  const bend = Math.PI - Math.acos(clamp(cosInner, -1, 1))
+  const hy = -UPPER_ARM - FOREARM * Math.cos(bend)
+  const hz = FOREARM * Math.sin(bend)
+  const c = Math.asin(clamp((-tx * s) / hy, -1, 1))
+  let a = Math.atan2(tz * s, ty * s) - Math.atan2(hz, hy * Math.cos(c))
+  if (a > Math.PI) a -= Math.PI * 2
+  if (a < -Math.PI) a += Math.PI * 2
+  out.shX = a
+  out.shZ = c
+  out.elX = -bend
+  return out
+}
+
+/** Critically damped spring, solved exactly, so it is stable at any frame rate. */
+const springOut = { x: 0, v: 0 }
+function spring(x, v, target, omega, dt) {
+  const y = x - target
+  const e = Math.exp(-omega * dt)
+  const k = (v + omega * y) * dt
+  springOut.x = target + (y + k) * e
+  springOut.v = (v - omega * k) * e
+  return springOut
+}
+
 export default function Samurai3D() {
+  const slotRef = useRef(null)
+  const frameRef = useRef(null)
   const mountRef = useRef(null)
+  const hitRef = useRef(null)
+  const dismissRef = useRef(null)
+  const [tip, setTip] = useState(false)
 
   useEffect(() => {
     const mount = mountRef.current
@@ -391,6 +1002,7 @@ export default function Samurai3D() {
     }
 
     let disposed = false
+    const finePointer = window.matchMedia('(pointer: fine)').matches
     const dpr = Math.min(window.devicePixelRatio, 2)
     renderer.setPixelRatio(dpr)
     renderer.setSize(mount.clientWidth, mount.clientHeight)
@@ -405,6 +1017,7 @@ export default function Samurai3D() {
     // programs compiled ahead of time. `key.shadow.radius` still softens PCF.
     renderer.shadowMap.type = THREE.PCFShadowMap
     mount.appendChild(renderer.domElement)
+    const maxAnisotropy = renderer.capabilities.getMaxAnisotropy()
 
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(
@@ -421,23 +1034,23 @@ export default function Samurai3D() {
     // The reflection map arrives asynchronously (see start() below). Metals
     // are lit mostly by what they reflect, so it carries more weight than it
     // would in a matte scene.
-    scene.environmentIntensity = 0.6
+    scene.environmentIntensity = 0.62
     let envTexture = null
     let envFallback = null
 
     const key = new THREE.DirectionalLight(0xfff3e6, 2.5)
     key.position.set(3.6, 6.5, 5.2)
     key.castShadow = true
-    key.shadow.mapSize.set(2048, 2048)
+    key.shadow.mapSize.setScalar(finePointer ? 4096 : 2048)
     key.shadow.camera.near = 1
     key.shadow.camera.far = 30
     key.shadow.camera.left = -4
     key.shadow.camera.right = 4
     key.shadow.camera.top = 6
     key.shadow.camera.bottom = -1.5
-    key.shadow.bias = -0.0008
-    key.shadow.normalBias = 0.02
-    key.shadow.radius = 4
+    key.shadow.bias = -0.0006
+    key.shadow.normalBias = 0.018
+    key.shadow.radius = finePointer ? 7 : 4
 
     const rimL = new THREE.DirectionalLight(0xa8c8ff, 2.3)
     rimL.position.set(-4.5, 3.5, -5)
@@ -470,23 +1083,24 @@ export default function Samurai3D() {
     renderer.domElement.style.touchAction = 'pan-y'
 
     let interacting = false
+    let autoSpin = true
     let resumeTimer
     controls.addEventListener('start', () => {
       interacting = true
-      controls.autoRotate = false
+      autoSpin = false
       clearTimeout(resumeTimer)
     })
     controls.addEventListener('end', () => {
       interacting = false
       resumeTimer = setTimeout(() => {
-        controls.autoRotate = true
+        autoSpin = true
       }, 2500)
     })
 
     /* ================================================================
-       Materials — three shader programs between them
+       Materials — four shader programs between them
        ================================================================ */
-    const maps = makeSurfaceMaps()
+    const maps = makeSurfaceMaps(maxAnisotropy)
     const geos = new Set()
     const track = (g) => {
       geos.add(g)
@@ -496,7 +1110,8 @@ export default function Samurai3D() {
     // three.js compiles one program per distinct feature set, and on many
     // GPUs each compile costs hundreds of milliseconds. Every material below
     // is one of three families with identical map slots, so they share
-    // programs: vary colours and scalars freely, but keep the slots the same.
+    // programs: vary colours and scalars freely, but keep the slots the same
+    // (and keep clearcoat / sheen above zero, since zero drops the feature).
     const surface = { map: maps.mottle, roughnessMap: maps.grain }
 
     // Urushi lacquer (and waxed leather): pigment under a hard clear coat.
@@ -504,10 +1119,11 @@ export default function Samurai3D() {
       new THREE.MeshPhysicalMaterial({
         color: cssColor(token, fallback),
         metalness: 0,
-        roughness: 0.4,
+        roughness: 0.36,
         clearcoat: 1,
-        clearcoatRoughness: 0.07,
-        envMapIntensity: 0.55,
+        clearcoatRoughness: 0.09,
+        ior: 1.55,
+        envMapIntensity: 0.6,
         ...surface,
         ...extra,
       })
@@ -519,11 +1135,11 @@ export default function Samurai3D() {
         metalness: 0.88,
         ...surface,
         bumpMap: maps.hammer,
-        bumpScale: 1.2,
+        bumpScale: 0.9,
         ...extra,
       })
 
-    // Fabric and silk cord: a plain weave with a soft sheen.
+    // Fabric, silk braid, straw and mail: a relief map with a soft sheen.
     const woven = (token, fallback, extra = {}) =>
       new THREE.MeshPhysicalMaterial({
         color: cssColor(token, fallback),
@@ -532,7 +1148,7 @@ export default function Samurai3D() {
         sheen: 1,
         sheenRoughness: 0.6,
         bumpMap: maps.weave,
-        bumpScale: 0.7,
+        bumpScale: 0.6,
         ...extra,
       })
 
@@ -541,38 +1157,66 @@ export default function Samurai3D() {
         roughness: 0.95,
         sheenColor: new THREE.Color(0x4a5566),
       }),
-      cloth: woven('--samurai-cloth', '#a8322a', { sheenColor: new THREE.Color(0xff9d8a) }),
+      cloth: woven('--samurai-cloth', '#a8322a', {
+        sheenColor: new THREE.Color(0xff9d8a),
+        bumpScale: 0.35,
+      }),
       rope: woven('--samurai-rope', '#b8935a', {
-        roughness: 0.62,
+        roughness: 0.58,
         sheenRoughness: 0.35,
         sheenColor: new THREE.Color(0xfff0d8),
-        bumpScale: 0.8,
+        bumpMap: maps.braid,
+        bumpScale: 0.5,
+      }),
+      straw: woven('--samurai-rope', '#b8935a', {
+        roughness: 0.92,
+        sheen: 0.3,
+        bumpMap: maps.straw,
+        bumpScale: 1.1,
+      }),
+      // Horsehair for the moustache: pale, soft and slightly glossy.
+      hair: woven('--samurai-bowl', '#e8e1d4', {
+        roughness: 0.72,
+        sheen: 0.8,
+        sheenRoughness: 0.4,
+        bumpScale: 0.2,
+      }),
+      kusari: woven('--samurai-armor', '#39414f', {
+        metalness: 0.8,
+        roughness: 0.5,
+        sheen: 0.05,
+        bumpMap: maps.chain,
+        bumpScale: 2.4,
+        envMapIntensity: 1.2,
       }),
       red: lacquered('--samurai-accent', '#c0392b'),
       redDark: lacquered('--samurai-accent-dark', '#8e2a1e'),
-      bowl: lacquered('--samurai-bowl', '#e8e1d4', { roughness: 0.42 }),
+      bowl: lacquered('--samurai-bowl', '#e8e1d4', { roughness: 0.4 }),
       leather: lacquered('--samurai-leather', '#4a3b33', {
-        roughness: 0.62,
+        roughness: 0.64,
         clearcoat: 0.25,
         clearcoatRoughness: 0.5,
         envMapIntensity: 1,
       }),
-      metal: metallic('--samurai-armor', '#39414f', { roughness: 0.46 }),
+      metal: metallic('--samurai-armor', '#39414f', { roughness: 0.44 }),
       metalDark: metallic('--samurai-armor-dark', '#22272f', { roughness: 0.4 }),
-      face: metallic('--samurai-face', '#2f3642', { roughness: 0.5 }),
+      // The cranium is matte iron; the glossier mask plates stand out on it.
+      face: metallic('--samurai-face', '#2f3642', { roughness: 0.58, bumpScale: 0.4 }),
       // Polished metals get a stronger reflection than the forged iron.
       gold: metallic('--samurai-gold', '#e0a63a', {
         metalness: 1,
-        roughness: 0.24,
-        bumpScale: 0.3,
+        roughness: 0.26,
+        bumpScale: 0.25,
         envMapIntensity: 1.8,
       }),
+      // The blade's colour and roughness both come from the hamon maps.
       steel: metallic('--samurai-steel', '#e9edf4', {
         metalness: 1,
-        roughness: 0.16,
-        roughnessMap: maps.brushed,
+        roughness: 1,
+        map: maps.blade,
+        roughnessMap: maps.bladeRough,
         bumpScale: 0,
-        envMapIntensity: 1.5,
+        envMapIntensity: 2.4,
       }),
       // Rides on the metal program: the emissive term is always compiled in.
       eye: metallic('--samurai-eye', '#ffb347', {
@@ -583,7 +1227,15 @@ export default function Samurai3D() {
         emissiveIntensity: 0.8,
       }),
     }
-    const allMats = Object.values(mats)
+    const glowMat = new THREE.MeshBasicMaterial({
+      map: maps.glow,
+      color: cssColor('--samurai-eye', '#ffb347'),
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      opacity: 0.5,
+    })
+    const allMats = [...Object.values(mats), glowMat]
 
     const samurai = new THREE.Group()
     scene.add(samurai)
@@ -601,7 +1253,7 @@ export default function Samurai3D() {
      * sode and both legs all reuse the same few shells.
      */
     const shellCache = new Map()
-    const plate = (rTop, rBottom, height, [start, sweep], material, thickness = 0.026, segs = 14) => {
+    const plate = (rTop, rBottom, height, [start, sweep], material, thickness = 0.026, segs = 18) => {
       const key = [rTop, rBottom, height, sweep, thickness, segs].map((v) => v.toFixed(4)).join()
       let geo = shellCache.get(key)
       if (!geo) {
@@ -616,37 +1268,83 @@ export default function Samurai3D() {
     }
 
     const STUD = track(new THREE.SphereGeometry(0.026, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2))
-    const stud = (parent, x, y, z, rotY = 0) => {
+    const stud = (parent, x, y, z, rotY = 0, scale = 1) => {
       const s = new THREE.Mesh(STUD, mats.gold)
       s.castShadow = true
       s.position.set(x, y, z)
       s.rotation.set(Math.PI / 2, rotY, 0, 'YXZ')
+      s.scale.setScalar(scale)
       parent.add(s)
       return s
     }
 
-    /* ---- Silk lacing: every cord of a group merged into one mesh ---- */
-    const CORD = track(new THREE.CylinderGeometry(0.0085, 0.0085, 1, 6, 1))
-    const UP = new THREE.Vector3(0, 1, 0)
-    const lace = (parent, segments) => {
-      if (!segments.length) return
-      const q = new THREE.Quaternion()
-      const mid = new THREE.Vector3()
-      const dir = new THREE.Vector3()
-      const matrices = segments.map(([a, b]) => {
-        dir.subVectors(b, a)
-        const len = dir.length()
-        q.setFromUnitVectors(UP, dir.normalize())
-        mid.addVectors(a, b).multiplyScalar(0.5)
-        return new THREE.Matrix4().compose(mid, q, new THREE.Vector3(1, len, 1))
+    /**
+     * Draw calls, not triangles, are what this scene costs on integrated
+     * GPUs: every plate, stud and cord is its own mesh, and each is drawn
+     * three times a frame (shadow map, normals for AO, colour). Once a rigid
+     * part is built, its static meshes are baked into one mesh per material.
+     * Nodes listed in `keep` (and everything under them) still animate on
+     * their own, so they are left alone.
+     */
+    const bake = (root, keep = []) => {
+      root.updateMatrixWorld(true)
+      const inv = new THREE.Matrix4().copy(root.matrixWorld).invert()
+      const byMaterial = new Map()
+      const sources = []
+      root.traverse((o) => {
+        if (!o.isMesh || keep.includes(o)) return
+        for (let p = o.parent; p && p !== root; p = p.parent) if (keep.includes(p)) return
+        const local = new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld)
+        const g = (o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone()).applyMatrix4(local)
+        if (!byMaterial.has(o.material)) byMaterial.set(o.material, [])
+        byMaterial.get(o.material).push(g)
+        sources.push(o)
       })
-      parent.add(mesh(mergeCopies(CORD, matrices), mats.rope))
+      const merged = []
+      for (const [material, parts] of byMaterial) {
+        const geo = parts.length === 1 ? parts[0] : mergeGeometries(parts)
+        if (parts.length > 1) parts.forEach((g) => g.dispose())
+        if (!geo) {
+          // Incompatible attributes: leave this part as separate meshes.
+          merged.forEach((m) => m.geometry.dispose())
+          return
+        }
+        merged.push(mesh(geo, material))
+      }
+      sources.forEach((o) => o.parent.remove(o))
+      merged.forEach((m) => root.add(m))
+    }
+
+    /* ---- Silk lacing: every cord of a group merged into one mesh ---- */
+    // Each segment is [from, to, outwardNormal]. The braid is flattened
+    // against the plate it crosses, so it reads as lacing, not as dowels.
+    const CORD = track(new THREE.CylinderGeometry(0.0085, 0.0085, 1, 6, 1))
+    const lace = (parent, segments, material = mats.rope) => {
+      if (!segments.length) return
+      const x = new THREE.Vector3()
+      const y = new THREE.Vector3()
+      const z = new THREE.Vector3()
+      const mid = new THREE.Vector3()
+      const size = new THREE.Vector3()
+      const matrices = segments.map(([a, b, n]) => {
+        y.subVectors(b, a)
+        const len = y.length()
+        y.normalize()
+        z.copy(n).addScaledVector(y, -n.dot(y)).normalize()
+        x.crossVectors(y, z).normalize()
+        mid.addVectors(a, b).multiplyScalar(0.5)
+        const m = new THREE.Matrix4().makeBasis(x, y, z)
+        m.setPosition(mid)
+        return m.scale(size.set(1.5, len, 0.55))
+      })
+      parent.add(mesh(mergeCopies(CORD, matrices), material))
     }
 
     /**
-     * Rows of lames laced together with pairs of silk cord — how sode,
+     * Rows of lames laced together with pairs of silk braid — how sode,
      * kusazuri and shikoro are really built. The radius grows linearly
-     * downward by `flare`, so the rows open out like a skirt.
+     * downward by `flare`, so the rows open out like a skirt. The bottom
+     * lame is finished with hishinui cross-knots.
      */
     const lamellar = (
       parent,
@@ -660,9 +1358,11 @@ export default function Samurai3D() {
         y = 0,
         material,
         trim,
+        topTrim,
         hang = 0,
         cordsPer = 3,
         thickness = 0.024,
+        cross = true,
       }
     ) => {
       const group = new THREE.Group()
@@ -671,17 +1371,18 @@ export default function Samurai3D() {
 
       const rAt = (yy) => rTop - flare * yy
       const cordAt = (a, yy) => {
-        const r = rAt(yy) + thickness * 0.32 + 0.011
+        const r = rAt(yy) + thickness * 0.32 + 0.003
         return new THREE.Vector3(Math.sin(a) * r, yy, Math.cos(a) * r)
       }
+      const normalAt = (a) => new THREE.Vector3(Math.sin(a), 0, Math.cos(a))
       const [start, sweep] = span
       const segments = []
       const pairs = (yA, yB) => {
         for (let k = 0; k < cordsPer; k++) {
           const a = start + (sweep * (k + 0.5)) / cordsPer
-          const spread = 0.022 / rAt(yA)
+          const spread = 0.02 / rAt(yA)
           for (const o of [-spread, spread]) {
-            segments.push([cordAt(a + o, yA), cordAt(a + o, yB)])
+            segments.push([cordAt(a + o, yA), cordAt(a + o, yB), normalAt(a + o)])
           }
         }
       }
@@ -694,9 +1395,22 @@ export default function Samurai3D() {
         const lame = plate(rAt(top), rAt(bottom), rowH, span, mat, thickness)
         lame.position.y = top - rowH / 2
         group.add(lame)
-        if (i < rows - 1) pairs(bottom + rowH * 0.32, bottom - gap - rowH * 0.32)
+        if (i < rows - 1) pairs(bottom + rowH * 0.3, bottom - gap - rowH * 0.3)
       }
-      if (hang) pairs(hang, -rowH * 0.32)
+      if (hang) pairs(hang, -rowH * 0.3)
+      if (cross) {
+        for (let k = 0; k < cordsPer; k++) {
+          const a = start + (sweep * (k + 0.5)) / cordsPer
+          const o = 0.03 / rAt(bottom)
+          const n = normalAt(a)
+          const hi = bottom + rowH * 0.56
+          const lo = bottom + rowH * 0.12
+          segments.push(
+            [cordAt(a - o, hi), cordAt(a + o, lo), n],
+            [cordAt(a + o, hi), cordAt(a - o, lo), n]
+          )
+        }
+      }
       lace(group, segments)
 
       if (trim) {
@@ -711,11 +1425,16 @@ export default function Samurai3D() {
         edge.position.y = bottom + 0.009
         group.add(edge)
       }
+      if (topTrim) {
+        const edge = plate(rAt(0) + 0.006, rAt(-0.018) + 0.006, 0.018, span, topTrim, thickness + 0.012)
+        edge.position.y = -0.009
+        group.add(edge)
+      }
       return group
     }
 
     /* ================================================================
-       Legs — fabric underneath, laced thigh lames, splinted shins.
+       Legs — fabric underneath, laced thigh lames, splinted mail shins.
        Hip, knee and ankle each bend, so he can kneel into seiza.
        ================================================================ */
     const legs = [-1, 1].map((side) => {
@@ -726,20 +1445,20 @@ export default function Samurai3D() {
       hip.rotation.order = 'YXZ'
       samurai.add(hip)
 
-      const thigh = mesh(new THREE.CylinderGeometry(0.18, 0.16, 0.46, 24), mats.fabric)
+      const thigh = mesh(new THREE.CylinderGeometry(0.18, 0.16, 0.46, 40), mats.fabric)
       thigh.position.y = -0.25
       hip.add(thigh)
 
-      // Haidate: two small laced lames over the front of the thigh
+      // Haidate: three small laced lames over the front of the thigh
       lamellar(hip, {
-        rows: 2,
-        rowH: 0.1,
-        gap: 0.024,
+        rows: 3,
+        rowH: 0.072,
+        gap: 0.018,
         rTop: 0.2,
         flare: 0.08,
         span: arc(FRONT, Math.PI * 0.62),
         y: -0.07,
-        material: mats.red,
+        material: [mats.red, mats.red, mats.redDark],
         trim: mats.gold,
         hang: 0.05,
         cordsPer: 2,
@@ -749,45 +1468,68 @@ export default function Samurai3D() {
       knee.position.y = -0.5
       hip.add(knee)
 
-      const kneeCop = mesh(new THREE.SphereGeometry(0.15, 32, 20), mats.red)
+      const kneeCop = mesh(new THREE.SphereGeometry(0.15, 36, 24), mats.red)
       kneeCop.position.set(0, 0, 0.06)
       kneeCop.scale.z = 0.8
       knee.add(kneeCop)
 
-      const kneeTrim = mesh(new THREE.TorusGeometry(0.14, 0.016, 10, 40), mats.gold)
+      const kneeTrim = mesh(new THREE.TorusGeometry(0.14, 0.016, 12, 64), mats.gold)
       kneeTrim.position.set(0, 0, 0.13)
       knee.add(kneeTrim)
+      stud(knee, 0, 0, 0.175, 0, 0.8)
 
-      const shin = mesh(new THREE.CylinderGeometry(0.15, 0.14, 0.4, 24), mats.fabric)
+      // The shin is sleeved in kusari (mail) under the splints
+      const shin = mesh(new THREE.CylinderGeometry(0.15, 0.14, 0.4, 40), mats.kusari)
       shin.position.y = -0.27
       knee.add(shin)
 
-      // Suneate: three separate iron splints, fabric showing between them
-      ;[-1, 0, 1].forEach((k) => {
-        const splint = plate(0.172, 0.18, 0.32, arc(FRONT + k * 0.64, 0.5), mats.metal, 0.022)
+      // Suneate: five separate iron splints, mail showing between them
+      ;[-2, -1, 0, 1, 2].forEach((k) => {
+        const splint = plate(0.168, 0.176, 0.32, arc(FRONT + k * 0.44, 0.32), mats.metal, 0.02)
         splint.position.y = -0.29
         knee.add(splint)
       })
 
-      const shinTrim = plate(0.188, 0.19, 0.03, arc(FRONT, Math.PI * 0.86), mats.gold, 0.014)
+      const shinTrim = plate(0.174, 0.176, 0.028, arc(FRONT, Math.PI * 0.9), mats.gold, 0.014)
       shinTrim.position.y = -0.12
       knee.add(shinTrim)
+      const shinCuff = plate(0.158, 0.16, 0.024, arc(FRONT, Math.PI * 0.9), mats.leather, 0.014)
+      shinCuff.position.y = -0.455
+      knee.add(shinCuff)
 
       const ankle = new THREE.Group()
       ankle.position.y = -0.5
       knee.add(ankle)
 
-      const foot = mesh(new RoundedBoxGeometry(0.4, 0.15, 0.54, 4, 0.06), mats.metalDark)
-      foot.position.set(0, -0.02, 0.09)
+      // Kegutsu: a leather boot with a rounded toe over a flat vamp, a rolled
+      // cuff, two instep straps and a plaited straw sole.
+      const foot = mesh(new THREE.SphereGeometry(0.2, 36, 22), mats.leather)
+      foot.position.set(0, -0.01, 0.1)
+      foot.scale.set(0.95, 0.5, 1.45)
       ankle.add(foot)
 
-      const sole = mesh(new RoundedBoxGeometry(0.42, 0.05, 0.56, 3, 0.02), mats.leather)
-      sole.position.set(0, -0.1, 0.09)
+      const vamp = mesh(new RoundedBoxGeometry(0.3, 0.1, 0.46, 4, 0.045), mats.leather)
+      vamp.position.set(0, -0.06, 0.1)
+      ankle.add(vamp)
+
+      const cuff = mesh(new THREE.TorusGeometry(0.15, 0.032, 14, 48), mats.leather)
+      cuff.position.y = 0.04
+      cuff.rotation.x = Math.PI / 2
+      ankle.add(cuff)
+
+      const sole = mesh(new RoundedBoxGeometry(0.32, 0.04, 0.48, 4, 0.018), mats.straw)
+      sole.position.set(0, -0.1, 0.1)
       ankle.add(sole)
 
-      const toeStrap = mesh(new RoundedBoxGeometry(0.28, 0.06, 0.12, 3, 0.03), mats.leather)
-      toeStrap.position.set(0, 0.04, 0.29)
-      ankle.add(toeStrap)
+      ;[
+        [0.15, 0.07, 0.3],
+        [0.27, 0.035, 0.55],
+      ].forEach(([z, yy, tilt]) => {
+        const strap = mesh(new RoundedBoxGeometry(0.34, 0.045, 0.055, 3, 0.02), mats.leather)
+        strap.position.set(0, yy, z)
+        strap.rotation.x = tilt
+        ankle.add(strap)
+      })
 
       return { hip, knee, ankle, side }
     })
@@ -800,25 +1542,25 @@ export default function Samurai3D() {
     samurai.add(body)
 
     // The undergarment. Every armour piece sits on top of this with a gap.
-    const torso = mesh(new RoundedBoxGeometry(0.7, 0.82, 0.5, 6, 0.2), mats.fabric)
+    const torso = mesh(new RoundedBoxGeometry(0.72, 0.84, 0.56, 8, 0.22), mats.fabric)
     torso.position.y = 0.46
     body.add(torso)
 
-    const neck = mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.2, 20), mats.fabric)
+    const neck = mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.2, 40), mats.fabric)
     neck.position.y = 0.93
     body.add(neck)
 
     // Dō: a solid chest plate on each side, with laced lames hanging below.
-    // Front and back are separate, so the fabric shows at both flanks.
+    // Front and back are separate; small flank plates close most of the gap.
     const cuirass = new THREE.Group()
     cuirass.position.y = 0.52
     cuirass.scale.z = 0.74
     body.add(cuirass)
 
     ;[
-      [FRONT, Math.PI * 0.8],
-      [BACK, Math.PI * 0.62],
-    ].forEach(([center, sweep]) => {
+      [FRONT, Math.PI * 0.88, 5],
+      [BACK, Math.PI * 0.72, 4],
+    ].forEach(([center, sweep, cords]) => {
       const chest = plate(0.42, 0.435, 0.2, arc(center, sweep), mats.red, 0.03)
       chest.position.y = 0.16
       cuirass.add(chest)
@@ -828,56 +1570,115 @@ export default function Samurai3D() {
       cuirass.add(rim)
 
       lamellar(cuirass, {
-        rows: 3,
-        rowH: 0.085,
-        gap: 0.022,
+        rows: 4,
+        rowH: 0.068,
+        gap: 0.02,
         rTop: 0.44,
         flare: 0.07,
         span: arc(center, sweep + 0.06),
         y: 0.038,
-        material: [mats.red, mats.red, mats.redDark],
+        material: [mats.red, mats.red, mats.redDark, mats.red],
         hang: 0.05,
-        cordsPer: center === FRONT ? 5 : 4,
+        cordsPer: cords,
       })
     })
 
-    ;[-0.3, 0.3].forEach((x) => {
+    // Waki-ita: iron plates under the arms, tucked beneath the chest halves
+    ;[LEFT, RIGHT].forEach((c) => {
+      const flank = plate(0.408, 0.42, 0.17, arc(c, 0.62), mats.metal, 0.024)
+      flank.position.y = 0.17
+      cuirass.add(flank)
+    })
+
+    ;[-0.3, -0.13, 0.13, 0.3].forEach((x) => {
       stud(cuirass, x, 0.21, Math.sqrt(0.432 ** 2 - x * x) + 0.004, Math.asin(x / 0.432))
     })
 
     // Chest device: a simple geometric mark on a gold disc
-    const monPlate = mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.03, 40), mats.gold)
+    const monPlate = mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.03, 48), mats.gold)
     monPlate.position.set(0, 0.16, 0.445)
     monPlate.rotation.x = Math.PI / 2
     cuirass.add(monPlate)
 
-    const monRing = mesh(new THREE.TorusGeometry(0.066, 0.014, 10, 36), mats.metalDark)
+    const monRing = mesh(new THREE.TorusGeometry(0.066, 0.014, 12, 48), mats.metalDark)
     monRing.position.set(0, 0.16, 0.462)
     cuirass.add(monRing)
 
+    // Sendan-no-ita and kyubi-no-ita: the two small laced plates that hang
+    // from the shoulder straps over the top of the chest.
+    ;[-1, 1].forEach((side) => {
+      lamellar(cuirass, {
+        rows: 2,
+        rowH: 0.06,
+        gap: 0.014,
+        rTop: 0.464,
+        flare: 0.03,
+        span: arc(side * 0.6, 0.28),
+        y: 0.33,
+        material: [mats.red, mats.redDark],
+        trim: mats.gold,
+        hang: 0.03,
+        cordsPer: 1,
+        thickness: 0.018,
+        cross: false,
+      })
+    })
+
     // Watagami: cord shoulder straps tying the dō on
     ;[-1, 1].forEach((side) => {
-      const strap = mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.34, 10), mats.rope)
-      strap.position.set(side * 0.24, 0.82, 0.22)
+      const strap = mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.34, 14), mats.rope)
+      strap.position.set(side * 0.24, 0.82, 0.19)
       strap.rotation.z = side * 0.25
       body.add(strap)
     })
 
-    // Obi sash, with a knot on the left hip
-    const sash = mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.15, 40), mats.cloth)
+    // Agemaki: the large decorative silk bow on the back of the dō
+    const agemaki = new THREE.Group()
+    agemaki.position.set(0, 0.66, -0.36)
+    body.add(agemaki)
+    const loopGeo = track(new THREE.TorusGeometry(0.075, 0.021, 14, 48))
+    ;[-1, 1].forEach((s) => {
+      const loop = new THREE.Mesh(loopGeo, mats.cloth)
+      loop.castShadow = loop.receiveShadow = true
+      loop.position.set(s * 0.078, 0.03, 0)
+      loop.rotation.set(0.25, 0, s * 0.6)
+      agemaki.add(loop)
+
+      const tail = mesh(new RoundedBoxGeometry(0.042, 0.32, 0.018, 3, 0.012), mats.cloth)
+      tail.position.set(s * 0.045, -0.18, 0.004)
+      tail.rotation.z = s * 0.1
+      agemaki.add(tail)
+    })
+    const agemakiKnot = mesh(new THREE.SphereGeometry(0.048, 24, 16), mats.cloth)
+    agemakiKnot.scale.set(1.3, 0.9, 0.8)
+    agemaki.add(agemakiKnot)
+
+    // Obi sash, tied in a knot on the left hip
+    const sash = mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.15, 64), mats.cloth)
     sash.position.y = 0.1
     sash.scale.z = 0.74
     body.add(sash)
 
-    const sashKnot = mesh(new RoundedBoxGeometry(0.2, 0.18, 0.15, 4, 0.05), mats.cloth)
-    sashKnot.position.set(-0.3, 0.08, 0.32)
-    sashKnot.rotation.z = 0.4
+    const sashKnot = new THREE.Group()
+    sashKnot.position.set(-0.31, 0.09, 0.23)
+    sashKnot.rotation.y = -0.8
     body.add(sashKnot)
-
-    const sashTail = mesh(new RoundedBoxGeometry(0.1, 0.3, 0.06, 4, 0.03), mats.cloth)
-    sashTail.position.set(-0.36, -0.12, 0.3)
-    sashTail.rotation.z = 0.2
-    body.add(sashTail)
+    const knotCore = mesh(new THREE.SphereGeometry(0.06, 24, 16), mats.cloth)
+    knotCore.scale.set(1.3, 0.85, 0.9)
+    sashKnot.add(knotCore)
+    ;[-1, 1].forEach((s) => {
+      const loop = new THREE.Mesh(track(new THREE.TorusGeometry(0.06, 0.024, 12, 40)), mats.cloth)
+      loop.castShadow = loop.receiveShadow = true
+      loop.position.set(s * 0.07, 0.02, 0)
+      loop.rotation.set(0.35, 0, s * 0.7)
+      sashKnot.add(loop)
+    })
+    ;[0.03, -0.045].forEach((x, i) => {
+      const tail = mesh(new RoundedBoxGeometry(0.08, 0.3, 0.03, 4, 0.014), mats.cloth)
+      tail.position.set(x, -0.19 - i * 0.03, 0.02 - i * 0.03)
+      tail.rotation.z = 0.12 - i * 0.3
+      sashKnot.add(tail)
+    })
 
     // Kusazuri: six separate laced panels hanging off the sash. Each hangs
     // from a hinge along its top edge, so it can fan out over the floor and
@@ -906,14 +1707,14 @@ export default function Samurai3D() {
       flap.add(unhinge)
 
       lamellar(unhinge, {
-        rows: 3,
-        rowH: 0.1,
-        gap: 0.024,
+        rows: 4,
+        rowH: 0.078,
+        gap: 0.02,
         rTop: SKIRT_R,
         flare: 0.24,
         span: arc(center, Math.PI * 0.25),
         y: 0.01,
-        material: mats.red,
+        material: [mats.red, mats.red, mats.redDark, mats.red],
         trim: mats.gold,
         hang: 0.07,
         cordsPer: 2,
@@ -925,40 +1726,41 @@ export default function Samurai3D() {
     }
 
     /* ================================================================
-       Shoulders and arms — laced sode over fabric sleeves
+       Shoulders and arms — laced sode over fabric sleeves, mail forearms
        ================================================================ */
     const arms = [-1, 1].map((side) => {
       const shoulder = new THREE.Group()
       shoulder.position.set(side * 0.46, 0.72, 0)
       body.add(shoulder)
 
-      const cord = mesh(new THREE.TorusGeometry(0.09, 0.02, 8, 24), mats.rope)
+      const cord = mesh(new THREE.TorusGeometry(0.09, 0.02, 12, 48), mats.rope)
       cord.position.set(side * 0.02, 0.1, 0)
       cord.rotation.x = Math.PI / 2
       shoulder.add(cord)
 
-      const capKnot = mesh(new THREE.SphereGeometry(0.045, 12, 8), mats.rope)
+      const capKnot = mesh(new THREE.SphereGeometry(0.045, 24, 16), mats.rope)
       capKnot.position.set(side * 0.02, 0.12, 0)
       shoulder.add(capKnot)
 
-      // Sode: four lames draped over the outside of the shoulder
+      // Sode: five lames draped over the outside of the shoulder
       const outward = side > 0 ? RIGHT : LEFT
       const sode = lamellar(shoulder, {
-        rows: 4,
-        rowH: 0.085,
-        gap: 0.024,
+        rows: 5,
+        rowH: 0.07,
+        gap: 0.02,
         rTop: 0.24,
         flare: 0.16,
         span: arc(outward, Math.PI * 0.86),
         y: 0.065,
-        material: [mats.red, mats.red, mats.redDark, mats.red],
+        material: [mats.red, mats.red, mats.redDark, mats.red, mats.red],
         trim: mats.gold,
+        topTrim: mats.gold,
         hang: 0.04,
         cordsPer: 3,
       })
       sode.rotation.z = side * -0.12
 
-      const upper = mesh(new THREE.CylinderGeometry(0.12, 0.11, 0.34, 20), mats.fabric)
+      const upper = mesh(new THREE.CylinderGeometry(0.12, 0.11, 0.34, 40), mats.fabric)
       upper.position.y = -0.36
       shoulder.add(upper)
 
@@ -966,25 +1768,29 @@ export default function Samurai3D() {
       elbow.position.y = -0.56
       shoulder.add(elbow)
 
-      const fore = mesh(new THREE.CylinderGeometry(0.105, 0.1, 0.36, 20), mats.fabric)
+      // Kote: mail sleeve with three lacquered splints on the outside
+      const fore = mesh(new THREE.CylinderGeometry(0.105, 0.1, 0.36, 40), mats.kusari)
       fore.position.y = -0.18
       elbow.add(fore)
 
-      // Kote: two lacquered splints on the outside of the forearm
-      ;[-1, 1].forEach((k) => {
-        const splint = plate(0.126, 0.13, 0.24, arc(outward + k * 0.36, 0.56), mats.red, 0.02)
+      ;[-1, 0, 1].forEach((k) => {
+        const splint = plate(0.126, 0.13, 0.24, arc(outward + k * 0.42, 0.3), mats.red, 0.02)
         splint.position.y = -0.18
         elbow.add(splint)
       })
 
-      const koteTrim = plate(0.134, 0.135, 0.024, arc(outward, Math.PI * 0.86), mats.gold, 0.014)
+      const koteTrim = plate(0.122, 0.124, 0.024, arc(outward, Math.PI * 0.86), mats.gold, 0.014)
       koteTrim.position.y = -0.05
       elbow.add(koteTrim)
 
-      stud(elbow, Math.sin(outward) * 0.138, -0.18, 0, outward)
+      const koteCuff = plate(0.126, 0.128, 0.024, arc(outward, Math.PI * 0.86), mats.leather, 0.014)
+      koteCuff.position.y = -0.325
+      elbow.add(koteCuff)
+
+      stud(elbow, Math.sin(outward) * 0.138, -0.18, 0, outward, 0.8)
 
       // Tekko: an iron plate over the back of the gloved hand
-      const hand = mesh(new THREE.SphereGeometry(0.12, 24, 16), mats.leather)
+      const hand = mesh(new THREE.SphereGeometry(0.12, 32, 24), mats.leather)
       hand.position.y = -0.4
       hand.scale.set(1, 1.15, 0.92)
       elbow.add(hand)
@@ -993,83 +1799,177 @@ export default function Samurai3D() {
       tekko.position.y = -0.38
       elbow.add(tekko)
 
-      return { shoulder, elbow, side }
+      return { shoulder, elbow, side, sode }
     })
 
     /* ================================================================
-       Head — a dark iron menpō with subtly lit eyes
+       Head — a sculpted iron menpō with lit eye slits
        ================================================================ */
     const headRig = new THREE.Group()
-    headRig.position.y = HEAD_Y
-    samurai.add(headRig)
+    headRig.position.y = HEAD_Y - HIP_Y
+    headRig.rotation.order = 'YXZ'
+    body.add(headRig)
 
-    const face = mesh(new THREE.SphereGeometry(0.46, 40, 28), mats.face)
-    face.scale.set(1.0, 0.92, 0.94)
+    // The cranium is an ellipsoid; the mask plates below are built in a
+    // group with the same depth scale, so curved plates sit on its surface.
+    const FACE_R = 0.46
+    const FACE_SY = 0.92
+    const FACE_SZ = 0.94
+    const faceRing = (y) => Math.sqrt(Math.max(FACE_R * FACE_R - (y / FACE_SY) ** 2, 0.02))
+
+    const face = mesh(new THREE.SphereGeometry(FACE_R, 48, 32), mats.face)
+    face.scale.set(1, FACE_SY, FACE_SZ)
     headRig.add(face)
 
-    ;[-1, 1].forEach((side) => {
-      const cheek = mesh(new RoundedBoxGeometry(0.15, 0.28, 0.18, 4, 0.06), mats.metal)
-      cheek.position.set(side * 0.34, -0.08, 0.2)
-      cheek.rotation.y = side * -0.4
-      headRig.add(cheek)
-    })
+    const mask = new THREE.Group()
+    mask.scale.z = FACE_SZ
+    headRig.add(mask)
 
-    const brow = mesh(new RoundedBoxGeometry(0.68, 0.08, 0.16, 4, 0.03), mats.metalDark)
-    brow.position.set(0, 0.26, 0.36)
-    headRig.add(brow)
-
-    const recess = mesh(new RoundedBoxGeometry(0.72, 0.22, 0.1, 4, 0.04), mats.metalDark)
-    recess.position.set(0, 0.09, 0.39)
-    headRig.add(recess)
-
-    // Long, nearly level slits: focused rather than angry
-    const eyeGeo = track(new RoundedBoxGeometry(0.25, 0.06, 0.05, 3, 0.017))
-    const eyes = [-0.175, 0.175].map((x) => {
-      const eye = new THREE.Mesh(eyeGeo, mats.eye)
-      eye.position.set(x, 0.1, 0.45)
-      eye.rotation.z = x < 0 ? -0.08 : 0.08
-      headRig.add(eye)
-      return eye
-    })
-
-    const nose = mesh(new THREE.ConeGeometry(0.08, 0.17, 6), mats.metal)
-    nose.position.set(0, -0.03, 0.41)
-    nose.rotation.x = -0.4
-    nose.scale.x = 0.85
-    headRig.add(nose)
-
-    const guard = mesh(new RoundedBoxGeometry(0.52, 0.24, 0.28, 4, 0.08), mats.metalDark)
-    guard.position.set(0, -0.19, 0.26)
-    headRig.add(guard)
-
-    const vent = new RoundedBoxGeometry(0.3, 0.024, 0.032, 3, 0.01)
-    headRig.add(
-      mesh(
-        mergeCopies(
-          vent,
-          [0, 1, 2].map((i) => new THREE.Matrix4().makeTranslation(0, -0.1 - i * 0.052, 0.4))
-        ),
-        mats.metal
-      )
+    // Brow: a heavy ridge following the curve of the skull
+    const brow = plate(
+      faceRing(0.305) + 0.014,
+      faceRing(0.215) + 0.014,
+      0.09,
+      arc(FRONT, Math.PI * 0.9),
+      mats.metal,
+      0.03
     )
-    vent.dispose()
+    brow.position.y = 0.26
+    mask.add(brow)
 
-    const chin = mesh(new THREE.ConeGeometry(0.17, 0.19, 8), mats.metalDark)
-    chin.position.set(0, -0.31, 0.21)
-    chin.rotation.x = Math.PI
-    headRig.add(chin)
+    // Eye band: a dark plate the slits are cut into
+    const eyeBand = plate(
+      faceRing(0.21) + 0.01,
+      faceRing(0.02) + 0.01,
+      0.19,
+      arc(FRONT, Math.PI * 0.84),
+      mats.metalDark,
+      0.028
+    )
+    eyeBand.position.y = 0.115
+    mask.add(eyeBand)
+
+    // Long, nearly level slits: focused rather than angry. Each is a
+    // flattened capsule set into the band, with a soft additive halo.
+    const eyeGeo = track(new THREE.CapsuleGeometry(0.03, 0.19, 8, 24))
+    eyeGeo.rotateZ(Math.PI / 2)
+    eyeGeo.scale(1, 1, 0.45)
+    const glowGeo = track(new THREE.PlaneGeometry(0.42, 0.24))
+    const EYE_R = faceRing(0.11) + 0.024
+    const eyes = []
+    const glows = []
+    ;[-1, 1].forEach((side) => {
+      const a = side * 0.4
+      const eye = new THREE.Mesh(eyeGeo, mats.eye)
+      eye.position.set(Math.sin(a) * EYE_R, 0.11, Math.cos(a) * EYE_R)
+      eye.rotation.set(0, a, side * 0.06)
+      mask.add(eye)
+      eyes.push(eye)
+
+      const glow = new THREE.Mesh(glowGeo, glowMat)
+      glow.position.set(Math.sin(a) * (EYE_R + 0.025), 0.11, Math.cos(a) * (EYE_R + 0.025))
+      glow.rotation.set(0, a, side * 0.06)
+      mask.add(glow)
+      glows.push(glow)
+    })
+
+    // Cheek plates, each riveted at the centre
+    ;[-1, 1].forEach((side) => {
+      const a = side * 1.0
+      const cheek = plate(
+        faceRing(0.06) + 0.012,
+        faceRing(-0.24) + 0.012,
+        0.3,
+        arc(a, 0.55),
+        mats.metal,
+        0.024
+      )
+      cheek.position.y = -0.09
+      mask.add(cheek)
+      const r = faceRing(-0.09) + 0.03
+      stud(mask, Math.sin(a) * r, -0.09, Math.cos(a) * r, a, 0.7)
+    })
+
+    // Nose ridge
+    const nose = mesh(new THREE.ConeGeometry(0.075, 0.2, 24), mats.metal)
+    nose.position.set(0, -0.02, 0.42)
+    nose.rotation.x = -0.42
+    nose.scale.x = 0.85
+    mask.add(nose)
+
+    // Mouth guard: tapers in toward the chin, with three breathing slots
+    const GUARD_TOP = faceRing(-0.05) + 0.012
+    const GUARD_BOT = faceRing(-0.35) + 0.012
+    const guard = plate(GUARD_TOP, GUARD_BOT, 0.3, arc(FRONT, Math.PI * 0.72), mats.metalDark, 0.03)
+    guard.position.y = -0.2
+    mask.add(guard)
+
+    ;[-0.115, -0.165, -0.215].forEach((yy) => {
+      const t = (-0.05 - yy) / 0.3
+      const r = GUARD_TOP + (GUARD_BOT - GUARD_TOP) * t + 0.016
+      const vent = plate(r - 0.004, r + 0.004, 0.02, arc(FRONT, 0.62), mats.metal, 0.012, 12)
+      vent.position.y = yy
+      mask.add(vent)
+    })
+
+    // Horsehair moustache: a tuft of tapered strands fanning out from under
+    // the nose, held just clear of the mouth guard so every strand shows
+    const whiskers = []
+    ;[-1, 1].forEach((side) => {
+      for (let j = 0; j < 7; j++) {
+        const k = j / 6
+        const lift = 1.06 + k * 0.02
+        const path = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(side * 0.03, -0.08 - k * 0.014, 0.44),
+          new THREE.Vector3(side * (0.1 + k * 0.03) * lift, -0.095 - k * 0.03, (0.43 - k * 0.02) * lift),
+          new THREE.Vector3(side * (0.17 + k * 0.05) * lift, -0.135 - k * 0.06, (0.375 - k * 0.035) * lift),
+          new THREE.Vector3(side * (0.21 + k * 0.06) * lift, -0.19 - k * 0.08, (0.32 - k * 0.05) * lift),
+        ])
+        const strand = taperTube(
+          new THREE.TubeGeometry(path, 16, 0.0095, 6, false),
+          path,
+          16,
+          6,
+          (t) => 1 - t * 0.8
+        )
+        whiskers.push(strand)
+      }
+    })
+    mask.add(mesh(mergeGeometries(whiskers), mats.hair))
+    whiskers.forEach((w) => w.dispose())
+
+    // Chin
+    const chin = mesh(new THREE.SphereGeometry(0.065, 32, 20), mats.metalDark)
+    chin.position.set(0, -0.355, 0.235)
+    chin.scale.set(1.3, 0.75, 0.8)
+    mask.add(chin)
+
+    // Yodare-kake: two laced lames guarding the throat beneath the mask
+    lamellar(mask, {
+      rows: 2,
+      rowH: 0.06,
+      gap: 0.014,
+      rTop: 0.285,
+      flare: 0.6,
+      span: arc(FRONT, Math.PI * 0.9),
+      y: -0.37,
+      material: [mats.red, mats.redDark],
+      trim: mats.gold,
+      cordsPer: 4,
+      thickness: 0.02,
+    })
 
     // A cloth collar draped round the neck, flattened so it hangs rather
     // than inflates.
-    const scarf = mesh(new THREE.TorusGeometry(0.33, 0.095, 16, 48), mats.cloth)
-    scarf.position.y = -0.41
+    const scarf = mesh(new THREE.TorusGeometry(0.34, 0.075, 14, 56), mats.cloth)
+    scarf.position.y = -0.5
     scarf.rotation.x = Math.PI / 2
-    scarf.scale.set(1, 1, 0.62)
+    scarf.scale.set(1, 1, 0.6)
     headRig.add(scarf)
 
     const tails = [0.1, -0.06].map((x, i) => {
-      const tail = mesh(new RoundedBoxGeometry(0.13, 0.38, 0.07, 4, 0.035), mats.cloth)
-      tail.position.set(x, -0.7 - i * 0.05, 0.27 - i * 0.05)
+      const tail = mesh(new RoundedBoxGeometry(0.13, 0.36, 0.06, 4, 0.03), mats.cloth)
+      tail.position.set(x, -0.76 - i * 0.05, 0.27 - i * 0.05)
       tail.rotation.z = 0.2 - i * 0.35
       headRig.add(tail)
       return tail
@@ -1088,7 +1988,7 @@ export default function Samurai3D() {
     helmet.add(bowlRig)
 
     const bowl = mesh(
-      new THREE.SphereGeometry(0.6, 64, 24, 0, Math.PI * 2, 0, Math.PI * 0.5),
+      new THREE.SphereGeometry(0.6, 72, 36, 0, Math.PI * 2, 0, Math.PI * 0.5),
       mats.bowl
     )
     bowlRig.add(bowl)
@@ -1100,10 +2000,10 @@ export default function Samurai3D() {
         return new THREE.Vector3(Math.sin(phi) * 0.598, Math.cos(phi) * 0.598, 0)
       })
     )
-    const rib = taperTube(new THREE.TubeGeometry(ribCurve, 24, 0.012, 6), ribCurve, 24, 6, (t) =>
-      0.55 + t * 0.45
+    const rib = taperTube(new THREE.TubeGeometry(ribCurve, 24, 0.011, 6), ribCurve, 24, 6, (t) =>
+      0.5 + t * 0.5
     )
-    const RIBS = 16
+    const RIBS = 24
     bowlRig.add(
       mesh(
         mergeCopies(
@@ -1117,19 +2017,43 @@ export default function Samurai3D() {
     )
     rib.dispose()
 
-    // Koshimaki: the iron band around the base, with a row of gold rivets
-    const band = plate(0.615, 0.615, 0.06, [0, Math.PI * 2], mats.metalDark, 0.03, 64)
+    // Shinodare: three gilt strips running down the front ridges
+    const shinodareCurve = new THREE.CatmullRomCurve3(
+      Array.from({ length: 7 }, (_, i) => {
+        const phi = 0.4 + (i / 6) * (Math.PI / 2 - 0.42)
+        return new THREE.Vector3(Math.sin(phi) * 0.607, Math.cos(phi) * 0.607, 0)
+      })
+    )
+    const shinodare = taperTube(
+      new THREE.TubeGeometry(shinodareCurve, 24, 0.016, 8),
+      shinodareCurve,
+      24,
+      8,
+      (t) => 0.55 + t * 0.45
+    )
+    bowlRig.add(
+      mesh(
+        mergeCopies(
+          shinodare,
+          [-1, 0, 1].map((i) => new THREE.Matrix4().makeRotationY((i / RIBS) * Math.PI * 2))
+        ),
+        mats.gold
+      )
+    )
+    shinodare.dispose()
+
+    // Koshimaki: the iron band around the base, with a rivet at every ridge
+    const band = plate(0.615, 0.615, 0.06, [0, Math.PI * 2], mats.metalDark, 0.03, 96)
     band.position.y = 0.19
     helmet.add(band)
 
     const rivet = new THREE.SphereGeometry(0.016, 10, 6)
-    const RIVETS = 24
     helmet.add(
       mesh(
         mergeCopies(
           rivet,
-          Array.from({ length: RIVETS }, (_, i) => {
-            const a = (i / RIVETS) * Math.PI * 2
+          Array.from({ length: RIBS }, (_, i) => {
+            const a = (i / RIBS) * Math.PI * 2
             return new THREE.Matrix4().makeTranslation(
               Math.sin(a) * 0.622,
               0.19,
@@ -1142,38 +2066,48 @@ export default function Samurai3D() {
     )
     rivet.dispose()
 
-    const tehen = mesh(new THREE.TorusGeometry(0.09, 0.028, 16, 40), mats.gold)
+    // Tehen-kanamono: a tiered gilt ring at the crown
+    const tehen = mesh(new THREE.TorusGeometry(0.09, 0.028, 16, 48), mats.gold)
     tehen.position.y = 0.66
     tehen.rotation.x = Math.PI / 2
     helmet.add(tehen)
+    const tehenTop = mesh(new THREE.TorusGeometry(0.055, 0.02, 14, 40), mats.gold)
+    tehenTop.position.y = 0.695
+    tehenTop.rotation.x = Math.PI / 2
+    helmet.add(tehenTop)
 
     // Mabisashi: a peak that grows out of the bowl just above the band and
     // sweeps forward and down, edged in gold along its outer rim.
-    const visor = plate(0.6, 0.76, 0.1, arc(FRONT, Math.PI * 0.82), mats.redDark, 0.022, 28)
+    const visor = plate(0.6, 0.76, 0.1, arc(FRONT, Math.PI * 0.82), mats.redDark, 0.022, 36)
     visor.position.y = 0.23
     helmet.add(visor)
 
-    const visorEdge = plate(0.76, 0.775, 0.026, arc(FRONT, Math.PI * 0.82), mats.gold, 0.034, 28)
+    const visorEdge = plate(0.76, 0.775, 0.026, arc(FRONT, Math.PI * 0.82), mats.gold, 0.034, 36)
     visorEdge.position.y = 0.181
     helmet.add(visorEdge)
 
-    // Shikoro: three laced lames guarding the back of the neck
+    ;[-0.9, -0.45, 0, 0.45, 0.9].forEach((a) => {
+      stud(helmet, Math.sin(a) * 0.69, 0.235, Math.cos(a) * 0.69, a, 0.65)
+    })
+
+    // Shikoro: four laced lames guarding the back of the neck
     const shikoro = lamellar(helmet, {
-      rows: 3,
-      rowH: 0.1,
-      gap: 0.032,
+      rows: 4,
+      rowH: 0.08,
+      gap: 0.026,
       rTop: 0.625,
       flare: 0.34,
       span: arc(BACK, Math.PI * 1.44),
       y: 0.13,
-      material: [mats.red, mats.redDark, mats.red],
+      material: [mats.red, mats.redDark, mats.red, mats.red],
       trim: mats.gold,
       cordsPer: 8,
     })
     shikoro.position.z = -0.08
     shikoro.rotation.x = 0.22
 
-    // Fukigaeshi: small swept wings beside the visor, edged in gold
+    // Fukigaeshi: small swept wings beside the visor, edged in gold and
+    // carrying the crest
     ;[-1, 1].forEach((side) => {
       const span = arc(side > 0 ? RIGHT : LEFT, Math.PI * 0.7)
       const wingRig = new THREE.Group()
@@ -1186,6 +2120,11 @@ export default function Samurai3D() {
       const wingEdge = plate(0.2185, 0.22, 0.024, span, mats.gold, 0.034)
       wingEdge.position.y = -0.128
       wingRig.add(wingEdge)
+
+      const mon = mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.014, 32), mats.gold)
+      mon.position.set(side * 0.222, 0.01, 0)
+      mon.rotation.z = Math.PI / 2
+      wingRig.add(mon)
     })
 
     // Maedate: two elegant gold horns, tapering to a point
@@ -1207,21 +2146,26 @@ export default function Samurai3D() {
       const path = hornPath(dir)
       const taper = (t) => 1.1 - t * 0.72
       const horn = mesh(
-        taperTube(new THREE.TubeGeometry(path, 64, 0.078, 16, false), path, 64, 16, taper),
+        taperTube(new THREE.TubeGeometry(path, 64, 0.078, 18, false), path, 64, 18, taper),
         mats.gold
       )
       horn.scale.z = 0.55
       crest.add(horn)
 
-      const tip = mesh(new THREE.SphereGeometry(0.078 * taper(1), 12, 8), mats.gold)
+      const tip = mesh(new THREE.SphereGeometry(0.078 * taper(1), 20, 14), mats.gold)
       tip.position.copy(path.getPointAt(1))
       tip.scale.z = 0.55
       crest.add(tip)
     })
 
-    const crestBase = mesh(new RoundedBoxGeometry(0.34, 0.15, 0.12, 4, 0.045), mats.gold)
+    const crestBase = mesh(new RoundedBoxGeometry(0.34, 0.15, 0.12, 5, 0.045), mats.gold)
     crestBase.position.y = -0.02
     crest.add(crestBase)
+
+    const crestDisc = mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.02, 40), mats.gold)
+    crestDisc.position.set(0, 0.07, 0.05)
+    crestDisc.rotation.x = Math.PI / 2
+    crest.add(crestDisc)
 
     /* ================================================================
        Katana — held low in the right hand
@@ -1231,18 +2175,18 @@ export default function Samurai3D() {
     katana.position.set(0.02, -0.4, 0.04)
 
     // Tsuka: white ray skin under a crossed black silk wrap
-    const core = mesh(new RoundedBoxGeometry(0.086, 0.5, 0.072, 3, 0.03), mats.bowl)
+    const core = mesh(new RoundedBoxGeometry(0.086, 0.5, 0.072, 4, 0.03), mats.bowl)
     core.position.y = -0.12
     katana.add(core)
 
-    const wrap = new RoundedBoxGeometry(0.108, 0.024, 0.018, 2, 0.008)
+    const wrap = new RoundedBoxGeometry(0.108, 0.022, 0.02, 3, 0.009)
     const wrapMatrices = []
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 8; i++) {
       for (const z of [0.038, -0.038]) {
         for (const tilt of [0.6, -0.6]) {
           wrapMatrices.push(
             new THREE.Matrix4().compose(
-              new THREE.Vector3(0, 0.09 - i * 0.07, z),
+              new THREE.Vector3(0, 0.1 - i * 0.056, z),
               new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, tilt)),
               new THREE.Vector3(1, 1, 1)
             )
@@ -1253,35 +2197,53 @@ export default function Samurai3D() {
     katana.add(mesh(mergeCopies(wrap, wrapMatrices), mats.fabric))
     wrap.dispose()
 
-    const menuki = mesh(new THREE.OctahedronGeometry(0.035, 1), mats.gold)
+    const menuki = mesh(new THREE.OctahedronGeometry(0.035, 2), mats.gold)
     menuki.position.set(0, -0.13, 0.046)
     menuki.scale.set(1, 1.4, 0.4)
     katana.add(menuki)
 
-    const kashira = mesh(new RoundedBoxGeometry(0.1, 0.06, 0.086, 3, 0.025), mats.metalDark)
+    const kashira = mesh(new RoundedBoxGeometry(0.1, 0.06, 0.086, 4, 0.025), mats.metalDark)
     kashira.position.y = -0.39
     katana.add(kashira)
 
-    const fuchi = mesh(new RoundedBoxGeometry(0.098, 0.04, 0.084, 3, 0.015), mats.gold)
+    const fuchi = mesh(new RoundedBoxGeometry(0.098, 0.04, 0.084, 4, 0.015), mats.gold)
     fuchi.position.y = 0.13
     katana.add(fuchi)
 
-    const tsuba = mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.034, 48), mats.metalDark)
+    const tsuba = mesh(tsubaGeometry(0.17, 0.024), mats.metalDark)
     tsuba.position.y = 0.165
     katana.add(tsuba)
 
-    const tsubaRim = mesh(new THREE.TorusGeometry(0.17, 0.012, 8, 48), mats.gold)
+    const tsubaRim = mesh(new THREE.TorusGeometry(0.17, 0.012, 12, 64), mats.gold)
     tsubaRim.position.y = 0.165
     tsubaRim.rotation.x = Math.PI / 2
     katana.add(tsubaRim)
 
-    const habaki = mesh(new RoundedBoxGeometry(0.09, 0.07, 0.04, 3, 0.015), mats.gold)
+    const habaki = mesh(new RoundedBoxGeometry(0.09, 0.07, 0.04, 4, 0.015), mats.gold)
     habaki.position.y = 0.215
     katana.add(habaki)
 
     const blade = mesh(bladeGeometry(1.26), mats.steel)
     blade.position.y = 0.19
     katana.add(blade)
+
+    /* ---- Bake every rigid part down to a few meshes ---- */
+    bake(helmet)
+    bake(mask, [...eyes, ...glows])
+    bake(cuirass)
+    panels.forEach(({ flap }) => bake(flap))
+    bake(body, [torso, cuirass, skirt, headRig, ...arms.map((a) => a.shoulder)])
+    bake(katana)
+    arms.forEach(({ shoulder, elbow, sode }) => {
+      bake(sode)
+      bake(elbow, [katana])
+      bake(shoulder, [elbow, sode])
+    })
+    legs.forEach(({ hip, knee, ankle }) => {
+      bake(ankle)
+      bake(knee, [ankle])
+      bake(hip, [knee])
+    })
 
     /* ================================================================
        Ground — shadow map plus a painted contact pool
@@ -1293,14 +2255,14 @@ export default function Samurai3D() {
     scene.add(floor)
 
     const poolCanvas = document.createElement('canvas')
-    poolCanvas.width = poolCanvas.height = 128
+    poolCanvas.width = poolCanvas.height = 256
     const pctx = poolCanvas.getContext('2d')
-    const grad = pctx.createRadialGradient(64, 64, 2, 64, 64, 62)
+    const grad = pctx.createRadialGradient(128, 128, 4, 128, 128, 124)
     grad.addColorStop(0, 'rgba(0,0,0,0.5)')
     grad.addColorStop(0.55, 'rgba(0,0,0,0.2)')
     grad.addColorStop(1, 'rgba(0,0,0,0)')
     pctx.fillStyle = grad
-    pctx.fillRect(0, 0, 128, 128)
+    pctx.fillRect(0, 0, 256, 256)
 
     const poolTex = new THREE.CanvasTexture(poolCanvas)
     const poolMat = new THREE.MeshBasicMaterial({
@@ -1314,9 +2276,19 @@ export default function Samurai3D() {
     scene.add(pool)
 
     /* ================================================================
-       Actions — meditate and stand up
+       Behaviour — meditation, moods, actions, idle life, the cursor
        ================================================================ */
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+    let calmMotion = motionQuery.matches
+    // Big enough to float him in the corner without covering the content.
+    const dockQuery = window.matchMedia('(min-width: 1280px) and (hover: hover) and (pointer: fine)')
+
+    // Loop state comes first: wake() can be called while the rest is set up.
+    let frame = null
+    let started = false
+    let last = 0
+    let gate = null
+
     // `w` runs 0 (standing) → 1 (seated in meditation).
     const pose = { w: 0, from: 0, to: 0, start: -TRANSITION, next: FIRST_SIT_AT }
     let now = 0
@@ -1326,33 +2298,206 @@ export default function Samurai3D() {
       pose.to = pose.to ? 0 : 1
       pose.start = now
       pose.next = now + TRANSITION + (pose.to ? MEDITATE_FOR : STAND_FOR)
+      wake()
+    }
+    const standUp = () => {
+      if (pose.to === 1) toggleMeditation()
     }
 
-    // Standing, the blade hangs down and out; seated, it lies across the lap
-    // (blade toward his left, edge up). The lap pose is held in body space and
-    // converted into the moving hand's frame every frame.
-    const katanaStand = new THREE.Quaternion()
+    // Standing, the blade follows the mood; seated, it lies across the lap
+    // (blade toward his left, edge up), held in body space.
     const katanaLap = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0.12, Math.PI / 2))
-    const handQ = new THREE.Quaternion()
-    const rootQ = new THREE.Quaternion()
-    const lapLocal = new THREE.Quaternion()
-    const standEuler = new THREE.Euler()
 
-    /* ---- Cursor tracking ---- */
-    const look = { x: 0, y: 0 }
-    const target = { x: 0, y: 0 }
-    const onPointerMove = (e) => {
-      if (interacting) return
-      const rect = mount.getBoundingClientRect()
-      target.x = ((e.clientX - rect.left) / rect.width - 0.5) * 2
-      target.y = ((e.clientY - rect.top) / rect.height - 0.5) * 2
+    /* ---- Mood: springs carry the current pose toward the mood's pose ---- */
+    let mood = 'calm'
+    let target = MOOD_TARGETS.calm
+    const cur = makePose()
+    const vel = {
+      s: Object.fromEntries(SCALARS.map((k) => [k, 0])),
+      R: new THREE.Vector3(),
+      L: new THREE.Vector3(),
     }
-    const onPointerLeave = () => {
-      target.x = 0
-      target.y = 0
+    // What the mood and any action produce this frame, before idle motion.
+    const out = makePose()
+    const actionFrom = makePose()
+    let action = null
+
+    const settle = () => {
+      copyPose(cur, target)
+      for (const k of SCALARS) vel.s[k] = 0
+      vel.R.set(0, 0, 0)
+      vel.L.set(0, 0, 0)
     }
 
-    // A tap or click — not a drag — toggles meditation.
+    const springVec = (v, velocity, goal, omega, dt) => {
+      for (const axis of ['x', 'y', 'z']) {
+        const r = spring(v[axis], velocity[axis], goal[axis], omega, dt)
+        v[axis] = r.x
+        velocity[axis] = r.v
+      }
+    }
+
+    const followMood = (dt) => {
+      if (calmMotion) return settle()
+      for (const k of SCALARS) {
+        const r = spring(cur.s[k], vel.s[k], target.s[k], 5.5, dt)
+        cur.s[k] = r.x
+        vel.s[k] = r.v
+      }
+      springVec(cur.R, vel.R, target.R, 6, dt)
+      springVec(cur.L, vel.L, target.L, 6, dt)
+      cur.q.slerp(target.q, 1 - Math.exp(-5 * dt))
+    }
+
+    const startAction = (name) => {
+      const def = ACTIONS[name]
+      if (!def || calmMotion || !started) return
+      standUp()
+      // Start from wherever he is now, even mid-way through another action.
+      copyPose(actionFrom, out)
+      action = { def, start: now }
+      micro.glance = micro.shift = null
+      wake()
+    }
+
+    const onMood = (next) => {
+      if (!MOOD_TARGETS[next] || next === mood) return
+      const was = mood
+      mood = next
+      target = MOOD_TARGETS[next]
+      if (next !== 'calm') standUp()
+      else if (was !== 'calm') pose.next = Math.max(pose.next, now + FIRST_SIT_AT)
+      if (calmMotion) settle()
+      else if (next === 'victory' && !action) startAction('hop')
+      wake()
+    }
+
+    /** Keyframes between the pose he started from and the pose his mood wants. */
+    const evalAction = () => {
+      const { def, start } = action
+      const u = (now - start) / def.duration
+      if (u >= 1) {
+        action = null
+        copyPose(out, cur)
+        return
+      }
+      let a = actionFrom
+      let ta = 0
+      let b = cur
+      let tb = 1
+      for (const key of def.keys) {
+        if (key.t <= u) {
+          a = key
+          ta = key.t
+        } else {
+          b = key
+          tb = key.t
+          break
+        }
+      }
+      const k = smootherstep(clamp((u - ta) / (tb - ta), 0, 1))
+      // A key only sets what it names; anything else follows the mood.
+      const val = (p, ch) => (p.partial && !(ch in p.s) ? cur.s[ch] : p.s[ch])
+      const pick = (p, name) => (p.partial ? p[name] || cur[name] : p[name])
+      for (const ch of SCALARS) out.s[ch] = lerp(val(a, ch), val(b, ch), k)
+      out.R.lerpVectors(pick(a, 'R'), pick(b, 'R'), k)
+      out.L.lerpVectors(pick(a, 'L'), pick(b, 'L'), k)
+      out.q.slerpQuaternions(pick(a, 'q'), pick(b, 'q'), k)
+    }
+
+    /* ---- Idle life: blinks, glances, weight shifts, a grip adjustment ---- */
+    const micro = {
+      blinkAt: 1.5 + Math.random() * 2.5,
+      blinkStart: -10,
+      glanceAt: 6 + Math.random() * 4,
+      glance: null,
+      shiftAt: 9 + Math.random() * 5,
+      shift: null,
+      gripAt: 5,
+      grip: null,
+    }
+    const bump = (x) => (x <= 0 || x >= 1 ? 0 : Math.sin(Math.PI * x))
+    const envelope = (x, rise, fall) =>
+      x <= 0 || x >= 1 ? 0 : THREE.MathUtils.smoothstep(x, 0, rise) * (1 - THREE.MathUtils.smoothstep(x, 1 - fall, 1))
+
+    /* ---- Cursor: the head (and a little of the body) follows it ---- */
+    const cursor = { x: 0, y: 0, active: false, at: -10 }
+    const look = { yaw: 0, pitch: 0, vy: 0, vp: 0 }
+    const lookGoal = { yaw: 0, pitch: 0 }
+    const raycaster = new THREE.Raycaster()
+    const ndc = new THREE.Vector2()
+    const lookPlane = new THREE.Plane()
+    const camDir = new THREE.Vector3()
+    const hit = new THREE.Vector3()
+    const headW = new THREE.Vector3()
+    const toCursor = new THREE.Vector3()
+
+    const onWindowPointer = (e) => {
+      if (e.pointerType !== 'mouse') return
+      cursor.x = e.clientX
+      cursor.y = e.clientY
+      cursor.active = true
+      cursor.at = now
+    }
+    const onCursorGone = () => {
+      cursor.active = false
+    }
+    window.addEventListener('pointermove', onWindowPointer, { passive: true })
+    document.documentElement.addEventListener('mouseleave', onCursorGone)
+    window.addEventListener('blur', onCursorGone)
+
+    const updateLook = (dt) => {
+      lookGoal.yaw = lookGoal.pitch = 0
+      if (cursor.active && !interacting && !calmMotion) {
+        const rect = renderer.domElement.getBoundingClientRect()
+        if (rect.width && rect.height) {
+          ndc.set(
+            clamp(((cursor.x - rect.left) / rect.width) * 2 - 1, -4, 4),
+            clamp(-((cursor.y - rect.top) / rect.height) * 2 + 1, -4, 4)
+          )
+          raycaster.setFromCamera(ndc, camera)
+          // The cursor reads as a point floating between him and the viewer.
+          camera.getWorldDirection(camDir)
+          hit.copy(camera.position).addScaledVector(camDir, camera.position.distanceTo(controls.target) * 0.5)
+          lookPlane.setFromNormalAndCoplanarPoint(camDir, hit)
+          if (raycaster.ray.intersectPlane(lookPlane, hit)) {
+            headRig.getWorldPosition(headW)
+            samurai.worldToLocal(hit)
+            samurai.worldToLocal(headW)
+            toCursor.subVectors(hit, headW)
+            const len = toCursor.length() || 1
+            // Fade out when the cursor is behind him: he will not look backwards.
+            const facing = THREE.MathUtils.smoothstep(toCursor.z / len, -0.15, 0.45)
+            lookGoal.yaw = clamp(Math.atan2(toCursor.x, toCursor.z), -0.6, 0.6) * facing
+            lookGoal.pitch =
+              clamp(-Math.atan2(toCursor.y, Math.hypot(toCursor.x, toCursor.z)), -0.22, 0.3) * facing
+          }
+        }
+      }
+      let r = spring(look.yaw, look.vy, lookGoal.yaw, 5, dt)
+      look.yaw = r.x
+      look.vy = r.v
+      r = spring(look.pitch, look.vp, lookGoal.pitch, 5, dt)
+      look.pitch = r.x
+      look.vp = r.v
+    }
+
+    /* ---- Tooltip: on hover, focus or tap — never left up ---- */
+    let tipTimer = 0
+    let hoverTimer = 0
+    const showTip = (ms) => {
+      if (disposed) return
+      clearTimeout(tipTimer)
+      setTip(true)
+      if (ms) tipTimer = setTimeout(() => !disposed && setTip(false), ms)
+    }
+    const hideTip = () => {
+      clearTimeout(tipTimer)
+      clearTimeout(hoverTimer)
+      if (!disposed) setTip(false)
+    }
+
+    // A tap or click — not a drag — toggles meditation and shows the tooltip.
     let press = null
     const onPointerDown = (e) => {
       press = { x: e.clientX, y: e.clientY, t: performance.now() }
@@ -1360,19 +2505,113 @@ export default function Samurai3D() {
     const onPointerUp = (e) => {
       if (!press) return
       const moved = Math.hypot(e.clientX - press.x, e.clientY - press.y)
-      if (moved < 6 && performance.now() - press.t < 450) toggleMeditation()
+      if (moved < 6 && performance.now() - press.t < 450) {
+        toggleMeditation()
+        showTip(2600)
+      }
       press = null
+    }
+    const onPointerEnter = (e) => {
+      if (e.pointerType !== 'mouse') return
+      clearTimeout(hoverTimer)
+      hoverTimer = setTimeout(() => showTip(0), 350)
+    }
+    const onPointerLeave = (e) => {
+      if (e.pointerType === 'mouse') hideTip()
     }
     const onKeyDown = (e) => {
       if (e.key !== 'Enter' && e.key !== ' ') return
       e.preventDefault()
       toggleMeditation()
     }
-    mount.addEventListener('pointermove', onPointerMove)
-    mount.addEventListener('pointerleave', onPointerLeave)
-    mount.addEventListener('pointerdown', onPointerDown)
-    mount.addEventListener('pointerup', onPointerUp)
+    const onFocus = () => {
+      try {
+        if (!mount.matches(':focus-visible')) return
+      } catch {
+        // Older engines without :focus-visible: show it on any focus.
+      }
+      showTip(0)
+    }
+    const hitEl = hitRef.current
+    const targets = [mount, hitEl].filter(Boolean)
+    targets.forEach((el) => {
+      el.addEventListener('pointerdown', onPointerDown)
+      el.addEventListener('pointerup', onPointerUp)
+      el.addEventListener('pointerenter', onPointerEnter)
+      el.addEventListener('pointerleave', onPointerLeave)
+    })
     mount.addEventListener('keydown', onKeyDown)
+    mount.addEventListener('focus', onFocus)
+    mount.addEventListener('blur', hideTip)
+    controls.addEventListener('start', hideTip)
+
+    /* ---- Dock: follow the visitor down the page on wide screens ---- */
+    const frameEl = frameRef.current
+    const slotEl = slotRef.current
+    const dismissEl = dismissRef.current
+    const DOCK_KEY = 'samurai-companion'
+    const dock = { on: false }
+    let slotVisible = true
+    let dismissed = false
+    let undockTimer = 0
+    try {
+      dismissed = sessionStorage.getItem(DOCK_KEY) === 'hidden'
+    } catch {
+      // Storage blocked: he simply docks as usual.
+    }
+    const setDock = () => {
+      const want = started && !slotVisible && !dismissed && dockQuery.matches
+      if (want === dock.on || !frameEl) return
+      dock.on = want
+      frameEl.classList.toggle('is-docked', want)
+      frameEl.classList.toggle('is-undocking', !want)
+      clearTimeout(undockTimer)
+      if (!want) undockTimer = setTimeout(() => frameEl.classList.remove('is-undocking'), 600)
+      controls.enableRotate = !want
+      hideTip()
+      wake()
+    }
+    const onDismiss = () => {
+      dismissed = true
+      try {
+        sessionStorage.setItem(DOCK_KEY, 'hidden')
+      } catch {
+        // Not remembered, but hidden for now.
+      }
+      setDock()
+    }
+    dismissEl?.addEventListener('click', onDismiss)
+    // The fixed nav covers the top of the viewport, so the slot counts as
+    // gone once it is only behind the nav.
+    const slotWatcher = new IntersectionObserver(
+      (entries) => {
+        slotVisible = entries.some((e) => e.isIntersecting)
+        setDock()
+      },
+      { rootMargin: '-64px 0px 0px 0px' }
+    )
+    if (slotEl) slotWatcher.observe(slotEl)
+    dockQuery.addEventListener('change', setDock)
+
+    const onMotionPref = () => {
+      calmMotion = motionQuery.matches
+      if (calmMotion) {
+        action = null
+        settle()
+      }
+    }
+    motionQuery.addEventListener('change', onMotionPref)
+
+    /* ---- Companion store ---- */
+    let lastActionId = getState().action?.id ?? 0
+    const unsubscribe = subscribe((s) => {
+      onMood(s.mood)
+      if (s.action && s.action.id !== lastActionId) {
+        lastActionId = s.action.id
+        startAction(s.action.name)
+      }
+    })
+    onMood(getState().mood)
 
     /* ---- Ambient occlusion: desktop only, switched on after first paint ---- */
     let composer = null
@@ -1380,7 +2619,7 @@ export default function Samurai3D() {
     const enableAO = async () => {
       const aoTarget = new THREE.WebGLRenderTarget(1, 1, {
         type: THREE.HalfFloatType,
-        samples: 4,
+        samples: Math.min(8, renderer.capabilities.maxSamples),
       })
       const c = new EffectComposer(renderer, aoTarget)
       c.setPixelRatio(dpr)
@@ -1388,13 +2627,21 @@ export default function Samurai3D() {
       c.addPass(new RenderPass(scene, camera))
       const gtao = new GTAOPass(scene, camera, mount.clientWidth, mount.clientHeight)
       gtao.updateGtaoMaterial({
-        radius: 0.3,
+        radius: 0.32,
         distanceExponent: 1,
         thickness: 1,
         scale: 3,
-        samples: 16,
+        samples: 20,
       })
       gtao.updatePdMaterial({ radius: 6, rings: 2, samples: 16 })
+      // The eye halos are additive sprites: keep them out of the normal /
+      // depth pass, or the AO would treat them as solid plates.
+      const gtaoRender = gtao.render.bind(gtao)
+      gtao.render = (...args) => {
+        glows.forEach((g) => (g.visible = false))
+        gtaoRender(...args)
+        glows.forEach((g) => (g.visible = true))
+      }
       c.addPass(gtao)
       const output = new OutputPass()
       c.addPass(output)
@@ -1435,107 +2682,243 @@ export default function Samurai3D() {
       if (!disposed) composer = c
     }
 
-    /* ---- Animation: a relaxed idle, and the meditation cycle ---- */
-    const clock = new THREE.Clock()
-    let frame = null
-    let started = false
+    /* ---- Per-frame scratch ---- */
+    const X_AXIS = new THREE.Vector3(1, 0, 0)
+    const Y_AXIS = new THREE.Vector3(0, 1, 0)
+    const IDENTITY = new THREE.Quaternion()
+    const restShoulderQ = [-1, 1].map((side) =>
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, side * 0.16))
+    )
+    const sodeBaseQ = arms.map(({ sode }) => sode.quaternion.clone())
+    const ik = { shX: 0, shZ: 0, elX: 0 }
+    const rHand = new THREE.Vector3()
+    const lHand = new THREE.Vector3()
+    const gripPoint = new THREE.Vector3()
+    const bladeQ = new THREE.Quaternion()
+    const handQ = new THREE.Quaternion()
+    const tmpQ = new THREE.Quaternion()
+    const eyeBase = cssColor('--samurai-eye', '#ffb347')
+    const eyeHot = new THREE.Color('#ff4a2a')
+    const eyeWarm = new THREE.Color('#fff1cf')
+    const eyeTint = new THREE.Color()
+    const orbit = new THREE.Spherical()
+    const offset = new THREE.Vector3()
+    const HERO_RADIUS = camera.position.distanceTo(controls.target)
+    // Docked, he turns a little toward the page content on his right.
+    const DOCK = { theta: 0.42, phi: Math.PI / 2 - 0.1, radius: 8.1, aimY: 1.9 }
+    let breathPhase = 0
 
-    const tick = () => {
-      frame = requestAnimationFrame(tick)
-      if (!started || !gate.visible) return
+    const dampTo = (x, goal, rate, dt) => goal + (x - goal) * Math.exp(-rate * dt)
+    const dampAngle = (x, goal, rate, dt) => {
+      let d = goal - x
+      d = Math.atan2(Math.sin(d), Math.cos(d))
+      return x + d * (1 - Math.exp(-rate * dt))
+    }
 
-      clock.getDelta()
-      const t = (now = clock.elapsedTime)
+    /* ---- One frame of animation ---- */
+    const update = (dt, t) => {
+      const still = calmMotion ? 0 : 1
 
-      if (!reducedMotion && t >= pose.next) toggleMeditation()
-      const k = THREE.MathUtils.clamp((t - pose.start) / TRANSITION, 0, 1)
+      // Meditation: he rises on his own in any mood, but only sits when calm.
+      if (!calmMotion && !action) {
+        if (pose.to === 1 && t >= pose.next) toggleMeditation()
+        else if (pose.to === 0 && mood === 'calm' && t >= pose.next) toggleMeditation()
+      }
+      const k = clamp((t - pose.start) / TRANSITION, 0, 1)
       const w = (pose.w = lerp(pose.from, pose.to, smootherstep(k)))
       const stand = 1 - w
       // Peaks mid-transition: he leans into the motion of sitting or rising.
       const effort = Math.sin(Math.PI * k) * Math.abs(pose.to - pose.from)
 
-      samurai.position.y = -SIT_DROP * w + Math.sin(t * 1.1) * 0.022 * stand
-      samurai.rotation.z = Math.sin(t * 0.5) * 0.01 * stand
-      body.rotation.y = Math.sin(t * 0.42) * 0.045 * stand
-      body.rotation.x = 0.04 * w + effort * 0.22
+      followMood(dt)
+      if (action) evalAction()
+      else copyPose(out, cur)
+      const P = out.s
+      const sway = P.sway * stand * still
 
-      // Breathing: shallow while standing, slow and deep in meditation
-      const breath = Math.sin(t * 1.0)
-      torso.scale.set(1, 1 + Math.sin(t * 1.45) * 0.012 * stand + breath * 0.028 * w, 1)
-      skirt.rotation.y = Math.sin(t * 0.42) * 0.03 * stand
-      panels.forEach(({ flap, spread }) => {
-        flap.rotation.x = -spread * w
-      })
+      /* Idle life */
+      let blink = 1
+      let glanceYaw = 0
+      let glancePitch = 0
+      let shiftTilt = 0
+      let shiftTwist = 0
+      let gripRoll = 0
+      if (still) {
+        if (t >= micro.blinkAt) {
+          micro.blinkStart = t
+          micro.blinkAt = t + 2.6 + Math.random() * 4.2
+        }
+        blink = 1 - 0.92 * bump((t - micro.blinkStart) / 0.17)
 
-      tails.forEach((tail, i) => {
-        tail.rotation.x = Math.sin(t * 1.2 + i * 0.8) * 0.1 * stand + 0.35 * w
-      })
+        const quietCursor = !cursor.active || t - cursor.at > 3
+        if (!action && stand > 0.95 && quietCursor && t >= micro.glanceAt) {
+          micro.glance = {
+            start: t,
+            yaw: (Math.random() < 0.5 ? -1 : 1) * (0.18 + Math.random() * 0.2),
+            pitch: (Math.random() - 0.4) * 0.12,
+          }
+          micro.glanceAt = t + 7 + Math.random() * 6
+        }
+        if (micro.glance) {
+          const g = envelope((t - micro.glance.start) / 1.8, 0.25, 0.3)
+          glanceYaw = micro.glance.yaw * g
+          glancePitch = micro.glance.pitch * g
+          if (t - micro.glance.start > 1.8) micro.glance = null
+        }
 
-      look.x += (target.x - look.x) * 0.05
-      look.y += (target.y - look.y) * 0.05
-      headRig.rotation.y = (look.x * 0.34 + Math.sin(t * 0.33) * 0.03) * stand
-      headRig.rotation.x = look.y * 0.14 * stand + (0.13 + breath * 0.025) * w
-      headRig.rotation.z = Math.sin(t * 0.47) * 0.016 * stand
+        if (!action && stand > 0.95 && t >= micro.shiftAt) {
+          micro.shift = { start: t, dir: Math.random() < 0.5 ? -1 : 1 }
+          micro.shiftAt = t + 9 + Math.random() * 6
+        }
+        if (micro.shift) {
+          const g = envelope((t - micro.shift.start) / 2.6, 0.35, 0.4)
+          shiftTilt = micro.shift.dir * 0.018 * g
+          shiftTwist = micro.shift.dir * 0.03 * g
+          if (t - micro.shift.start > 2.6) micro.shift = null
+        }
 
-      // Eyes narrow to slits in meditation and glow with each breath
-      mats.eye.emissiveIntensity = lerp(
-        0.78 + Math.sin(t * 0.85) * 0.1,
-        0.45 + breath * 0.3,
-        w
-      )
-      eyes.forEach((eye, i) => {
-        eye.scale.y = lerp(1 + Math.sin(t * 0.85 + i) * 0.03, 0.3, w)
-      })
+        // A guard is never quite still: the grip resettles now and then.
+        if (!action && P.twoHand > 0.5 && t >= micro.gripAt) {
+          micro.grip = { start: t, dir: Math.random() < 0.5 ? -1 : 1 }
+          micro.gripAt = t + 4 + Math.random() * 4
+        }
+        if (micro.grip) {
+          gripRoll = micro.grip.dir * 0.08 * bump((t - micro.grip.start) / 0.6)
+          if (t - micro.grip.start > 0.6) micro.grip = null
+        }
+      }
+      updateLook(dt)
+      const lookYaw = look.yaw * P.lookGain
+      const lookPitch = look.pitch * P.lookGain
 
-      // Arms hang and sway; seated, the hands come to rest on the thighs
-      arms.forEach(({ shoulder, elbow, side }) => {
-        const idle = Math.sin(t * 1.05 + side) * 0.035 * stand
-        shoulder.rotation.z = side * lerp(0.16, 0.2, w) + idle * 0.5
-        shoulder.rotation.x = idle - 0.12 * w
-        elbow.rotation.x = -0.1 + idle * 0.4 - 1.25 * w
-        elbow.rotation.z = side * -0.3 * w
-      })
-
-      // Seiza: thighs swing forward, shins fold back underneath, and the
-      // feet turn soles-up so he sits on his heels.
+      /* Legs and stance: bent knees lower the hips, feet stay on the floor */
+      const alpha = P.crouch * stand
+      const splay = P.splay * stand
       legs.forEach(({ hip, knee, ankle, side }) => {
-        const sway = Math.sin(t * 0.5 + side * 1.6) * 0.012 * stand
+        const drift = Math.sin(t * 0.5 + side * 1.6) * 0.012 * sway
         hip.position.y = HIP_Y - LEG_DROP * w
-        hip.rotation.set(sway - 1.52 * w, side * lerp(0.1, 0.16, w), side * 0.05 * stand)
-        knee.rotation.x = 2.42 * w
-        ankle.rotation.x = 2.29 * w
+        hip.rotation.set(drift - 1.52 * w - alpha, side * lerp(0.1, 0.16, w), side * splay)
+        knee.rotation.x = 2.42 * w + 2 * alpha
+        ankle.rotation.x = 2.29 * w - alpha
+      })
+      const drop = Math.cos(0.05) - Math.cos(alpha) * Math.cos(splay)
+      samurai.position.y = -SIT_DROP * w + stand * (P.lift - drop) + Math.sin(t * 1.1) * 0.014 * sway
+      samurai.rotation.z = Math.sin(t * 0.5) * 0.01 * sway
+
+      /* Body: lean, turn, breathing, armour that settles with it */
+      const bodyYaw =
+        Math.sin(t * 0.42) * 0.045 * sway + (P.twist + shiftTwist + lookYaw * 0.2) * stand
+      body.rotation.set(0.04 * w + effort * 0.22 + P.lean * stand, bodyYaw, (P.tilt + shiftTilt) * stand)
+
+      breathPhase += dt * P.breathRate
+      const breathe = Math.sin(breathPhase) * P.breathDepth * stand * still
+      const deep = Math.sin(t * 1.0)
+      torso.scale.set(1, 1 + breathe + deep * 0.028 * w, 1)
+      cuirass.scale.set(1 + breathe * 0.4, 1, 0.74 * (1 + breathe * 0.4))
+      skirt.rotation.set(-P.lean * stand * 0.75, Math.sin(t * 0.42) * 0.03 * sway, 0)
+      panels.forEach(({ flap, spread }, i) => {
+        flap.rotation.x = -spread * w - stand * alpha * 0.45 - Math.sin(t * 1.3 + i * 1.7) * 0.012 * sway
+      })
+      tails.forEach((tail, i) => {
+        tail.rotation.x = Math.sin(t * 1.2 + i * 0.8) * 0.1 * sway + 0.35 * w
       })
 
-      // Sitting lowers his head, so the camera's aim follows him down
-      const aimY = lerp(STAND_TARGET_Y, SIT_TARGET_Y, w)
+      /* Head: the head is on the body now, so it steadies against the body's turn */
+      const wander = P.wander * still
+      const headYaw =
+        lookYaw + P.headYaw + glanceYaw + Math.sin(t * 0.37) * 0.14 * wander + Math.sin(t * 0.33) * 0.03 * still
+      headRig.rotation.set(
+        (P.headPitch + lookPitch + glancePitch + Math.sin(t * 0.23 + 1) * 0.05 * wander - P.lean * 0.55) * stand +
+          (0.13 + deep * 0.025) * w,
+        (headYaw - bodyYaw * 0.7) * stand,
+        P.headTilt * stand + Math.sin(t * 0.47) * 0.016 * sway
+      )
+
+      /* Arms: IK to the pose's hands, blended with the seated pose */
+      bladeQ.copy(out.q)
+      bladeQ.premultiply(tmpQ.setFromAxisAngle(X_AXIS, Math.sin(t * 0.9) * 0.03 * sway))
+      if (gripRoll) bladeQ.multiply(tmpQ.setFromAxisAngle(Y_AXIS, gripRoll))
+      rHand.copy(out.R)
+      rHand.z += Math.sin(t * 1.05 + 1) * 0.03 * sway
+      gripPoint.set(0, -GRIP_SPAN, 0).applyQuaternion(bladeQ).add(rHand)
+      lHand.copy(out.L)
+      lHand.z += Math.sin(t * 1.05 - 1) * 0.03 * sway
+      lHand.lerp(gripPoint, clamp(P.twoHand, 0, 1))
+
+      arms.forEach(({ shoulder, elbow, side, sode }, i) => {
+        solveArm(side > 0 ? rHand : lHand, side, ik)
+        shoulder.rotation.set(lerp(ik.shX, -0.12, w), 0, lerp(ik.shZ, side * 0.2, w))
+        elbow.rotation.set(lerp(ik.elX, -1.35, w), 0, side * -0.3 * w)
+        // The sode hang from the shoulder: they follow the arm only a little.
+        tmpQ.copy(shoulder.quaternion).invert().multiply(restShoulderQ[i])
+        sode.quaternion.slerpQuaternions(IDENTITY, tmpQ, 0.8).multiply(sodeBaseQ[i])
+      })
+
+      /* Katana: the pose's blade in body space, carried into the hand's frame */
+      const kw = THREE.MathUtils.smoothstep(w, 0, 0.55)
+      if (kw > 0) bladeQ.slerp(tmpQ.copy(body.quaternion).invert().multiply(katanaLap), kw)
+      handQ.copy(arms[1].shoulder.quaternion).multiply(arms[1].elbow.quaternion)
+      katana.quaternion.copy(handQ.invert()).multiply(bladeQ)
+      mats.steel.envMapIntensity = 2.4 + P.glint * 1.6
+
+      /* Eyes: open, tilt, glow and colour carry most of the emotion */
+      const glowLevel = lerp(P.eyeGlow + Math.sin(t * 0.85) * 0.1 * still, 0.45 + deep * 0.3, w)
+      mats.eye.emissiveIntensity = glowLevel
+      glowMat.opacity = glowLevel * 0.55
+      eyeTint.copy(eyeBase).lerp(P.heat >= 0 ? eyeHot : eyeWarm, Math.min(Math.abs(P.heat), 1))
+      mats.eye.color.copy(eyeTint)
+      mats.eye.emissive.copy(eyeTint)
+      glowMat.color.copy(eyeTint)
+      const open = P.eyeOpen * blink
+      eyes.forEach((eye, i) => {
+        const side = i === 0 ? -1 : 1
+        eye.scale.y = lerp(open * (1 + Math.sin(t * 0.85 + i) * 0.03 * still), 0.3, w)
+        eye.rotation.z = side * lerp(P.eyeTilt, 0.06, w)
+        glows[i].scale.y = lerp(0.6 + 0.4 * open, 0.55, w)
+        glows[i].rotation.z = eye.rotation.z
+      })
+
+      /* Camera: the hero orbit, or a fixed three-quarter view when docked */
+      const aimY = lerp(dock.on ? DOCK.aimY : STAND_TARGET_Y, SIT_TARGET_Y, w)
       camera.position.y += aimY - controls.target.y
       controls.target.y = aimY
-
-      standEuler.set(KATANA_TILT + Math.sin(t * 0.9) * 0.03 * stand, 0, Math.PI + 0.58)
-      katanaStand.setFromEuler(standEuler)
-      // The blade swings onto the lap during the first half of sitting (and
-      // leaves it late when rising), so it never dips through the floor.
-      const kw = THREE.MathUtils.smoothstep(w, 0, 0.55)
-      if (kw > 0) {
-        samurai.updateMatrixWorld(true)
-        arms[1].elbow.getWorldQuaternion(handQ)
-        samurai.getWorldQuaternion(rootQ)
-        // hand orientation relative to the body, inverted, then the lap pose
-        lapLocal.copy(rootQ.invert()).multiply(handQ).invert().multiply(katanaLap)
-        katana.quaternion.slerpQuaternions(katanaStand, lapLocal, kw)
-      } else {
-        katana.quaternion.copy(katanaStand)
+      offset.copy(camera.position).sub(controls.target)
+      orbit.setFromVector3(offset)
+      if (dock.on) {
+        orbit.theta = dampAngle(orbit.theta, DOCK.theta, 4, dt)
+        orbit.phi = dampTo(orbit.phi, DOCK.phi, 4, dt)
       }
-
-      controls.update()
-      if (composer) composer.render()
-      else renderer.render(scene, camera)
+      orbit.radius = dampTo(orbit.radius, dock.on ? DOCK.radius : HERO_RADIUS, 4, dt)
+      camera.position.copy(controls.target).add(offset.setFromSpherical(orbit))
+      controls.autoRotate = autoSpin && !dock.on && !calmMotion
+      controls.update(dt)
     }
 
-    const gate = createVisibilityGate(mount, () => {
-      if (frame === null) tick()
-    })
-    tick()
+    /* ---- The loop: runs only while he is on screen and the tab is shown ---- */
+    const t0 = performance.now()
+
+    const loop = () => {
+      frame = null
+      if (!started || !gate?.visible || document.hidden) return
+      frame = requestAnimationFrame(loop)
+      const t = (performance.now() - t0) / 1000
+      // Docked, he is small: 30 fps is plenty, and halves the GPU cost.
+      if (dock.on && t - last < 1 / 31) return
+      const dt = last ? Math.min(t - last, 0.1) : 0
+      last = t
+      now = t
+      update(dt, t)
+      if (composer && !dock.on) composer.render()
+      else renderer.render(scene, camera)
+    }
+    function wake() {
+      if (frame !== null || !started || !gate?.visible || document.hidden) return
+      last = 0
+      frame = requestAnimationFrame(loop)
+    }
+
+    gate = createVisibilityGate(mount, wake)
+    document.addEventListener('visibilitychange', wake)
 
     // Compile every shader in parallel (without blocking the page), then
     // start drawing and fade the canvas in. AO follows once the page is idle.
@@ -1555,7 +2938,9 @@ export default function Samurai3D() {
       if (disposed) return
       started = true
       mount.classList.add('is-ready')
-      if (window.matchMedia('(pointer: fine)').matches) {
+      setDock()
+      wake()
+      if (finePointer) {
         const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 400))
         idle(() => {
           if (!disposed) enableAO()
@@ -1570,17 +2955,20 @@ export default function Samurai3D() {
       mats.red.color.copy(cssColor('--samurai-accent', '#c0392b'))
       mats.redDark.color.copy(cssColor('--samurai-accent-dark', '#8e2a1e'))
       mats.metal.color.copy(cssColor('--samurai-armor', '#39414f'))
+      mats.kusari.color.copy(cssColor('--samurai-armor', '#39414f'))
       mats.metalDark.color.copy(cssColor('--samurai-armor-dark', '#22272f'))
       mats.gold.color.copy(cssColor('--samurai-gold', '#e0a63a'))
       mats.rope.color.copy(cssColor('--samurai-rope', '#b8935a'))
+      mats.straw.color.copy(cssColor('--samurai-rope', '#b8935a'))
       mats.bowl.color.copy(cssColor('--samurai-bowl', '#e8e1d4'))
+      mats.hair.color.copy(cssColor('--samurai-bowl', '#e8e1d4'))
       mats.steel.color.copy(cssColor('--samurai-steel', '#e9edf4'))
       mats.cloth.color.copy(cssColor('--samurai-cloth', '#a8322a'))
       mats.leather.color.copy(cssColor('--samurai-leather', '#4a3b33'))
       mats.face.color.copy(cssColor('--samurai-face', '#2f3642'))
-      const eye = cssColor('--samurai-eye', '#ffb347')
-      mats.eye.color.copy(eye)
-      mats.eye.emissive.copy(eye)
+      // The eyes are tinted by mood every frame, starting from this colour.
+      eyeBase.copy(cssColor('--samurai-eye', '#ffb347'))
+      wake()
     }
     const themeWatcher = new MutationObserver(applyTheme)
     themeWatcher.observe(document.documentElement, {
@@ -1606,14 +2994,31 @@ export default function Samurai3D() {
       disposed = true
       if (frame !== null) cancelAnimationFrame(frame)
       clearTimeout(resumeTimer)
+      clearTimeout(tipTimer)
+      clearTimeout(hoverTimer)
+      clearTimeout(undockTimer)
+      unsubscribe()
       gate.dispose()
+      slotWatcher.disconnect()
       themeWatcher.disconnect()
       resizeWatcher.disconnect()
-      mount.removeEventListener('pointermove', onPointerMove)
-      mount.removeEventListener('pointerleave', onPointerLeave)
-      mount.removeEventListener('pointerdown', onPointerDown)
-      mount.removeEventListener('pointerup', onPointerUp)
+      dockQuery.removeEventListener('change', setDock)
+      motionQuery.removeEventListener('change', onMotionPref)
+      document.removeEventListener('visibilitychange', wake)
+      window.removeEventListener('pointermove', onWindowPointer)
+      document.documentElement.removeEventListener('mouseleave', onCursorGone)
+      window.removeEventListener('blur', onCursorGone)
+      targets.forEach((el) => {
+        el.removeEventListener('pointerdown', onPointerDown)
+        el.removeEventListener('pointerup', onPointerUp)
+        el.removeEventListener('pointerenter', onPointerEnter)
+        el.removeEventListener('pointerleave', onPointerLeave)
+      })
       mount.removeEventListener('keydown', onKeyDown)
+      mount.removeEventListener('focus', onFocus)
+      mount.removeEventListener('blur', hideTip)
+      dismissEl?.removeEventListener('click', onDismiss)
+      frameEl?.classList.remove('is-docked', 'is-undocking')
       mount.classList.remove('is-ready')
       controls.dispose()
 
@@ -1641,12 +3046,32 @@ export default function Samurai3D() {
   }, [])
 
   return (
-    <div
-      className="robot3d samurai3d"
-      ref={mountRef}
-      role="button"
-      tabIndex={0}
-      aria-label="3D samurai. Drag to turn him; click, tap or press Enter to meditate or stand up."
-    />
+    <div className="samurai-slot" ref={slotRef}>
+      <div className="samurai-frame" ref={frameRef}>
+        <div
+          className="robot3d samurai3d"
+          ref={mountRef}
+          role="button"
+          tabIndex={0}
+          aria-label="3D samurai companion. Drag to turn him; click, tap or press Enter to meditate or stand up."
+          aria-describedby={tip ? 'samurai-tip' : undefined}
+        />
+        {/* Docked, only his silhouette takes clicks; the rest of the box lets them through. */}
+        <div className="samurai-hit" ref={hitRef} aria-hidden="true" />
+        {tip && (
+          <span className="samurai-tip" id="samurai-tip" role="tooltip">
+            Your guide through the portfolio.
+          </span>
+        )}
+        <button
+          type="button"
+          className="samurai-dismiss"
+          ref={dismissRef}
+          aria-label="Hide the samurai companion"
+        >
+          <FiX aria-hidden="true" />
+        </button>
+      </div>
+    </div>
   )
 }

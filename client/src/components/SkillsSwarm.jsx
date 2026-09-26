@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { TECH } from '../data/tech.js'
 import { prefersReducedMotion } from '../lib/capabilities.js'
+import { reportSkill } from '../lib/companion.js'
 
 /**
  * The tech stack as app-icon tiles scattered around the section title.
@@ -349,6 +350,8 @@ export default function SkillsSwarm({ centerRef }) {
             .map((icon, i) => [i, Math.hypot(icon.x - pointer.x, icon.y - pointer.y)])
             .sort((a, b) => a[1] - b[1])
             .map(([i]) => i)
+          // The icon leading the chain is the one being played with.
+          reportSkill(icons[order[0]]?.tech.group)
         }
         order.forEach((i, k) => {
           const at = trail.length - 1 - k * SPACING

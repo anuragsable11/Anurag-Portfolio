@@ -20,8 +20,10 @@ export const ENV_SIGMA = 0.04
 export const ENV_RGBM_RANGE = 8
 
 /**
- * A softbox studio: a dim room with a warm key panel, two cool rim strips
- * and an overhead light, built only from unlit materials.
+ * A softbox studio: a dim room with a warm key panel, two cool rim strips,
+ * an overhead light and a large reflector card behind the camera (so
+ * polished steel and lacquer facing the viewer pick up a soft, bright
+ * reflection instead of the dark back wall), built only from unlit materials.
  */
 export function studioEnvironment() {
   const scene = new THREE.Scene()
@@ -40,13 +42,14 @@ export function studioEnvironment() {
     scene.add(m)
   }
 
-  add(0x30343b, 1, [16, 12, 16], [0, 4, 0], THREE.BackSide)
+  add(0x363a42, 1, [16, 12, 16], [0, 4, 0], THREE.BackSide)
   add(0x0d0e10, 1, [15.8, 0.1, 15.8], [0, -1.9, 0])
   add(0xfff1e0, 7, [4.5, 3.2, 0.1], [4.5, 6, 6])
   add(0xb8d0ff, 5, [2, 6, 0.1], [-7, 3, -4])
   add(0xc8dcff, 3.5, [2, 6, 0.1], [7, 3, -5])
   add(0xffffff, 2.2, [7, 0.1, 3], [0, 9.8, 1])
   add(0xdfe7f5, 1.2, [3, 3, 0.1], [-6, 2, 5])
+  add(0xf4efe8, 1.6, [6, 3.6, 0.1], [0, 3.4, 9.5])
 
   return {
     scene,
