@@ -4,6 +4,7 @@ import { FiArrowDown, FiMail, FiMapPin } from 'react-icons/fi'
 import { FaLinkedinIn, FaGithub } from 'react-icons/fa'
 import { HiOutlineDocumentArrowDown } from 'react-icons/hi2'
 import CodePanel from './CodePanel.jsx'
+import SamuraiMoves from './SamuraiMoves.jsx'
 import { profile } from '../data/content.js'
 import { supports3D } from '../lib/capabilities.js'
 
@@ -172,6 +173,9 @@ export default function Hero() {
             ) : (
               <CodePanel />
             )}
+
+            {/* The samurai's moves: a keycap per key, tappable on touch screens */}
+            {can3D && <SamuraiMoves />}
 
             <div className="pipeline">
               {['Client', 'API', 'Queue', 'LLM', 'Memory'].map((node, i, arr) => (

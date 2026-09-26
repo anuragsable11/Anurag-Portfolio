@@ -458,6 +458,139 @@ function blade(W, H) {
   return { blade: tex(W, H, toGray(colour, 0, 1)), bladeRough: tex(W, H, toGray(rough, 0, 1)) }
 }
 
+/**
+ * The kabuto's finish: black urushi flecked with gold leaf. The flakes
+ * gather in drifts rather than spreading evenly: most are tiny specks, a few
+ * are larger torn pieces, and there are thin cut slivers (kirigane) too.
+ * Colour is final (sRGB), so the material is left white; in the roughness
+ * map the flakes are smoother than the lacquer, so they sparkle.
+ */
+function goldFlake(S) {
+  const r = rng(83)
+  const k = S / 512
+  const ground = noise(S, S, r, [[8, 0.5], [32, 0.3], [128, 0.2]])
+  const drift = noise(S, S, r, [[3, 0.6], [9, 0.4]])
+  const colour = new Uint8Array(S * S * 4)
+  const rough = new Float32Array(S * S)
+  for (let i = 0; i < S * S; i++) {
+    const v = 10 + ground[i] * 10
+    colour[i * 4] = v
+    colour[i * 4 + 1] = v
+    colour[i * 4 + 2] = v * 1.1
+    colour[i * 4 + 3] = 255
+    rough[i] = 0.88 + ground[i] * 0.12
+  }
+  const lo = [150, 104, 34]
+  const hi = [246, 214, 128]
+  const paint = (px, py, c, a, ro) => {
+    const i = wrap(py, S) * S + wrap(px, S)
+    for (let ch = 0; ch < 3; ch++) colour[i * 4 + ch] += (c[ch] - colour[i * 4 + ch]) * a
+    rough[i] += (ro - rough[i]) * a
+  }
+  const flake = (cx, cy, rx, ry, ang, jag, c) => {
+    const cos = Math.cos(ang)
+    const sin = Math.sin(ang)
+    const phase = r() * 6
+    const reach = Math.ceil(Math.max(rx, ry) * (1 + jag) + 1)
+    for (let py = Math.floor(cy - reach); py <= Math.ceil(cy + reach); py++) {
+      for (let px = Math.floor(cx - reach); px <= Math.ceil(cx + reach); px++) {
+        const dx = px + 0.5 - cx
+        const dy = py + 0.5 - cy
+        const lx = (dx * cos + dy * sin) / rx
+        const ly = (-dx * sin + dy * cos) / ry
+        const edge = 1 + jag * Math.sin(Math.atan2(ly, lx) * 5 + phase)
+        const q = (lx * lx + ly * ly) / (edge * edge)
+        if (q >= 1) continue
+        paint(px, py, c, Math.min(1, (1 - q) * 3), 0.42)
+      }
+    }
+  }
+  const tone = () => {
+    const t = r()
+    return lo.map((l, ch) => l + (hi[ch] - l) * t)
+  }
+  for (let n = 0; n < Math.round(2600 * k * k); n++) {
+    const x = r() * S
+    const y = r() * S
+    if (r() > drift[wrap(Math.floor(y), S) * S + wrap(Math.floor(x), S)] ** 2 * 1.7) continue
+    const big = r() < 0.05
+    const rx = Math.max(0.7, (big ? 5 + r() * 8 : 0.8 + r() * 2.6) * k)
+    flake(x, y, rx, rx * (0.35 + r() * 0.65), r() * Math.PI, big ? 0.25 : 0.08, tone())
+  }
+  // Kirigane: thin slivers of cut leaf
+  const slivers = new Float32Array(S * S)
+  scratches(slivers, S, S, r, { count: Math.round(160 * k * k), len: [4 * k, 14 * k], width: 0.9, depth: -1 })
+  const sliverTone = tone()
+  for (let i = 0; i < S * S; i++) {
+    const a = Math.min(1, slivers[i])
+    if (a > 0.05) paint(i % S, Math.floor(i / S), sliverTone, a, 0.42)
+  }
+  for (let i = 0; i < S * S * 4; i++) colour[i] = Math.round(colour[i])
+  return { flakeC: tex(S, S, colour), flakeR: tex(S, S, toGray(rough, 0, 1)) }
+}
+
+/**
+ * Engraving for the gilt crest: scrolling cloud spirals, with flowing
+ * parallel lines chased into the ground between them. The colour map darkens
+ * the cuts, as patina settles into engraved gold.
+ */
+function engraving(S) {
+  const r = rng(89)
+  const k = S / 512
+  const cells = 3
+  const cs = S / cells
+  const scrolls = []
+  for (let cy = 0; cy < cells; cy++) {
+    for (let cx = 0; cx < cells; cx++) {
+      scrolls.push({
+        x: (cx + 0.3 + r() * 0.4) * cs,
+        y: (cy + 0.3 + r() * 0.4) * cs,
+        R: cs * (0.36 + r() * 0.08),
+        dir: r() < 0.5 ? 1 : -1,
+        rot: r() * Math.PI * 2,
+        turns: 2.2 + r() * 0.8,
+      })
+    }
+  }
+  const lineW = 1.4 * k + 0.6
+  const groove = (d, w) => (d < w ? 1 - (d / w) ** 2 : 0)
+  const cut = new Float32Array(S * S)
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      let g = 0
+      let inside = 0
+      for (const c of scrolls) {
+        let dx = x - c.x
+        let dy = y - c.y
+        dx -= Math.round(dx / S) * S
+        dy -= Math.round(dy / S) * S
+        const rr = Math.hypot(dx, dy)
+        if (rr > c.R) continue
+        inside = Math.max(inside, 1 - rr / c.R)
+        const th = Math.atan2(dy, dx) * c.dir + c.rot
+        const s = (rr / c.R) * c.turns - th / (Math.PI * 2)
+        const f = Math.abs(s - Math.round(s))
+        const fade = smooth(clamp01((c.R - rr) / (c.R * 0.15)))
+        g = Math.max(g, groove((f * c.R) / c.turns, lineW) * fade)
+      }
+      if (inside < 0.08) {
+        // Flowing lines: 24 across the tile, each swaying twice
+        const w = (y / S) * 24 + 1.1 * Math.sin((x / S) * Math.PI * 2 * 2 + (y / S) * Math.PI * 2)
+        const d = Math.abs(w - Math.round(w)) * (S / 24)
+        g = Math.max(g, groove(d, lineW * 0.8) * 0.7 * (1 - inside / 0.08))
+      }
+      cut[y * S + x] = g
+    }
+  }
+  const h = new Float32Array(S * S)
+  const shade = new Float32Array(S * S)
+  for (let i = 0; i < S * S; i++) {
+    h[i] = -cut[i]
+    shade[i] = 1 - cut[i] * 0.45
+  }
+  return { engraveN: tex(S, S, toNormal(h, S, S, 2.4)), engraveC: tex(S, S, toGray(shade, 0, 1)) }
+}
+
 /** A soft halo for the eye slits (white, with falloff in alpha). */
 function glow(S) {
   const out = new Uint8Array(S * S * 4)
@@ -493,6 +626,8 @@ export function generateTextures(quality = 'high') {
     woodN: woodN(s),
     fabricTone: fabricTone(s),
     ...blade(s, S * 2),
+    ...goldFlake(S),
+    ...engraving(S),
     glow: glow(64),
   }
 }

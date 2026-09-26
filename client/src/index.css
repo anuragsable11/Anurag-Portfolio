@@ -30,7 +30,7 @@
   --samurai-steel: #e9edf4;
   --samurai-cloth: #a8322a; /* matte fabric */
   --samurai-leather: #4a3b33;
-  --samurai-face: #2f3642;
+  --samurai-helmet-lacing: #232a3d; /* the helmet's dark silk lacing */
   --samurai-eye: #ffb347; /* the glow behind the visor */
 
   --brand: #2584f5; /* fills, rules, focus rings */
@@ -77,7 +77,7 @@
   --samurai-steel: #e9edf4;
   --samurai-cloth: #a8322a; /* matte fabric */
   --samurai-leather: #4a3b33;
-  --samurai-face: #2f3642;
+  --samurai-helmet-lacing: #232a3d; /* the helmet's dark silk lacing */
   --samurai-eye: #ffb347; /* the glow behind the visor */
 
   --brand: #569fff;
@@ -2344,4 +2344,137 @@ a.contact-link:hover {
   .samurai-tip {
     animation: none;
   }
+}
+
+/* ============================================================
+   Samurai moves — keycaps under the hero samurai
+   ============================================================ */
+.samurai-moves {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.samurai-moves-label {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-fg);
+  margin-right: 4px;
+}
+
+.move-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px 4px 5px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted-fg);
+  font: 500 0.72rem var(--font);
+  cursor: pointer;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.move-key kbd {
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 5px;
+  border: 1px solid var(--border-hi);
+  border-bottom-width: 2px;
+  background: var(--secondary);
+  color: var(--fg);
+  font: 600 0.72rem var(--mono);
+  transition: transform 0.12s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.move-key:hover {
+  color: var(--fg);
+  border-color: var(--border-hi);
+}
+
+.move-key:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.move-key:active kbd,
+.move-key.is-lit kbd {
+  transform: translateY(1px);
+  border-bottom-width: 1px;
+}
+
+.move-key.is-lit {
+  color: var(--brand-text);
+  border-color: var(--brand-border);
+  background: var(--brand-soft);
+}
+
+.move-key.is-lit kbd {
+  color: var(--brand-text);
+  border-color: var(--brand-border);
+}
+
+@media (max-width: 520px) {
+  .samurai-moves {
+    gap: 4px;
+  }
+
+  .samurai-moves-label {
+    flex-basis: 100%;
+    text-align: center;
+    margin: 0 0 2px;
+  }
+
+  .move-key {
+    gap: 5px;
+    padding: 3px 7px 3px 3px;
+    font-size: 0.68rem;
+  }
+
+  .move-key kbd {
+    min-width: 20px;
+    height: 20px;
+  }
+}
+
+.samurai-tip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.samurai-tip-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  color: var(--muted-fg);
+}
+
+.samurai-tip-keys kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 4px;
+  border: 1px solid var(--border-hi);
+  border-bottom-width: 2px;
+  background: var(--secondary);
+  color: var(--fg);
+  font: 600 0.66rem var(--mono);
+}
+
+.samurai-frame.is-docked .samurai-tip {
+  align-items: flex-end;
 }

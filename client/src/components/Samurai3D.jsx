@@ -14,7 +14,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { createVisibilityGate, cssColor } from '../lib/three-utils.js'
 import { loadBakedEnvironment, renderStudioPMREM } from '../lib/studio-env.js'
 import envUrl from '../assets/samurai-env.png'
-import { getState, subscribe } from '../lib/companion.js'
+import { MOVES, getState, subscribe } from '../lib/companion.js'
 
 /**
  * An original stylised samurai mascot, modelled from primitives.
@@ -29,9 +29,12 @@ import { getState, subscribe } from '../lib/companion.js'
  *    guard are lamellar: rows of lames joined by flat silk braid (sugake
  *    odoshi) that lies against the plates, finished with cross-knots
  *    (hishinui) along the bottom lame.
- *  - The menpō is a sculpted iron mask: a curved brow, an eye band with lit
- *    slits, cheek plates, a tapered mouth guard with breathing slots, a
- *    horsehair moustache and a laced throat guard beneath.
+ *  - The kabuto and menpō are black urushi flecked with gold leaf: a smooth
+ *    bowl with low seams, a rolled peak, broad turned-back wings, closely
+ *    laced black lames at the neck, and a broad engraved gilt crest of two
+ *    swept blades on a chrysanthemum boss. The mask has a curved brow, an
+ *    eye band with lit slits, cheek plates, a tapered mouth guard with
+ *    breathing slots and gold sunbursts, and a laced throat guard beneath.
  *  - Forearms and shins are chain mail (kusari) with iron splints laced over
  *    them; the feet are leather boots on straw soles.
  *  - The dō carries a decorative agemaki bow at the back, two small hanging
@@ -172,6 +175,10 @@ const TEXTURE_SPEC = {
   blade: { repeat: 1, srgb: true, clamp: true },
   bladeRough: { repeat: 1, clamp: true },
   glow: { repeat: 1, srgb: true, clamp: true },
+  flakeC: { repeat: 1, srgb: true },
+  flakeR: { repeat: 1 },
+  engraveN: { repeat: 3 },
+  engraveC: { repeat: 3, srgb: true },
 }
 
 /** Empty textures the materials can hold until the worker's pixels arrive. */
@@ -388,6 +395,103 @@ function bladeGeometry(length) {
     uv.setXY(i, clamp((pos.getX(i) - s) / (e - s), 0, 1), pos.getY(i) / (length + 0.035))
   }
   const creased = toCreasedNormals(geo, 0.7)
+  if (creased !== geo) geo.dispose()
+  return creased
+}
+
+/**
+ * The maedate: two broad blades rising from the centre and sweeping out to
+ * points, cut from one flat plate with softened edges. Crest space: the boss
+ * sits at the origin, the plate faces +Z, and the blade tips reach ±0.86.
+ */
+function crestGeometry() {
+  const P = [
+    [0.04, 0.03],
+    [0.3, 0.08],
+    [0.42, 0.55],
+    [0.86, 0.84],
+  ]
+  const at = (t, i) =>
+    (1 - t) ** 3 * P[0][i] + 3 * (1 - t) ** 2 * t * P[1][i] + 3 * (1 - t) * t * t * P[2][i] + t ** 3 * P[3][i]
+  const slope = (t, i) =>
+    3 * (1 - t) ** 2 * (P[1][i] - P[0][i]) + 6 * (1 - t) * t * (P[2][i] - P[1][i]) + 3 * t * t * (P[3][i] - P[2][i])
+  // Broad at the root, narrower through the sweep, flaring into the blade,
+  // then running out to a point.
+  const widths = [
+    [0, 0.17],
+    [0.35, 0.12],
+    [0.7, 0.18],
+    [0.88, 0.14],
+    [1, 0],
+  ]
+  const widthAt = (t) => {
+    for (let i = 1; i < widths.length; i++) {
+      if (t <= widths[i][0]) {
+        const [t0, w0] = widths[i - 1]
+        const [t1, w1] = widths[i]
+        return w0 + ((w1 - w0) * (t - t0)) / (t1 - t0)
+      }
+    }
+    return 0
+  }
+  const N = 32
+  const inner = []
+  const outer = []
+  for (let k = 0; k <= N; k++) {
+    const t = k / N
+    const x = at(t, 0)
+    const y = at(t, 1)
+    let tx = slope(t, 0)
+    let ty = slope(t, 1)
+    const l = Math.hypot(tx, ty) || 1
+    tx /= l
+    ty /= l
+    const hw = widthAt(t) / 2
+    inner.push([x - ty * hw, y + tx * hw])
+    outer.push([x + ty * hw, y - tx * hw])
+  }
+  const shape = new THREE.Shape()
+  shape.moveTo(outer[0][0], outer[0][1])
+  for (let k = 1; k <= N; k++) shape.lineTo(outer[k][0], outer[k][1])
+  for (let k = N - 1; k >= 0; k--) shape.lineTo(inner[k][0], inner[k][1])
+  for (let k = 0; k <= N; k++) shape.lineTo(-inner[k][0], inner[k][1])
+  for (let k = N - 1; k >= 0; k--) shape.lineTo(-outer[k][0], outer[k][1])
+  shape.quadraticCurveTo(0, -0.14, outer[0][0], outer[0][1])
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: 0.026,
+    bevelEnabled: true,
+    bevelThickness: 0.007,
+    bevelSize: 0.006,
+    bevelSegments: 2,
+    curveSegments: 8,
+  })
+  geo.translate(0, 0, -0.013)
+  const creased = toCreasedNormals(geo, 0.6)
+  if (creased !== geo) geo.dispose()
+  return creased
+}
+
+/** A sunburst of broad pointed rays, long and short by turns, as a thin gilt plate. */
+function sunburstGeometry() {
+  const shape = new THREE.Shape()
+  // Broad, pointed petal rays, as brushed in gold leaf
+  const rays = 12
+  for (let i = 0; i <= rays * 2; i++) {
+    const a = (i / (rays * 2)) * Math.PI * 2 + 0.16
+    const r = i % 2 ? 0.03 : i % 4 === 0 ? 0.08 : 0.06
+    const x = Math.cos(a) * r
+    const y = Math.sin(a) * r
+    if (i === 0) shape.moveTo(x, y)
+    else shape.lineTo(x, y)
+  }
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: 0.003,
+    bevelEnabled: true,
+    bevelThickness: 0.0015,
+    bevelSize: 0.0012,
+    bevelSegments: 1,
+  })
+  const creased = toCreasedNormals(geo, 0.6)
   if (creased !== geo) geo.dispose()
   return creased
 }
@@ -715,6 +819,212 @@ const ACTION_DEFS = {
     duration: 0.7,
     keys: [{ t: 0.4, headPitch: 0.17, lookGain: 0.3 }],
   },
+  // S — whirlwind: wind up, then a full turn with the blade held out flat,
+  // finishing in a low guard.
+  spin: {
+    duration: 1.6,
+    spin: [0.24, 0.72, -Math.PI * 2],
+    keys: [
+      {
+        t: 0.18,
+        R: [0.5, 0.42, 0.34],
+        blade: [[0.55, 0.05, -0.83]],
+        L: [-0.45, 0.32, 0.32],
+        twoHand: 0,
+        crouch: 0.22,
+        twist: 0.4,
+        lean: 0.06,
+        eyeGlow: 1.3,
+        lookGain: 0,
+      },
+      {
+        t: 0.3,
+        R: [0.66, 0.5, 0.14],
+        blade: [[1, 0.04, 0.12]],
+        L: [-0.55, 0.3, 0.1],
+        twoHand: 0,
+        crouch: 0.16,
+        twist: 0,
+        lean: 0,
+        glint: 1,
+        eyeGlow: 1.6,
+        eyeOpen: 0.5,
+        eyeTilt: 0.18,
+        lookGain: 0,
+      },
+      {
+        t: 0.68,
+        R: [0.66, 0.5, 0.14],
+        blade: [[1, 0.04, 0.12]],
+        L: [-0.55, 0.3, 0.1],
+        twoHand: 0,
+        crouch: 0.16,
+        glint: 1,
+        eyeGlow: 1.6,
+        eyeOpen: 0.5,
+        lookGain: 0,
+      },
+      {
+        t: 0.84,
+        R: [0.4, 0.2, 0.55],
+        blade: [[0.4, -0.5, 0.77]],
+        L: [-0.45, 0.2, 0.36],
+        twoHand: 0,
+        crouch: 0.24,
+        lean: 0.1,
+        glint: 0.3,
+        eyeGlow: 1.2,
+      },
+    ],
+  },
+  // J — leap: crouch, spring up with the blade raised high, land low.
+  leap: {
+    duration: 1.4,
+    keys: [
+      {
+        t: 0.2,
+        R: [0.52, 0.24, 0.32],
+        blade: [[0.4, -0.6, 0.69]],
+        L: [-0.5, 0.24, 0.3],
+        twoHand: 0,
+        crouch: 0.34,
+        lean: 0.16,
+        lift: 0,
+        eyeGlow: 1.1,
+      },
+      {
+        t: 0.42,
+        R: [0.86, 1.18, 0.12],
+        blade: [[0.18, 0.97, 0.12]],
+        L: [-0.62, 0.9, 0.14],
+        twoHand: 0,
+        crouch: 0,
+        lean: -0.08,
+        lift: 0.55,
+        headPitch: -0.14,
+        glint: 1,
+        eyeGlow: 1.6,
+        eyeTilt: -0.08,
+        heat: -0.4,
+      },
+      {
+        t: 0.56,
+        R: [0.86, 1.18, 0.12],
+        blade: [[0.18, 0.97, 0.12]],
+        L: [-0.62, 0.9, 0.14],
+        twoHand: 0,
+        crouch: 0,
+        lean: -0.06,
+        lift: 0.5,
+        headPitch: -0.12,
+        glint: 0.8,
+        eyeGlow: 1.5,
+        heat: -0.4,
+      },
+      {
+        t: 0.76,
+        R: [0.55, 0.3, 0.46],
+        blade: [[0.5, -0.3, 0.81]],
+        L: [-0.46, 0.22, 0.4],
+        twoHand: 0,
+        crouch: 0.3,
+        lean: 0.14,
+        lift: 0,
+        eyeGlow: 1.2,
+      },
+    ],
+  },
+  // T — thrust: draw the hands back, then lunge forward, both hands on the
+  // grip, driving the point straight at the viewer.
+  thrust: {
+    duration: 1.3,
+    keys: [
+      {
+        t: 0.22,
+        R: [0.12, 0.28, 0.72],
+        blade: [[0, 0.12, 1], [0, -1, 0]],
+        twoHand: 1,
+        crouch: 0.18,
+        twist: 0.18,
+        lean: 0.02,
+        eyeOpen: 0.55,
+        eyeGlow: 1.2,
+        eyeTilt: 0.16,
+      },
+      {
+        t: 0.4,
+        R: [0.05, 0.32, 0.98],
+        blade: [[0, 0.05, 1], [0, -1, 0]],
+        twoHand: 1,
+        crouch: 0.3,
+        splay: 0.2,
+        twist: -0.05,
+        lean: 0.22,
+        glint: 1,
+        eyeOpen: 0.45,
+        eyeGlow: 1.7,
+        eyeTilt: 0.22,
+        heat: 0.5,
+        lookGain: 0,
+      },
+      {
+        t: 0.62,
+        R: [0.05, 0.32, 0.98],
+        blade: [[0, 0.05, 1], [0, -1, 0]],
+        twoHand: 1,
+        crouch: 0.28,
+        splay: 0.2,
+        lean: 0.2,
+        glint: 0.5,
+        eyeGlow: 1.5,
+        heat: 0.4,
+        lookGain: 0,
+      },
+    ],
+  },
+  // B — salute: the blade raised upright before the face in both hands,
+  // then lowered for a deep bow.
+  salute: {
+    duration: 2.6,
+    keys: [
+      {
+        t: 0.18,
+        R: [0.1, 0.34, 0.66],
+        blade: [[0, 0.93, 0.37]],
+        twoHand: 1,
+        headPitch: 0.04,
+        eyeOpen: 0.7,
+        eyeGlow: 1.1,
+        glint: 0.6,
+        lookGain: 0,
+      },
+      {
+        t: 0.42,
+        R: [0.1, 0.34, 0.66],
+        blade: [[0, 0.93, 0.37]],
+        twoHand: 1,
+        headPitch: 0.04,
+        eyeOpen: 0.7,
+        eyeGlow: 1.1,
+        glint: 0.6,
+        lookGain: 0,
+      },
+      ...[0.62, 0.84].map((t) => ({
+        t,
+        lean: 0.4,
+        headPitch: 0.12,
+        R: hangingHand(1, 0.4),
+        L: hangingHand(-1, 0.4),
+        bladeLean: 0.4,
+        twoHand: 0,
+        crouch: 0,
+        eyeOpen: 0.55,
+        eyeGlow: 0.6,
+        sway: 0.3,
+        lookGain: 0,
+      })),
+    ],
+  },
   // A small spring off the heels.
   hop: {
     duration: 0.6,
@@ -758,6 +1068,7 @@ const ACTIONS = Object.fromEntries(
     name,
     {
       duration: def.duration,
+      spin: def.spin || null,
       keys: def.keys.map((k) => {
         const s = {}
         for (const ch of SCALARS) if (ch in k) s[ch] = k[ch]
@@ -1133,13 +1444,6 @@ export default function Samurai3D() {
         normalMap: maps.strawN,
         normalScale: flat(1),
       }),
-      // Horsehair for the moustache: pale, soft and slightly glossy.
-      hair: woven('--samurai-bowl', '#e8e1d4', {
-        roughness: 0.72,
-        sheen: 0.8,
-        sheenRoughness: 0.4,
-        normalScale: flat(0.2),
-      }),
       kusari: woven('--samurai-armor', '#39414f', {
         metalness: 0.8,
         roughness: 0.5,
@@ -1179,12 +1483,6 @@ export default function Samurai3D() {
       }),
       metal: metallic('--samurai-armor', '#39414f', { roughness: 0.44 }),
       metalDark: metallic('--samurai-armor-dark', '#22272f', { roughness: 0.4 }),
-      // The cranium is matte iron; the glossier mask plates stand out on it.
-      face: metallic('--samurai-face', '#2f3642', {
-        roughness: 0.58,
-        normalMap: scaled(maps.ironN, 4),
-        normalScale: flat(0.2),
-      }),
       // Polished metals get a stronger reflection than the forged iron.
       gold: metallic('--samurai-gold', '#e0a63a', {
         metalness: 1,
@@ -1214,6 +1512,48 @@ export default function Samurai3D() {
     mats.gold.userData.wear = 0.15
     mats.steel.userData.wear = 0
     mats.eye.userData.wear = 0
+
+    // The kabuto and menpō: black urushi flecked with gold leaf. The colour
+    // is all in the map (black ground, gold flakes), so the material is white.
+    const helmetFinish = (extra) => {
+      const m = lacquered('--samurai-helmet-tint', '#ffffff', {
+        roughness: 0.34,
+        clearcoatRoughness: 0.05,
+        envMapIntensity: 0.75,
+        map: maps.flakeC,
+        roughnessMap: maps.flakeR,
+        normalScale: flat(0.25),
+        ...extra,
+      })
+      m.userData.wear = 0.2
+      return m
+    }
+    mats.helmet = helmetFinish()
+    // Spheres and tubes carry 0..1 UVs, so they take the flakes at a finer repeat.
+    mats.helmetRound = helmetFinish({
+      map: scaled(maps.flakeC, 8),
+      roughnessMap: scaled(maps.flakeR, 8),
+      normalMap: scaled(maps.lacquerN, 6),
+    })
+    mats.helmetLame = helmetFinish({ normalMap: maps.kozaneN, normalScale: flat(0.72) })
+    // The crest: gilt plate, engraved all over.
+    mats.crest = metallic('--samurai-gold', '#e0a63a', {
+      metalness: 1,
+      roughness: 0.3,
+      map: maps.engraveC,
+      roughnessMap: maps.grain,
+      normalMap: maps.engraveN,
+      normalScale: flat(0.9),
+      envMapIntensity: 1.8,
+    })
+    mats.crest.userData.wear = 0.1
+    mats.helmetLacing = woven('--samurai-helmet-lacing', '#232a3d', {
+      roughness: 0.6,
+      sheenRoughness: 0.4,
+      sheenColor: new THREE.Color(0x6b7a99),
+      normalMap: maps.braidN,
+      normalScale: flat(0.9),
+    })
     // Lames swap in the scale-textured lacquer of the same colour.
     const LAME = new Map([
       [mats.red, mats.redLame],
@@ -1389,6 +1729,7 @@ export default function Samurai3D() {
         cordsPer = 3,
         thickness = 0.024,
         cross = true,
+        lacing = mats.rope,
       }
     ) => {
       const group = new THREE.Group()
@@ -1437,7 +1778,7 @@ export default function Samurai3D() {
           )
         }
       }
-      lace(group, segments)
+      lace(group, segments, lacing)
 
       if (trim) {
         const edge = plate(
@@ -1998,7 +2339,7 @@ export default function Samurai3D() {
     })
 
     /* ================================================================
-       Head — a sculpted iron menpō with lit eye slits
+       Head — a black lacquered menpō with lit eye slits
        ================================================================ */
     const headRig = new THREE.Group()
     headRig.position.y = HEAD_Y - HIP_Y
@@ -2012,7 +2353,7 @@ export default function Samurai3D() {
     const FACE_SZ = 0.94
     const faceRing = (y) => Math.sqrt(Math.max(FACE_R * FACE_R - (y / FACE_SY) ** 2, 0.02))
 
-    const face = mesh(new THREE.SphereGeometry(FACE_R, 48, 32), mats.face)
+    const face = mesh(new THREE.SphereGeometry(FACE_R, 48, 32), mats.helmetRound)
     face.scale.set(1, FACE_SY, FACE_SZ)
     headRig.add(face)
 
@@ -2026,7 +2367,7 @@ export default function Samurai3D() {
       faceRing(0.215) + 0.014,
       0.09,
       arc(FRONT, Math.PI * 0.9),
-      mats.metal,
+      mats.helmet,
       0.03
     )
     brow.position.y = 0.26
@@ -2038,7 +2379,7 @@ export default function Samurai3D() {
       faceRing(0.02) + 0.01,
       0.19,
       arc(FRONT, Math.PI * 0.84),
-      mats.metalDark,
+      mats.helmet,
       0.028
     )
     eyeBand.position.y = 0.115
@@ -2068,7 +2409,7 @@ export default function Samurai3D() {
       glows.push(glow)
     })
 
-    // Cheek plates, each riveted at the centre
+    // Cheek plates
     ;[-1, 1].forEach((side) => {
       const a = side * 1.0
       const cheek = plate(
@@ -2076,17 +2417,15 @@ export default function Samurai3D() {
         faceRing(-0.24) + 0.012,
         0.3,
         arc(a, 0.55),
-        mats.metal,
+        mats.helmet,
         0.024
       )
       cheek.position.y = -0.09
       mask.add(cheek)
-      const r = faceRing(-0.09) + 0.03
-      stud(mask, Math.sin(a) * r, -0.09, Math.cos(a) * r, a, 0.7)
     })
 
     // Nose ridge
-    const nose = mesh(new THREE.ConeGeometry(0.075, 0.2, 24), mats.metal)
+    const nose = mesh(new THREE.ConeGeometry(0.075, 0.2, 24), mats.helmetRound)
     nose.position.set(0, -0.02, 0.42)
     nose.rotation.x = -0.42
     nose.scale.x = 0.85
@@ -2095,46 +2434,37 @@ export default function Samurai3D() {
     // Mouth guard: tapers in toward the chin, with three breathing slots
     const GUARD_TOP = faceRing(-0.05) + 0.012
     const GUARD_BOT = faceRing(-0.35) + 0.012
-    const guard = plate(GUARD_TOP, GUARD_BOT, 0.3, arc(FRONT, Math.PI * 0.72), mats.metalDark, 0.03)
+    const guard = plate(GUARD_TOP, GUARD_BOT, 0.3, arc(FRONT, Math.PI * 0.72), mats.helmet, 0.03)
     guard.position.y = -0.2
     mask.add(guard)
 
     ;[-0.115, -0.165, -0.215].forEach((yy) => {
       const t = (-0.05 - yy) / 0.3
       const r = GUARD_TOP + (GUARD_BOT - GUARD_TOP) * t + 0.016
-      const vent = plate(r - 0.004, r + 0.004, 0.02, arc(FRONT, 0.62), mats.metal, 0.012, 12)
+      const vent = plate(r - 0.004, r + 0.004, 0.02, arc(FRONT, 0.62), mats.helmet, 0.012, 12)
       vent.position.y = yy
       mask.add(vent)
     })
 
-    // Horsehair moustache: a tuft of tapered strands fanning out from under
-    // the nose, held just clear of the mouth guard so every strand shows
-    const whiskers = []
+    // Gold sunbursts lacquered onto the cheeks, either side of the nose.
+    // They lie over the eye band and the mouth guard, which stand proud of
+    // the skull there, so the whole burst shows.
+    const burst = track(sunburstGeometry())
     ;[-1, 1].forEach((side) => {
-      for (let j = 0; j < 7; j++) {
-        const k = j / 6
-        const lift = 1.06 + k * 0.02
-        const path = new THREE.CatmullRomCurve3([
-          new THREE.Vector3(side * 0.03, -0.08 - k * 0.014, 0.44),
-          new THREE.Vector3(side * (0.1 + k * 0.03) * lift, -0.095 - k * 0.03, (0.43 - k * 0.02) * lift),
-          new THREE.Vector3(side * (0.17 + k * 0.05) * lift, -0.135 - k * 0.06, (0.375 - k * 0.035) * lift),
-          new THREE.Vector3(side * (0.21 + k * 0.06) * lift, -0.19 - k * 0.08, (0.32 - k * 0.05) * lift),
-        ])
-        const strand = taperTube(
-          new THREE.TubeGeometry(path, 16, 0.0095, 6, false),
-          path,
-          16,
-          6,
-          (t) => 1 - t * 0.8
-        )
-        whiskers.push(strand)
-      }
+      const a = side * 0.53
+      const yy = -0.022
+      const r = Math.max(faceRing(0.02) + 0.02, GUARD_TOP + 0.012)
+      const sun = new THREE.Mesh(burst, mats.gold)
+      sun.castShadow = sun.receiveShadow = true
+      sun.position.set(Math.sin(a) * r, yy, Math.cos(a) * r)
+      sun.rotation.order = 'YXZ'
+      sun.rotation.set(0.02, a, side * 0.35)
+      sun.scale.setScalar(1.15)
+      mask.add(sun)
     })
-    mask.add(mesh(mergeGeometries(whiskers), mats.hair))
-    whiskers.forEach((w) => w.dispose())
 
     // Chin
-    const chin = mesh(new THREE.SphereGeometry(0.065, 32, 20), mats.metalDark)
+    const chin = mesh(new THREE.SphereGeometry(0.065, 32, 20), mats.helmetRound)
     chin.position.set(0, -0.355, 0.235)
     chin.scale.set(1.3, 0.75, 0.8)
     mask.add(chin)
@@ -2148,8 +2478,8 @@ export default function Samurai3D() {
       flare: 0.6,
       span: arc(FRONT, Math.PI * 0.9),
       y: -0.37,
-      material: [mats.red, mats.redDark],
-      trim: mats.gold,
+      material: mats.helmetLame,
+      lacing: mats.helmetLacing,
       cordsPer: 4,
       thickness: 0.02,
     })
@@ -2171,7 +2501,7 @@ export default function Samurai3D() {
     })
 
     /* ================================================================
-       Kabuto — ridged bowl, visor, laced shikoro, gold horns
+       Kabuto — black lacquer flecked with gold, a broad engraved crest
        ================================================================ */
     const helmet = new THREE.Group()
     helmet.position.y = 0.14
@@ -2184,130 +2514,46 @@ export default function Samurai3D() {
 
     const bowl = mesh(
       new THREE.SphereGeometry(0.6, 72, 36, 0, Math.PI * 2, 0, Math.PI * 0.5),
-      mats.bowl
+      mats.helmetRound
     )
     bowlRig.add(bowl)
 
-    // Suji-bachi: the bowl is riveted from plates, each seam a raised ridge
-    const ribCurve = new THREE.CatmullRomCurve3(
+    // A few low seams where the bowl's plates meet, one running up the front
+    const seamCurve = new THREE.CatmullRomCurve3(
       Array.from({ length: 9 }, (_, i) => {
-        const phi = 0.17 + (i / 8) * (Math.PI / 2 - 0.19)
+        const phi = 0.12 + (i / 8) * (Math.PI / 2 - 0.14)
         return new THREE.Vector3(Math.sin(phi) * 0.598, Math.cos(phi) * 0.598, 0)
       })
     )
-    const rib = taperTube(new THREE.TubeGeometry(ribCurve, 24, 0.011, 6), ribCurve, 24, 6, (t) =>
-      0.5 + t * 0.5
+    const seam = taperTube(new THREE.TubeGeometry(seamCurve, 24, 0.009, 6), seamCurve, 24, 6, (t) =>
+      0.6 + t * 0.4
     )
-    const RIBS = 24
+    const SEAMS = 8
     bowlRig.add(
       mesh(
         mergeCopies(
-          rib,
-          Array.from({ length: RIBS }, (_, i) =>
-            new THREE.Matrix4().makeRotationY((i / RIBS) * Math.PI * 2)
-          )
+          seam,
+          Array.from({ length: SEAMS }, (_, i) => new THREE.Matrix4().makeRotationY((i / SEAMS) * Math.PI * 2))
         ),
-        mats.bowl
+        mats.helmetRound
       )
     )
-    rib.dispose()
+    seam.dispose()
 
-    // Hoshi: rows of rivet heads down every plate, smaller toward the crown
-    const hoshi = new THREE.SphereGeometry(1, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2)
-    const hoshiAt = []
-    const UP = new THREE.Vector3(0, 1, 0)
-    for (let c = 0; c < RIBS; c++) {
-      const a = ((c + 0.5) / RIBS) * Math.PI * 2
-      for (let k = 0; k < 5; k++) {
-        const phi = 0.55 + k * 0.2
-        const n = new THREE.Vector3(Math.sin(phi) * Math.sin(a), Math.cos(phi), Math.sin(phi) * Math.cos(a))
-        const sz = 0.006 + k * 0.0018
-        hoshiAt.push(
-          new THREE.Matrix4().compose(
-            n.clone().multiplyScalar(0.598),
-            new THREE.Quaternion().setFromUnitVectors(UP, n),
-            new THREE.Vector3(sz, sz, sz)
-          )
-        )
-      }
-    }
-    bowlRig.add(mesh(mergeCopies(hoshi, hoshiAt), mats.bowl))
-    hoshi.dispose()
-
-    // Shinodare: three gilt strips running down the front ridges
-    const shinodareCurve = new THREE.CatmullRomCurve3(
-      Array.from({ length: 7 }, (_, i) => {
-        const phi = 0.4 + (i / 6) * (Math.PI / 2 - 0.42)
-        return new THREE.Vector3(Math.sin(phi) * 0.607, Math.cos(phi) * 0.607, 0)
-      })
-    )
-    const shinodare = taperTube(
-      new THREE.TubeGeometry(shinodareCurve, 24, 0.016, 8),
-      shinodareCurve,
-      24,
-      8,
-      (t) => 0.55 + t * 0.45
-    )
-    bowlRig.add(
-      mesh(
-        mergeCopies(
-          shinodare,
-          [-1, 0, 1].map((i) => new THREE.Matrix4().makeRotationY((i / RIBS) * Math.PI * 2))
-        ),
-        mats.gold
-      )
-    )
-    shinodare.dispose()
-
-    // Koshimaki: the iron band around the base, with a rivet at every ridge
-    const band = plate(0.615, 0.615, 0.06, [0, Math.PI * 2], mats.metalDark, 0.03, 96)
+    // Koshimaki: a raised band round the base of the bowl
+    const band = plate(0.615, 0.615, 0.06, [0, Math.PI * 2], mats.helmet, 0.03, 96)
     band.position.y = 0.19
     helmet.add(band)
 
-    const rivet = new THREE.SphereGeometry(0.016, 10, 6)
-    helmet.add(
-      mesh(
-        mergeCopies(
-          rivet,
-          Array.from({ length: RIBS }, (_, i) => {
-            const a = (i / RIBS) * Math.PI * 2
-            return new THREE.Matrix4().makeTranslation(
-              Math.sin(a) * 0.622,
-              0.19,
-              Math.cos(a) * 0.622
-            )
-          })
-        ),
-        mats.gold
-      )
-    )
-    rivet.dispose()
-
-    // Tehen-kanamono: a tiered gilt ring at the crown
-    const tehen = mesh(new THREE.TorusGeometry(0.09, 0.028, 16, 48), mats.gold)
-    tehen.position.y = 0.66
-    tehen.rotation.x = Math.PI / 2
-    helmet.add(tehen)
-    const tehenTop = mesh(new THREE.TorusGeometry(0.055, 0.02, 14, 40), mats.gold)
-    tehenTop.position.y = 0.695
-    tehenTop.rotation.x = Math.PI / 2
-    helmet.add(tehenTop)
-
-    // Mabisashi: a peak that grows out of the bowl just above the band and
-    // sweeps forward and down, edged in gold along its outer rim.
-    const visor = plate(0.6, 0.76, 0.1, arc(FRONT, Math.PI * 0.82), mats.redDark, 0.022, 36)
+    // Mabisashi: the peak, sweeping forward and down, with a rolled lip
+    const visor = plate(0.6, 0.76, 0.1, arc(FRONT, Math.PI * 0.82), mats.helmet, 0.022, 36)
     visor.position.y = 0.23
     helmet.add(visor)
+    const visorLip = plate(0.76, 0.772, 0.022, arc(FRONT, Math.PI * 0.82), mats.helmet, 0.03, 36)
+    visorLip.position.y = 0.183
+    helmet.add(visorLip)
 
-    const visorEdge = plate(0.76, 0.775, 0.026, arc(FRONT, Math.PI * 0.82), mats.gold, 0.034, 36)
-    visorEdge.position.y = 0.181
-    helmet.add(visorEdge)
-
-    ;[-0.9, -0.45, 0, 0.45, 0.9].forEach((a) => {
-      stud(helmet, Math.sin(a) * 0.69, 0.235, Math.cos(a) * 0.69, a, 0.65)
-    })
-
-    // Shikoro: four laced lames guarding the back of the neck
+    // Shikoro: black lames guarding the back of the neck, closely laced
     const shikoro = lamellar(helmet, {
       rows: 4,
       rowH: 0.08,
@@ -2316,73 +2562,64 @@ export default function Samurai3D() {
       flare: 0.34,
       span: arc(BACK, Math.PI * 1.44),
       y: 0.13,
-      material: [mats.red, mats.redDark, mats.red, mats.red],
-      trim: mats.gold,
-      cordsPer: 8,
+      material: mats.helmetLame,
+      lacing: mats.helmetLacing,
+      cordsPer: 12,
     })
     shikoro.position.z = -0.08
     shikoro.rotation.x = 0.22
 
-    // Fukigaeshi: small swept wings beside the visor, edged in gold and
-    // carrying the crest
+    // Fukigaeshi: the lames turned back beside the face into broad wings
     ;[-1, 1].forEach((side) => {
-      const span = arc(side > 0 ? RIGHT : LEFT, Math.PI * 0.7)
+      const span = arc(side > 0 ? RIGHT : LEFT, Math.PI * 0.72)
       const wingRig = new THREE.Group()
-      wingRig.position.set(side * 0.62, 0.3, 0.1)
-      wingRig.rotation.set(0.1, 0, side * 0.3)
+      wingRig.position.set(side * 0.6, 0.06, 0.18)
+      wingRig.rotation.set(0.08, 0, side * 0.42)
       helmet.add(wingRig)
-
-      wingRig.add(plate(0.2, 0.22, 0.28, span, mats.red, 0.024))
-
-      const wingEdge = plate(0.2185, 0.22, 0.024, span, mats.gold, 0.034)
-      wingEdge.position.y = -0.128
-      wingRig.add(wingEdge)
-
-      const mon = mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.014, 32), mats.gold)
-      mon.position.set(side * 0.222, 0.01, 0)
-      mon.rotation.z = Math.PI / 2
-      wingRig.add(mon)
+      wingRig.add(plate(0.17, 0.27, 0.36, span, mats.helmet, 0.026))
+      const lip = plate(0.27, 0.272, 0.024, span, mats.helmet, 0.034)
+      lip.position.y = -0.168
+      wingRig.add(lip)
     })
 
-    // Maedate: two elegant gold horns, tapering to a point
+    // Maedate: a broad gilt crest, two swept blades rising from a
+    // chrysanthemum boss, engraved all over with scrolling clouds. It stands
+    // on the front of the bowl just above the peak, leaning back a little.
     const crest = new THREE.Group()
-    crest.position.set(0, 0.5, 0.12)
+    crest.position.set(0, 0.37, 0.6)
+    crest.rotation.x = -0.28
     helmet.add(crest)
+    crest.add(mesh(crestGeometry(), mats.crest))
 
-    const hornPath = (dir) =>
-      new THREE.CatmullRomCurve3([
-        new THREE.Vector3(dir * 0.05, 0, 0),
-        new THREE.Vector3(dir * 0.34, 0.14, 0),
-        new THREE.Vector3(dir * 0.58, 0.42, 0),
-        new THREE.Vector3(dir * 0.64, 0.78, 0),
-        new THREE.Vector3(dir * 0.54, 1.02, 0),
-        new THREE.Vector3(dir * 0.42, 1.12, 0),
-      ])
-
-    ;[-1, 1].forEach((dir) => {
-      const path = hornPath(dir)
-      const taper = (t) => 1.1 - t * 0.72
-      const horn = mesh(
-        taperTube(new THREE.TubeGeometry(path, 64, 0.078, 18, false), path, 64, 18, taper),
+    // Kiku boss: sixteen petals round a domed centre
+    const boss = new THREE.Group()
+    boss.position.z = 0.02
+    crest.add(boss)
+    const bossDisc = mesh(new THREE.CylinderGeometry(0.086, 0.092, 0.028, 40), mats.gold)
+    bossDisc.rotation.x = Math.PI / 2
+    boss.add(bossDisc)
+    const petal = new THREE.SphereGeometry(1, 10, 6)
+    boss.add(
+      mesh(
+        mergeCopies(
+          petal,
+          Array.from({ length: 16 }, (_, i) => {
+            const a = (i / 16) * Math.PI * 2
+            return new THREE.Matrix4().compose(
+              new THREE.Vector3(Math.sin(a) * 0.058, Math.cos(a) * 0.058, 0.016),
+              new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -a),
+              new THREE.Vector3(0.013, 0.03, 0.009)
+            )
+          })
+        ),
         mats.gold
       )
-      horn.scale.z = 0.55
-      crest.add(horn)
-
-      const tip = mesh(new THREE.SphereGeometry(0.078 * taper(1), 20, 14), mats.gold)
-      tip.position.copy(path.getPointAt(1))
-      tip.scale.z = 0.55
-      crest.add(tip)
-    })
-
-    const crestBase = mesh(new RoundedBoxGeometry(0.34, 0.15, 0.12, 5, 0.045), mats.gold)
-    crestBase.position.y = -0.02
-    crest.add(crestBase)
-
-    const crestDisc = mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.02, 40), mats.gold)
-    crestDisc.position.set(0, 0.07, 0.05)
-    crestDisc.rotation.x = Math.PI / 2
-    crest.add(crestDisc)
+    )
+    petal.dispose()
+    const bossDome = mesh(new THREE.SphereGeometry(0.03, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), mats.gold)
+    bossDome.rotation.x = Math.PI / 2
+    bossDome.position.z = 0.016
+    boss.add(bossDome)
 
     /* ================================================================
        Katana — held low in the right hand
@@ -3047,6 +3284,13 @@ export default function Samurai3D() {
       const drop = Math.cos(0.05) - Math.cos(alpha) * Math.cos(splay)
       samurai.position.y = -SIT_DROP * w + stand * (P.lift - drop) + Math.sin(t * 1.1) * 0.014 * sway
       samurai.rotation.z = Math.sin(t * 0.5) * 0.01 * sway
+      // A whirlwind turns the whole figure; a full turn ends where it began.
+      let turn = 0
+      if (action?.def.spin) {
+        const [from, to, angle] = action.def.spin
+        turn = smootherstep(clamp(((now - action.start) / action.def.duration - from) / (to - from), 0, 1)) * angle
+      }
+      samurai.rotation.y = turn
 
       /* Body: lean, turn, breathing, armour that settles with it */
       const bodyYaw =
@@ -3211,11 +3455,10 @@ export default function Samurai3D() {
       mats.rope.color.copy(cssColor('--samurai-rope', '#b8935a'))
       mats.straw.color.copy(cssColor('--samurai-rope', '#b8935a'))
       mats.bowl.color.copy(cssColor('--samurai-bowl', '#e8e1d4'))
-      mats.hair.color.copy(cssColor('--samurai-bowl', '#e8e1d4'))
       mats.steel.color.copy(cssColor('--samurai-steel', '#e9edf4'))
       mats.cloth.color.copy(cssColor('--samurai-cloth', '#a8322a'))
       mats.leather.color.copy(cssColor('--samurai-leather', '#4a3b33'))
-      mats.face.color.copy(cssColor('--samurai-face', '#2f3642'))
+      mats.helmetLacing.color.copy(cssColor('--samurai-helmet-lacing', '#232a3d'))
       // The eyes are tinted by mood every frame, starting from this colour.
       eyeBase.copy(cssColor('--samurai-eye', '#ffb347'))
       wake()
@@ -3312,6 +3555,12 @@ export default function Samurai3D() {
         {tip && (
           <span className="samurai-tip" id="samurai-tip" role="tooltip">
             Your guide through the portfolio.
+            <span className="samurai-tip-keys">
+              Moves:{' '}
+              {MOVES.map((m) => (
+                <kbd key={m.key}>{m.key}</kbd>
+              ))}
+            </span>
           </span>
         )}
         <button

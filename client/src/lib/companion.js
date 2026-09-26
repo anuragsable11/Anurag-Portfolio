@@ -90,7 +90,10 @@ export function clearMood() {
   }
 }
 
-/** A one-shot performance: 'slash', 'draw', 'bow' or 'nod'. */
+/**
+ * A one-shot performance: 'slash', 'draw', 'spin', 'leap', 'thrust',
+ * 'salute', 'bow', 'hop' or 'nod'.
+ */
 export function act(name) {
   state.action = { id: ++actionId, name }
   emit()
@@ -201,26 +204,48 @@ export function reportSkill(group) {
 /* ---- Wiring: one call from the app starts everything page-wide ---- */
 
 const EDITABLE = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]'
+
+/** The samurai's moves: a key for each, shown as keycaps under the hero. */
+export const MOVES = Object.freeze([
+  { key: 'K', action: 'draw', label: 'Draw', title: 'Draw-cut' },
+  { key: 'S', action: 'spin', label: 'Spin', title: 'Whirlwind spin' },
+  { key: 'J', action: 'leap', label: 'Leap', title: 'Leap with the blade raised' },
+  { key: 'T', action: 'thrust', label: 'Thrust', title: 'Two-handed thrust' },
+  { key: 'B', action: 'salute', label: 'Salute', title: 'Salute and bow' },
+])
+const MOVE_FOR_KEY = Object.fromEntries(MOVES.map((m) => [m.key.toLowerCase(), m.action]))
+
+let lastMove = { name: null, at: -Infinity }
+/**
+ * Plays one of the moves. A move is not restarted while it is still
+ * playing, and moves cannot be fired faster than a person could follow.
+ */
+export function playMove(name) {
+  const now = typeof performance === 'undefined' ? Date.now() : performance.now()
+  if (now - lastMove.at < (name === lastMove.name ? 1500 : 400)) return false
+  lastMove = { name, at: now }
+  act(name)
+  return true
+}
+
 const SKILL_TARGETS = '[data-skill-group], .project-stack .chip'
 
 /**
  * Starts the page-wide listeners: which section is in view, hovering or
- * focusing a skill, and one undocumented key. Returns a disposer.
+ * focusing a skill, and the move keys. Returns a disposer.
  */
 export function startCompanion(sectionIds) {
   if (typeof window === 'undefined') return () => {}
   const stopSections = observeSections(sectionIds)
 
-  // K draws the katana. Typing in a field, shortcuts and key repeat are left alone.
-  let lastDraw = 0
+  // A key for each move. Typing in a field, shortcuts and key repeat are
+  // left alone.
   const onKeyDown = (e) => {
-    if (e.key !== 'k' && e.key !== 'K') return
+    const name = MOVE_FOR_KEY[e.key?.toLowerCase()]
+    if (!name) return
     if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return
     if (e.target instanceof Element && e.target.closest(EDITABLE)) return
-    const now = performance.now()
-    if (now - lastDraw < 1600) return
-    lastDraw = now
-    act('draw')
+    playMove(name)
   }
 
   const skillOf = (el) => {
