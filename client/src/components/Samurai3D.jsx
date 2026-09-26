@@ -109,310 +109,130 @@ const clamp = THREE.MathUtils.clamp
 const smootherstep = (k) => k * k * k * (k * (k * 6 - 15) + 10)
 
 /* ================================================================
-   Procedural surface maps
+   Surface maps — generated in a worker, off the main thread
    ================================================================ */
 
-/** Seeded, so the wear pattern is identical on every load. */
-function rng(seed) {
-  let s = seed >>> 0
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0
-    let t = s
-    t = Math.imul(t ^ (t >>> 15), t | 1)
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
+// Phones get half-resolution maps: a quarter of the memory and the work.
+const TEXTURE_QUALITY =
+  typeof window !== 'undefined' &&
+  (window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 720)
+    ? 'low'
+    : 'high'
 
-/** Tileable value noise, summed over octaves of [cells, weight], in 0..1. */
-function tileNoise(size, rand, octaves) {
-  const out = new Float32Array(size * size)
-  let total = 0
-  for (const [cells, weight] of octaves) {
-    const grid = Float32Array.from({ length: cells * cells }, rand)
-    const at = (x, y) => grid[(y % cells) * cells + (x % cells)]
-    for (let y = 0; y < size; y++) {
-      const gy = (y / size) * cells
-      const y0 = Math.floor(gy)
-      const fy = gy - y0
-      const sy = fy * fy * (3 - 2 * fy)
-      for (let x = 0; x < size; x++) {
-        const gx = (x / size) * cells
-        const x0 = Math.floor(gx)
-        const fx = gx - x0
-        const sx = fx * fx * (3 - 2 * fx)
-        const top = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * sx
-        const bottom = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * sx
-        out[y * size + x] += (top + (bottom - top) * sy) * weight
-      }
+/** Asks a worker for the surface maps; falls back to generating them here. */
+function requestTextures(quality) {
+  const inline = () => import('../lib/samurai-textures.js').then((m) => m.generateTextures(quality))
+  return new Promise((resolve) => {
+    let worker
+    try {
+      worker = new Worker(new URL('../lib/samurai-textures.worker.js', import.meta.url), {
+        type: 'module',
+      })
+    } catch {
+      resolve(inline())
+      return
     }
-    total += weight
-  }
-  for (let i = 0; i < out.length; i++) out[i] /= total
-  return out
-}
-
-function canvasTexture(
-  width,
-  draw,
-  { srgb = false, repeat = 1, height = width, anisotropy = 4, clamp: clampEdges = false } = {}
-) {
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-  draw(canvas.getContext('2d'), width, height)
-  const tex = new THREE.CanvasTexture(canvas)
-  tex.wrapS = tex.wrapT = clampEdges ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping
-  tex.repeat.set(repeat, repeat)
-  tex.anisotropy = anisotropy
-  if (srgb) tex.colorSpace = THREE.SRGBColorSpace
-  return tex
-}
-
-/** Writes a 0..1 field into the canvas as grey, remapped to [lo, hi]. */
-function paintField(ctx, size, field, lo, hi) {
-  const img = ctx.createImageData(size, size)
-  for (let i = 0; i < field.length; i++) {
-    const v = Math.round((lo + field[i] * (hi - lo)) * 255)
-    img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v
-    img.data[i * 4 + 3] = 255
-  }
-  ctx.putImageData(img, 0, 0)
-}
-
-function makeSurfaceMaps(anisotropy) {
-  const opts = (extra = {}) => ({ anisotropy, ...extra })
-
-  // Roughness variation: broad patches, mid-scale mottling and fine grain.
-  const grain = canvasTexture(
-    512,
-    (ctx, size) => {
-      const field = tileNoise(size, rng(11), [[6, 0.45], [24, 0.3], [96, 0.15], [256, 0.1]])
-      paintField(ctx, size, field, 0.74, 1)
-    },
-    opts()
-  )
-
-  // Colour mottling and hairline scratches — handled, not factory-new.
-  const mottle = canvasTexture(
-    512,
-    (ctx, size) => {
-      const rand = rng(23)
-      const field = tileNoise(size, rand, [[4, 0.55], [16, 0.3], [64, 0.15]])
-      paintField(ctx, size, field, 0.88, 1)
-      ctx.lineCap = 'round'
-      for (let i = 0; i < 110; i++) {
-        const x = rand() * size
-        const y = rand() * size
-        const len = 8 + rand() * 46
-        const a = rand() * Math.PI
-        ctx.strokeStyle = `rgba(0,0,0,${0.04 + rand() * 0.09})`
-        ctx.lineWidth = 0.4 + rand() * 0.8
-        ctx.beginPath()
-        ctx.moveTo(x, y)
-        ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len)
-        ctx.stroke()
-      }
-    },
-    opts({ srgb: true })
-  )
-
-  // Hammer marks for the iron: a fine grain, then shallow overlapping dimples,
-  // wrapped so they tile.
-  const hammer = canvasTexture(
-    512,
-    (ctx, size) => {
-      const rand = rng(37)
-      paintField(ctx, size, tileNoise(size, rand, [[64, 0.5], [256, 0.5]]), 0.44, 0.56)
-      for (let i = 0; i < 620; i++) {
-        const x = rand() * size
-        const y = rand() * size
-        const r = 7 + rand() * 16
-        const depth = 0.12 + rand() * 0.16
-        for (const ox of [-size, 0, size]) {
-          for (const oy of [-size, 0, size]) {
-            const g = ctx.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r)
-            g.addColorStop(0, `rgba(0,0,0,${depth})`)
-            g.addColorStop(0.7, `rgba(0,0,0,${depth * 0.35})`)
-            g.addColorStop(1, 'rgba(0,0,0,0)')
-            ctx.fillStyle = g
-            ctx.fillRect(x + ox - r, y + oy - r, r * 2, r * 2)
-          }
-        }
-      }
-    },
-    opts()
-  )
-
-  // Plain weave for the fabric: each thread shaded across its width.
-  const weave = canvasTexture(
-    128,
-    (ctx, size) => {
-      const n = 8
-      const cell = size / n
-      for (let y = 0; y < n; y++) {
-        for (let x = 0; x < n; x++) {
-          const across = (x + y) % 2 === 0
-          const g = across
-            ? ctx.createLinearGradient(0, y * cell, 0, (y + 1) * cell)
-            : ctx.createLinearGradient(x * cell, 0, (x + 1) * cell, 0)
-          g.addColorStop(0, '#404040')
-          g.addColorStop(0.5, '#d8d8d8')
-          g.addColorStop(1, '#404040')
-          ctx.fillStyle = g
-          ctx.fillRect(x * cell, y * cell, cell, cell)
-        }
-      }
-    },
-    opts({ repeat: 18 })
-  )
-
-  // Flat silk braid for the lacing: a chevron of diagonal strands.
-  const braid = canvasTexture(
-    64,
-    (ctx, size) => {
-      ctx.fillStyle = '#707070'
-      ctx.fillRect(0, 0, size, size)
-      ctx.lineWidth = 3
-      for (let i = -size; i < size * 2; i += 8) {
-        ctx.strokeStyle = '#d0d0d0'
-        ctx.beginPath()
-        ctx.moveTo(i, 0)
-        ctx.lineTo(i + size / 2, size / 2)
-        ctx.lineTo(i, size)
-        ctx.stroke()
-        ctx.strokeStyle = '#303030'
-        ctx.beginPath()
-        ctx.moveTo(i + 3, 0)
-        ctx.lineTo(i + 3 + size / 2, size / 2)
-        ctx.lineTo(i + 3, size)
-        ctx.stroke()
-      }
-    },
-    opts({ repeat: 6 })
-  )
-
-  // Woven straw for the sandal soles: coarse diagonal plaits.
-  const straw = canvasTexture(
-    64,
-    (ctx, size) => {
-      ctx.fillStyle = '#6a6a6a'
-      ctx.fillRect(0, 0, size, size)
-      for (let i = -size; i < size * 2; i += 10) {
-        for (const [c, o] of [
-          ['#c8c8c8', 0],
-          ['#2e2e2e', 4],
-        ]) {
-          ctx.strokeStyle = c
-          ctx.lineWidth = 3
-          ctx.beginPath()
-          ctx.moveTo(i + o, 0)
-          ctx.lineTo(i + o + size, size)
-          ctx.stroke()
-        }
-      }
-    },
-    opts({ repeat: 26 })
-  )
-
-  // Kusari: butted rings in a 4-in-1 stagger, lit from the top-left.
-  const chain = canvasTexture(
-    128,
-    (ctx, size) => {
-      ctx.fillStyle = '#5c5c5c'
-      ctx.fillRect(0, 0, size, size)
-      const n = 6
-      const cw = size / n
-      const rh = size / n
-      ctx.lineWidth = 2.8
-      for (let y = -1; y <= n; y++) {
-        for (let x = -1; x <= n; x++) {
-          const cx = (x + (y % 2 ? 0.5 : 0)) * cw + cw / 2
-          const cy = y * rh + rh / 2
-          ctx.strokeStyle = '#2a2a2a'
-          ctx.beginPath()
-          ctx.ellipse(cx + 1.3, cy + 1.3, cw * 0.43, rh * 0.37, 0.55, 0, Math.PI * 2)
-          ctx.stroke()
-          ctx.strokeStyle = '#e0e0e0'
-          ctx.beginPath()
-          ctx.ellipse(cx, cy, cw * 0.43, rh * 0.37, 0.55, 0, Math.PI * 2)
-          ctx.stroke()
-        }
-      }
-    },
-    opts({ repeat: 9 })
-  )
-
-  // The blade, in blade space: u runs from the spine (0) to the edge (1),
-  // v along the length. The ji is mirror-polished steel with faint
-  // polishing streaks; the hamon is a wavy gunome line, beyond which the ha
-  // is cloudy, brighter and matte; a misty nioi line marks the boundary and
-  // the shinogi ridge shows as a crisp step.
-  const BLADE_W = 256
-  const BLADE_H = 1024
-  const bladeRand = rng(71)
-  const cloud = tileNoise(256, bladeRand, [[4, 0.45], [16, 0.3], [64, 0.25]])
-  const streak = Float32Array.from({ length: BLADE_W }, bladeRand)
-  const wobble = tileNoise(256, bladeRand, [[3, 0.6], [12, 0.4]])
-  const hamonAt = (v) =>
-    0.6 +
-    0.075 * Math.sin(v * Math.PI * 2 * 9.5) +
-    0.03 * Math.sin(v * Math.PI * 2 * 26 + 1.3) +
-    (wobble[Math.floor(v * 255) * 256] - 0.5) * 0.12
-  const bladeField = (fn) => (ctx, w, h) => {
-    const img = ctx.createImageData(w, h)
-    for (let y = 0; y < h; y++) {
-      const v = y / h
-      const hm = hamonAt(v)
-      for (let x = 0; x < w; x++) {
-        const u = x / w
-        const d = u - hm
-        const c = cloud[(y % 256) * 256 + (x % 256)]
-        const s = streak[x]
-        const val = fn(u, d, c, s)
-        const i = (y * w + x) * 4
-        img.data[i] = img.data[i + 1] = img.data[i + 2] = Math.round(clamp(val, 0, 1) * 255)
-        img.data[i + 3] = 255
-      }
+    worker.onmessage = (e) => {
+      worker.terminate()
+      resolve(e.data)
     }
-    ctx.putImageData(img, 0, 0)
+    worker.onerror = () => {
+      worker.terminate()
+      resolve(inline())
+    }
+    worker.postMessage({ quality })
+  })
+}
+
+// Start as soon as this chunk loads, alongside the environment map.
+const texturesReady = requestTextures(TEXTURE_QUALITY).catch(() => null)
+
+// Lames carry one row of kozane scales each; eight scales span this width.
+const KOZANE_TILE = 0.28
+
+/**
+ * How each map is sampled. Plates carry world-scale UVs (UV_SCALE per
+ * unit), lames carry one row of scales per lame, and the primitives carry
+ * their own 0..1 UVs.
+ */
+const TEXTURE_SPEC = {
+  grain: { repeat: 2 },
+  mottle: { repeat: 1, srgb: true },
+  lacquerN: { repeat: 1 },
+  kozaneN: { repeat: 1, clampV: true },
+  ironN: { repeat: 1 },
+  ironR: { repeat: 1 },
+  weaveN: { repeat: 9 },
+  leatherN: { repeat: 3 },
+  braidN: { repeat: 6 },
+  chainN: { repeat: 9 },
+  strawN: { repeat: 26 },
+  woodN: { repeat: 1 },
+  fabricTone: { repeat: 2, srgb: true },
+  blade: { repeat: 1, srgb: true, clamp: true },
+  bladeRough: { repeat: 1, clamp: true },
+  glow: { repeat: 1, srgb: true, clamp: true },
+}
+
+/** Empty textures the materials can hold until the worker's pixels arrive. */
+function makeTextureSlots(anisotropy) {
+  const slots = {}
+  for (const [name, spec] of Object.entries(TEXTURE_SPEC)) {
+    const t = new THREE.DataTexture(new Uint8Array([128, 128, 255, 255]), 1, 1)
+    t.wrapS = spec.clamp ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping
+    t.wrapT = spec.clamp || spec.clampV ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping
+    t.repeat.set(spec.repeat, spec.clampV ? 1 : spec.repeat)
+    t.magFilter = THREE.LinearFilter
+    t.minFilter = THREE.LinearMipmapLinearFilter
+    t.generateMipmaps = true
+    t.anisotropy = anisotropy
+    if (spec.srgb) t.colorSpace = THREE.SRGBColorSpace
+    t.needsUpdate = true
+    slots[name] = t
   }
-  const nioi = (d) => Math.exp(-(d * d) / (2 * 0.011 * 0.011))
-  const ridge = (u) => Math.exp(-((u - 0.3) * (u - 0.3)) / (2 * 0.005 * 0.005))
-  const blade = canvasTexture(
-    BLADE_W,
-    bladeField((u, d, c, s) => {
-      let col = d < 0 ? 0.8 + s * 0.05 + (u < 0.3 ? 0.035 : 0) : 0.9 + c * 0.09
-      col = lerp(col, 1, nioi(d) * 0.9)
-      return lerp(col, 0.66, ridge(u) * 0.55)
-    }),
-    opts({ srgb: true, height: BLADE_H, clamp: true })
-  )
-  const bladeRough = canvasTexture(
-    BLADE_W,
-    bladeField((u, d, c, s) => {
-      const r = d < 0 ? 0.12 + s * 0.06 : 0.4 + c * 0.14
-      return lerp(r, 0.5, nioi(d))
-    }),
-    opts({ height: BLADE_H, clamp: true })
-  )
+  return slots
+}
 
-  // A soft halo for the eye slits.
-  const glow = canvasTexture(
-    64,
-    (ctx, size) => {
-      const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
-      g.addColorStop(0, 'rgba(255,255,255,1)')
-      g.addColorStop(0.3, 'rgba(255,255,255,0.4)')
-      g.addColorStop(0.7, 'rgba(255,255,255,0.08)')
-      g.addColorStop(1, 'rgba(255,255,255,0)')
-      ctx.fillStyle = g
-      ctx.fillRect(0, 0, size, size)
-    },
-    opts({ srgb: true, clamp: true })
-  )
+/** Pours the generated pixels into the slots (clones share the pixels). */
+function fillTextureSlots(slots, maps) {
+  if (!maps) return
+  for (const [name, t] of Object.entries(slots)) {
+    const m = maps[name]
+    if (!m) continue
+    t.image = { data: m.data, width: m.w, height: m.h }
+    t.needsUpdate = true
+  }
+}
 
-  return { grain, mottle, hammer, weave, braid, straw, chain, blade, bladeRough, glow }
+/** Smooth 1D value noise, for patchy edge wear along a plate. */
+function wearNoise(x) {
+  const i = Math.floor(x)
+  const f = x - i
+  const h = (n) => {
+    const v = Math.sin(n * 127.1 + 311.7) * 43758.5453
+    return v - Math.floor(v)
+  }
+  return h(i) + (h(i + 1) - h(i)) * f * f * (3 - 2 * f)
+}
+
+/** Pushes cloth-like folds into a cylinder: bunched rings and soft creases. */
+function foldCloth(geo, height, { rings = [], creases = 0.03, seed = 1 } = {}) {
+  const pos = geo.attributes.position
+  const v = new THREE.Vector3()
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i)
+    const t = v.y / height + 0.5
+    const a = Math.atan2(v.x, v.z)
+    let k =
+      1 +
+      creases *
+        Math.sin(a * 5 + seed + Math.sin(t * 7 + seed) * 1.5) *
+        (0.4 + 0.6 * Math.sin(Math.PI * t))
+    for (const [at, amp, width] of rings) k += amp * Math.exp(-(((t - at) / width) ** 2))
+    pos.setXYZ(i, v.x * k, v.y, v.z * k)
+  }
+  geo.computeVertexNormals()
+  return geo
 }
 
 /* ================================================================
@@ -423,8 +243,16 @@ function makeSurfaceMaps(anisotropy) {
  * A curved armour plate with real thickness and softened edges: an annular
  * sector extruded vertically, then tapered so it can flare like a skirt.
  * `rTop` / `rBottom` are the outer surface; thickness goes inward.
+ *
+ * UVs: in 'world' mode they are world-scale (UV_SCALE per unit) along the
+ * arc and up the plate, so tiled detail keeps one size on every plate; in
+ * 'lame' mode u runs along the arc (KOZANE_TILE per texture) and v from the
+ * plate's bottom (0) to its top (1), so each lame carries one row of kozane.
+ * A per-vertex `wear` value marks the edges and corners, where lacquer rubs
+ * through and iron is polished bright; it is turned into vertex colour when
+ * the part is baked.
  */
-function shellGeometry(rTop, rBottom, height, [start, sweep], thickness, segs) {
+function shellGeometry(rTop, rBottom, height, [start, sweep], thickness, segs, uvMode = 'world') {
   const r = (rTop + rBottom) / 2
   const inner = r - thickness
   const bevelThickness = Math.min(thickness * 0.5, height * 0.25)
@@ -465,9 +293,22 @@ function shellGeometry(rTop, rBottom, height, [start, sweep], thickness, segs) {
   }
 
   const uv = geo.attributes.uv
-  for (let i = 0; i < uv.count; i++) {
-    uv.setXY(i, uv.getX(i) * UV_SCALE, uv.getY(i) * UV_SCALE)
+  const wear = new Float32Array(pos.count)
+  const full = sweep >= Math.PI * 1.99
+  const seed = (rTop * 97 + height * 131 + sweep * 17) % 50
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i)
+    const y = pos.getY(i)
+    const a = Math.atan2(x, pos.getZ(i))
+    const along = a * r
+    if (uvMode === 'lame') uv.setXY(i, along / KOZANE_TILE, clamp(y / height + 0.5, 0, 1))
+    else uv.setXY(i, along * UV_SCALE, y * UV_SCALE)
+    const edgeY = THREE.MathUtils.smoothstep(Math.abs(y) / (height / 2), 0.55, 1)
+    const edgeA = full ? 0 : THREE.MathUtils.smoothstep(Math.abs(a) / (sweep / 2), 0.8, 1)
+    const patch = 0.2 + 0.8 * wearNoise(along * 38 + seed) * wearNoise(along * 11 + y * 25 + seed * 3)
+    wear[i] = Math.max(edgeY, edgeA) * patch
   }
+  geo.setAttribute('wear', new THREE.BufferAttribute(wear, 1))
 
   const creased = toCreasedNormals(geo, 0.9)
   if (creased !== geo) geo.dispose()
@@ -1100,23 +941,34 @@ export default function Samurai3D() {
     /* ================================================================
        Materials — four shader programs between them
        ================================================================ */
-    const maps = makeSurfaceMaps(maxAnisotropy)
+    const maps = makeTextureSlots(maxAnisotropy)
     const geos = new Set()
     const track = (g) => {
       geos.add(g)
       return g
     }
+    // A map reused at a different scale shares its pixels and GPU memory.
+    const extraMaps = []
+    const scaled = (t, repeat) => {
+      const c = t.clone()
+      c.repeat.set(repeat, repeat)
+      c.needsUpdate = true
+      extraMaps.push(c)
+      return c
+    }
+    const flat = (k) => new THREE.Vector2(k, k)
 
     // three.js compiles one program per distinct feature set, and on many
     // GPUs each compile costs hundreds of milliseconds. Every material below
     // is one of three families with identical map slots, so they share
-    // programs: vary colours and scalars freely, but keep the slots the same
-    // (and keep clearcoat / sheen above zero, since zero drops the feature).
-    const surface = { map: maps.mottle, roughnessMap: maps.grain }
+    // programs: vary colours, scalars and which texture fills a slot freely,
+    // but keep the slots the same (and keep clearcoat / sheen above zero,
+    // since zero drops the feature).
 
-    // Urushi lacquer (and waxed leather): pigment under a hard clear coat.
-    const lacquered = (token, fallback, extra = {}) =>
-      new THREE.MeshPhysicalMaterial({
+    // Urushi lacquer (and waxed leather, and the lacquered wooden saya):
+    // pigment over a finely textured base, under a smooth hard clear coat.
+    const lacquered = (token, fallback, extra = {}) => {
+      const m = new THREE.MeshPhysicalMaterial({
         color: cssColor(token, fallback),
         metalness: 0,
         roughness: 0.36,
@@ -1124,22 +976,34 @@ export default function Samurai3D() {
         clearcoatRoughness: 0.09,
         ior: 1.55,
         envMapIntensity: 0.6,
-        ...surface,
+        map: maps.mottle,
+        roughnessMap: maps.grain,
+        normalMap: maps.lacquerN,
+        normalScale: flat(0.35),
+        vertexColors: true,
         ...extra,
       })
+      m.userData.wear = -0.42 // worn edges show the darker ground coat
+      return m
+    }
 
-    // Metals: forged iron with hammer marks, gold, steel.
-    const metallic = (token, fallback, extra = {}) =>
-      new THREE.MeshStandardMaterial({
+    // Metals: forged iron with hammer marks, dents and scratches; gold; steel.
+    const metallic = (token, fallback, extra = {}) => {
+      const m = new THREE.MeshStandardMaterial({
         color: cssColor(token, fallback),
         metalness: 0.88,
-        ...surface,
-        bumpMap: maps.hammer,
-        bumpScale: 0.9,
+        map: maps.mottle,
+        roughnessMap: maps.ironR,
+        normalMap: maps.ironN,
+        normalScale: flat(0.55),
+        vertexColors: true,
         ...extra,
       })
+      m.userData.wear = 0.3 // edges rubbed bright
+      return m
+    }
 
-    // Fabric, silk braid, straw and mail: a relief map with a soft sheen.
+    // Fabric, silk braid, straw and mail: a woven relief with a soft sheen.
     const woven = (token, fallback, extra = {}) =>
       new THREE.MeshPhysicalMaterial({
         color: cssColor(token, fallback),
@@ -1147,8 +1011,9 @@ export default function Samurai3D() {
         roughness: 0.9,
         sheen: 1,
         sheenRoughness: 0.6,
-        bumpMap: maps.weave,
-        bumpScale: 0.6,
+        map: maps.fabricTone,
+        normalMap: maps.weaveN,
+        normalScale: flat(0.8),
         ...extra,
       })
 
@@ -1159,54 +1024,79 @@ export default function Samurai3D() {
       }),
       cloth: woven('--samurai-cloth', '#a8322a', {
         sheenColor: new THREE.Color(0xff9d8a),
-        bumpScale: 0.35,
+        normalScale: flat(0.5),
       }),
       rope: woven('--samurai-rope', '#b8935a', {
         roughness: 0.58,
         sheenRoughness: 0.35,
         sheenColor: new THREE.Color(0xfff0d8),
-        bumpMap: maps.braid,
-        bumpScale: 0.5,
+        normalMap: maps.braidN,
+        normalScale: flat(0.9),
       }),
       straw: woven('--samurai-rope', '#b8935a', {
         roughness: 0.92,
         sheen: 0.3,
-        bumpMap: maps.straw,
-        bumpScale: 1.1,
+        normalMap: maps.strawN,
+        normalScale: flat(1),
       }),
       // Horsehair for the moustache: pale, soft and slightly glossy.
       hair: woven('--samurai-bowl', '#e8e1d4', {
         roughness: 0.72,
         sheen: 0.8,
         sheenRoughness: 0.4,
-        bumpScale: 0.2,
+        normalScale: flat(0.2),
       }),
       kusari: woven('--samurai-armor', '#39414f', {
         metalness: 0.8,
         roughness: 0.5,
         sheen: 0.05,
-        bumpMap: maps.chain,
-        bumpScale: 2.4,
+        normalMap: maps.chainN,
+        normalScale: flat(1.3),
         envMapIntensity: 1.2,
       }),
       red: lacquered('--samurai-accent', '#c0392b'),
       redDark: lacquered('--samurai-accent-dark', '#8e2a1e'),
-      bowl: lacquered('--samurai-bowl', '#e8e1d4', { roughness: 0.4 }),
+      // Laced lames: the same lacquer over rows of individual scales.
+      redLame: lacquered('--samurai-accent', '#c0392b', { normalMap: maps.kozaneN, normalScale: flat(0.72) }),
+      redDarkLame: lacquered('--samurai-accent-dark', '#8e2a1e', {
+        normalMap: maps.kozaneN,
+        normalScale: flat(0.72),
+      }),
+      bowl: lacquered('--samurai-bowl', '#e8e1d4', {
+        roughness: 0.4,
+        normalMap: scaled(maps.lacquerN, 6),
+        normalScale: flat(0.3),
+      }),
       leather: lacquered('--samurai-leather', '#4a3b33', {
         roughness: 0.64,
         clearcoat: 0.25,
         clearcoatRoughness: 0.5,
         envMapIntensity: 1,
+        normalMap: maps.leatherN,
+        normalScale: flat(0.8),
+      }),
+      // The saya: black lacquer over wood, the grain just showing through.
+      saya: lacquered('--samurai-saya', '#141418', {
+        roughness: 0.5,
+        clearcoatRoughness: 0.06,
+        envMapIntensity: 0.9,
+        normalMap: maps.woodN,
+        normalScale: flat(0.35),
       }),
       metal: metallic('--samurai-armor', '#39414f', { roughness: 0.44 }),
       metalDark: metallic('--samurai-armor-dark', '#22272f', { roughness: 0.4 }),
       // The cranium is matte iron; the glossier mask plates stand out on it.
-      face: metallic('--samurai-face', '#2f3642', { roughness: 0.58, bumpScale: 0.4 }),
+      face: metallic('--samurai-face', '#2f3642', {
+        roughness: 0.58,
+        normalMap: scaled(maps.ironN, 4),
+        normalScale: flat(0.2),
+      }),
       // Polished metals get a stronger reflection than the forged iron.
       gold: metallic('--samurai-gold', '#e0a63a', {
         metalness: 1,
         roughness: 0.26,
-        bumpScale: 0.25,
+        roughnessMap: maps.grain,
+        normalScale: flat(0.12),
         envMapIntensity: 1.8,
       }),
       // The blade's colour and roughness both come from the hamon maps.
@@ -1215,18 +1105,26 @@ export default function Samurai3D() {
         roughness: 1,
         map: maps.blade,
         roughnessMap: maps.bladeRough,
-        bumpScale: 0,
+        normalScale: flat(0.03),
         envMapIntensity: 2.4,
       }),
       // Rides on the metal program: the emissive term is always compiled in.
       eye: metallic('--samurai-eye', '#ffb347', {
         metalness: 0.1,
         roughness: 0.3,
-        bumpScale: 0,
+        normalScale: flat(0),
         emissive: cssColor('--samurai-eye', '#ffb347'),
         emissiveIntensity: 0.8,
       }),
     }
+    mats.gold.userData.wear = 0.15
+    mats.steel.userData.wear = 0
+    mats.eye.userData.wear = 0
+    // Lames swap in the scale-textured lacquer of the same colour.
+    const LAME = new Map([
+      [mats.red, mats.redLame],
+      [mats.redDark, mats.redDarkLame],
+    ])
     const glowMat = new THREE.MeshBasicMaterial({
       map: maps.glow,
       color: cssColor('--samurai-eye', '#ffb347'),
@@ -1253,11 +1151,20 @@ export default function Samurai3D() {
      * sode and both legs all reuse the same few shells.
      */
     const shellCache = new Map()
-    const plate = (rTop, rBottom, height, [start, sweep], material, thickness = 0.026, segs = 18) => {
-      const key = [rTop, rBottom, height, sweep, thickness, segs].map((v) => v.toFixed(4)).join()
+    const plate = (
+      rTop,
+      rBottom,
+      height,
+      [start, sweep],
+      material,
+      thickness = 0.026,
+      segs = 18,
+      uvMode = 'world'
+    ) => {
+      const key = [rTop, rBottom, height, sweep, thickness, segs].map((v) => v.toFixed(4)).join() + uvMode
       let geo = shellCache.get(key)
       if (!geo) {
-        geo = track(shellGeometry(rTop, rBottom, height, arc(0, sweep), thickness, segs))
+        geo = track(shellGeometry(rTop, rBottom, height, arc(0, sweep), thickness, segs, uvMode))
         shellCache.set(key, geo)
       }
       const m = new THREE.Mesh(geo, material)
@@ -1295,7 +1202,10 @@ export default function Samurai3D() {
         if (!o.isMesh || keep.includes(o)) return
         for (let p = o.parent; p && p !== root; p = p.parent) if (keep.includes(p)) return
         const local = new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld)
-        const g = (o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone()).applyMatrix4(local)
+        const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone()
+        if (o.material.vertexColors) paintWear(g, o.material.userData.wear || 0, o.matrixWorld)
+        g.deleteAttribute('wear')
+        g.applyMatrix4(local)
         if (!byMaterial.has(o.material)) byMaterial.set(o.material, [])
         byMaterial.get(o.material).push(g)
         sources.push(o)
@@ -1313,6 +1223,28 @@ export default function Samurai3D() {
       }
       sources.forEach((o) => o.parent.remove(o))
       merged.forEach((m) => root.add(m))
+    }
+
+    /**
+     * Weathering, as vertex colour: plate edges and corners rub through the
+     * lacquer (or polish the iron bright), and dust settles on whatever is
+     * close to the ground. Positions are taken in the standing pose.
+     */
+    const DUST = new THREE.Color(0.8, 0.74, 0.64)
+    const wearPoint = new THREE.Vector3()
+    const paintWear = (g, amount, world) => {
+      const pos = g.attributes.position
+      const wear = g.attributes.wear
+      const colors = new Float32Array(pos.count * 3)
+      for (let i = 0; i < pos.count; i++) {
+        wearPoint.fromBufferAttribute(pos, i).applyMatrix4(world)
+        const dust = THREE.MathUtils.smoothstep(0.6 - wearPoint.y, 0, 0.6) * 0.45
+        const k = 1 + amount * (wear ? wear.getX(i) : 0)
+        colors[i * 3] = k * (1 + (DUST.r - 1) * dust)
+        colors[i * 3 + 1] = k * (1 + (DUST.g - 1) * dust)
+        colors[i * 3 + 2] = k * (1 + (DUST.b - 1) * dust)
+      }
+      g.setAttribute('color', new THREE.BufferAttribute(colors, 3))
     }
 
     /* ---- Silk lacing: every cord of a group merged into one mesh ---- */
@@ -1392,7 +1324,7 @@ export default function Samurai3D() {
         const top = -i * (rowH + gap)
         bottom = top - rowH
         const mat = Array.isArray(material) ? material[i % material.length] : material
-        const lame = plate(rAt(top), rAt(bottom), rowH, span, mat, thickness)
+        const lame = plate(rAt(top), rAt(bottom), rowH, span, LAME.get(mat) || mat, thickness, 18, 'lame')
         lame.position.y = top - rowH / 2
         group.add(lame)
         if (i < rows - 1) pairs(bottom + rowH * 0.3, bottom - gap - rowH * 0.3)
@@ -1445,7 +1377,17 @@ export default function Samurai3D() {
       hip.rotation.order = 'YXZ'
       samurai.add(hip)
 
-      const thigh = mesh(new THREE.CylinderGeometry(0.18, 0.16, 0.46, 40), mats.fabric)
+      const thigh = mesh(
+        foldCloth(new THREE.CylinderGeometry(0.18, 0.16, 0.46, 40, 12), 0.46, {
+          rings: [
+            [0.1, 0.05, 0.08],
+            [0.22, -0.02, 0.06],
+          ],
+          creases: 0.035,
+          seed: side + 3,
+        }),
+        mats.fabric
+      )
       thigh.position.y = -0.25
       hip.add(thigh)
 
@@ -1497,6 +1439,18 @@ export default function Samurai3D() {
       shinCuff.position.y = -0.455
       knee.add(shinCuff)
 
+      // Cords binding the splints on, knotted at the back of the calf
+      ;[-0.16, -0.41].forEach((yy) => {
+        const tie = mesh(new THREE.TorusGeometry(0.168, 0.008, 6, 48), mats.rope)
+        tie.position.set(0, yy, 0.0135)
+        tie.rotation.x = Math.PI / 2
+        knee.add(tie)
+        const knot = mesh(new THREE.SphereGeometry(0.02, 10, 8), mats.rope)
+        knot.position.set(side * 0.07, yy, -0.14)
+        knot.scale.set(1.3, 0.8, 1)
+        knee.add(knot)
+      })
+
       const ankle = new THREE.Group()
       ankle.position.y = -0.5
       knee.add(ankle)
@@ -1529,7 +1483,25 @@ export default function Samurai3D() {
         strap.position.set(0, yy, z)
         strap.rotation.x = tilt
         ankle.add(strap)
+        // A small brass buckle on the outside of each strap
+        const buckle = mesh(new THREE.TorusGeometry(0.02, 0.0045, 6, 4), mats.gold)
+        buckle.position.set(side * 0.15, yy + 0.012, z)
+        buckle.rotation.set(tilt - Math.PI / 2, 0, Math.PI / 4)
+        ankle.add(buckle)
       })
+
+      // Welt stitching round the boot, just above the sole
+      const stitch = new THREE.BoxGeometry(0.006, 0.006, 0.017)
+      const stitches = Array.from({ length: 28 }, (_, i) => {
+        const a = (i / 28) * Math.PI * 2
+        return new THREE.Matrix4().compose(
+          new THREE.Vector3(Math.sin(a) * 0.158, -0.075, 0.1 + Math.cos(a) * 0.238),
+          new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), a),
+          new THREE.Vector3(1, 1, 1)
+        )
+      })
+      ankle.add(mesh(mergeCopies(stitch, stitches), mats.rope))
+      stitch.dispose()
 
       return { hip, knee, ankle, side }
     })
@@ -1594,6 +1566,26 @@ export default function Samurai3D() {
       stud(cuirass, x, 0.21, Math.sqrt(0.432 ** 2 - x * x) + 0.004, Math.asin(x / 0.432))
     })
 
+    // A row of small iron rivets under the gilt rim of each chest plate
+    const rimRivet = new THREE.SphereGeometry(0.009, 8, 6)
+    const rimRivets = []
+    ;[
+      [FRONT, Math.PI * 0.88],
+      [BACK, Math.PI * 0.72],
+    ].forEach(([center, sweep]) => {
+      for (let i = 0; i < 9; i++) {
+        const a = center - sweep / 2 + (sweep * (i + 0.5)) / 9
+        rimRivets.push(new THREE.Matrix4().makeTranslation(Math.sin(a) * 0.437, 0.244, Math.cos(a) * 0.437))
+      }
+    })
+    ;[LEFT, RIGHT].forEach((c) => {
+      for (const dy of [0.12, 0.22]) {
+        rimRivets.push(new THREE.Matrix4().makeTranslation(Math.sin(c) * 0.423, dy, Math.cos(c) * 0.423))
+      }
+    })
+    cuirass.add(mesh(mergeCopies(rimRivet, rimRivets), mats.metalDark))
+    rimRivet.dispose()
+
     // Chest device: a simple geometric mark on a gold disc
     const monPlate = mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.03, 48), mats.gold)
     monPlate.position.set(0, 0.16, 0.445)
@@ -1624,12 +1616,31 @@ export default function Samurai3D() {
       })
     })
 
-    // Watagami: cord shoulder straps tying the dō on
+    // Watagami: stitched leather shoulder straps tying the dō on, each
+    // fastened with a brass buckle
     ;[-1, 1].forEach((side) => {
-      const strap = mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.34, 14), mats.rope)
-      strap.position.set(side * 0.24, 0.82, 0.19)
-      strap.rotation.z = side * 0.25
-      body.add(strap)
+      const strapRig = new THREE.Group()
+      strapRig.position.set(side * 0.24, 0.82, 0.19)
+      strapRig.rotation.z = side * 0.25
+      body.add(strapRig)
+      strapRig.add(mesh(new RoundedBoxGeometry(0.075, 0.34, 0.026, 3, 0.01), mats.leather))
+
+      const stitch = new THREE.BoxGeometry(0.005, 0.014, 0.006)
+      const rows = []
+      for (let i = 0; i < 12; i++) {
+        for (const x of [-0.029, 0.029]) rows.push(new THREE.Matrix4().makeTranslation(x, -0.15 + i * 0.027, 0.013))
+      }
+      strapRig.add(mesh(mergeCopies(stitch, rows), mats.rope))
+      stitch.dispose()
+
+      const buckle = mesh(new THREE.TorusGeometry(0.03, 0.006, 6, 4), mats.gold)
+      buckle.rotation.z = Math.PI / 4
+      buckle.scale.set(1.3, 1, 1)
+      buckle.position.set(0, -0.05, 0.017)
+      strapRig.add(buckle)
+      const tongue = mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.05, 6), mats.gold)
+      tongue.position.set(0, -0.05, 0.021)
+      strapRig.add(tongue)
     })
 
     // Agemaki: the large decorative silk bow on the back of the dō
@@ -1654,7 +1665,17 @@ export default function Samurai3D() {
     agemaki.add(agemakiKnot)
 
     // Obi sash, tied in a knot on the left hip
-    const sash = mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.15, 64), mats.cloth)
+    const sash = mesh(
+      foldCloth(new THREE.CylinderGeometry(0.4, 0.4, 0.15, 64, 8), 0.15, {
+        rings: [
+          [0.3, 0.025, 0.08],
+          [0.72, 0.02, 0.06],
+        ],
+        creases: 0.015,
+        seed: 2,
+      }),
+      mats.cloth
+    )
     sash.position.y = 0.1
     sash.scale.z = 0.74
     body.add(sash)
@@ -1679,6 +1700,52 @@ export default function Samurai3D() {
       tail.rotation.z = 0.12 - i * 0.3
       sashKnot.add(tail)
     })
+
+    // Saya: the empty scabbard, lacquered wood, thrust through the obi on
+    // the left hip and angled back. It has a horn mouth (koiguchi), a knob
+    // (kurikata) for the silk cord (sageo) looped over the obi, and an iron
+    // end cap (kojiri). Kneeling, it swings up to clear the floor.
+    const saya = new THREE.Group()
+    saya.position.set(-0.42, 0.16, 0.2)
+    body.add(saya)
+    const SAYA_LEN = 1.18
+    const DOWN = new THREE.Vector3(0, -1, 0)
+    const sayaStand = new THREE.Quaternion().setFromUnitVectors(DOWN, new THREE.Vector3(-0.22, -0.42, -0.88).normalize())
+    const sayaSeated = new THREE.Quaternion().setFromUnitVectors(DOWN, new THREE.Vector3(-0.2, -0.12, -0.97).normalize())
+    saya.quaternion.copy(sayaStand)
+    const sayaCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0.012, -SAYA_LEN * 0.5, 0),
+      new THREE.Vector3(0.045, -SAYA_LEN, 0),
+    ])
+    const sheath = new THREE.TubeGeometry(sayaCurve, 40, 0.036, 14, false)
+    sheath.scale(0.62, 1, 1)
+    saya.add(mesh(sheath, mats.saya))
+    const koiguchi = mesh(new THREE.CylinderGeometry(0.038, 0.037, 0.04, 18), mats.metalDark)
+    koiguchi.scale.set(0.62, 1, 1)
+    koiguchi.position.y = -0.012
+    saya.add(koiguchi)
+    const kurikata = mesh(new RoundedBoxGeometry(0.018, 0.05, 0.03, 2, 0.007), mats.saya)
+    kurikata.position.set(0.001, -0.15, 0.036)
+    saya.add(kurikata)
+    const kojiri = mesh(new THREE.SphereGeometry(0.036, 16, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), mats.metalDark)
+    kojiri.position.copy(sayaCurve.getPointAt(1))
+    kojiri.scale.set(0.62, 1.4, 1)
+    saya.add(kojiri)
+    // The cord, authored in body space and carried into the saya's frame.
+    saya.updateMatrix()
+    const toSaya = saya.matrix.clone().invert()
+    const knob = kurikata.position.clone().applyMatrix4(saya.matrix)
+    const sageoCurve = new THREE.CatmullRomCurve3(
+      [
+        knob,
+        knob.clone().add(new THREE.Vector3(0.05, -0.12, 0.05)),
+        new THREE.Vector3(-0.3, -0.02, 0.26),
+        new THREE.Vector3(-0.2, 0.06, 0.29),
+        new THREE.Vector3(-0.12, 0.14, 0.29),
+      ].map((p) => p.applyMatrix4(toSaya))
+    )
+    saya.add(mesh(new THREE.TubeGeometry(sageoCurve, 36, 0.009, 6), mats.rope))
 
     // Kusazuri: six separate laced panels hanging off the sash. Each hangs
     // from a hinge along its top edge, so it can fan out over the floor and
@@ -1759,8 +1826,24 @@ export default function Samurai3D() {
         cordsPer: 3,
       })
       sode.rotation.z = side * -0.12
+      // Rivets fixing the top plate (kanmuri-ita) of the sode
+      ;[-0.55, 0, 0.55].forEach((o) => {
+        const rv = mesh(new THREE.SphereGeometry(0.009, 8, 6), mats.metalDark)
+        rv.position.set(Math.sin(outward + o) * 0.253, -0.009, Math.cos(outward + o) * 0.253)
+        sode.add(rv)
+      })
 
-      const upper = mesh(new THREE.CylinderGeometry(0.12, 0.11, 0.34, 40), mats.fabric)
+      const upper = mesh(
+        foldCloth(new THREE.CylinderGeometry(0.12, 0.11, 0.34, 40, 12), 0.34, {
+          rings: [
+            [0.08, 0.06, 0.08],
+            [0.24, 0.025, 0.07],
+          ],
+          creases: 0.03,
+          seed: side * 2 + 5,
+        }),
+        mats.fabric
+      )
       upper.position.y = -0.36
       shoulder.add(upper)
 
@@ -1786,6 +1869,24 @@ export default function Samurai3D() {
       const koteCuff = plate(0.126, 0.128, 0.024, arc(outward, Math.PI * 0.86), mats.leather, 0.014)
       koteCuff.position.y = -0.325
       elbow.add(koteCuff)
+
+      // Ties holding the kote on, knotted on the inside of the forearm
+      // through a small brass ring
+      ;[-0.1, -0.27].forEach((yy, i) => {
+        const tie = mesh(new THREE.TorusGeometry(0.106, 0.007, 6, 40), mats.rope)
+        tie.position.y = yy
+        tie.rotation.x = Math.PI / 2
+        elbow.add(tie)
+        const knot = mesh(new THREE.SphereGeometry(0.015, 10, 8), mats.rope)
+        knot.position.set(-Math.sin(outward) * 0.108, yy, 0.02)
+        elbow.add(knot)
+        if (i === 0) {
+          const ring = mesh(new THREE.TorusGeometry(0.013, 0.0035, 6, 16), mats.gold)
+          ring.position.set(-Math.sin(outward) * 0.112, yy - 0.02, 0.03)
+          ring.rotation.y = outward
+          elbow.add(ring)
+        }
+      })
 
       stud(elbow, Math.sin(outward) * 0.138, -0.18, 0, outward, 0.8)
 
@@ -2017,6 +2118,28 @@ export default function Samurai3D() {
     )
     rib.dispose()
 
+    // Hoshi: rows of rivet heads down every plate, smaller toward the crown
+    const hoshi = new THREE.SphereGeometry(1, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2)
+    const hoshiAt = []
+    const UP = new THREE.Vector3(0, 1, 0)
+    for (let c = 0; c < RIBS; c++) {
+      const a = ((c + 0.5) / RIBS) * Math.PI * 2
+      for (let k = 0; k < 5; k++) {
+        const phi = 0.55 + k * 0.2
+        const n = new THREE.Vector3(Math.sin(phi) * Math.sin(a), Math.cos(phi), Math.sin(phi) * Math.cos(a))
+        const sz = 0.006 + k * 0.0018
+        hoshiAt.push(
+          new THREE.Matrix4().compose(
+            n.clone().multiplyScalar(0.598),
+            new THREE.Quaternion().setFromUnitVectors(UP, n),
+            new THREE.Vector3(sz, sz, sz)
+          )
+        )
+      }
+    }
+    bowlRig.add(mesh(mergeCopies(hoshi, hoshiAt), mats.bowl))
+    hoshi.dispose()
+
     // Shinodare: three gilt strips running down the front ridges
     const shinodareCurve = new THREE.CatmullRomCurve3(
       Array.from({ length: 7 }, (_, i) => {
@@ -2219,6 +2342,19 @@ export default function Samurai3D() {
     tsubaRim.rotation.x = Math.PI / 2
     katana.add(tsubaRim)
 
+    // Seppa: thin washers either side of the guard; mekugi: the bamboo peg
+    // pinning the blade's tang into the handle
+    ;[0.146, 0.184].forEach((yy) => {
+      const seppa = mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.006, 24), mats.gold)
+      seppa.position.y = yy
+      seppa.scale.z = 0.8
+      katana.add(seppa)
+    })
+    const mekugi = mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.1, 8), mats.rope)
+    mekugi.rotation.x = Math.PI / 2
+    mekugi.position.y = 0.06
+    katana.add(mekugi)
+
     const habaki = mesh(new RoundedBoxGeometry(0.09, 0.07, 0.04, 4, 0.015), mats.gold)
     habaki.position.y = 0.215
     katana.add(habaki)
@@ -2232,7 +2368,8 @@ export default function Samurai3D() {
     bake(mask, [...eyes, ...glows])
     bake(cuirass)
     panels.forEach(({ flap }) => bake(flap))
-    bake(body, [torso, cuirass, skirt, headRig, ...arms.map((a) => a.shoulder)])
+    bake(saya)
+    bake(body, [torso, cuirass, skirt, headRig, saya, ...arms.map((a) => a.shoulder)])
     bake(katana)
     arms.forEach(({ shoulder, elbow, sode }) => {
       bake(sode)
@@ -2243,6 +2380,13 @@ export default function Samurai3D() {
       bake(ankle)
       bake(knee, [ankle])
       bake(hip, [knee])
+    })
+    // Meshes that stay live (eyes, cranium) still need a colour attribute,
+    // since their materials read one.
+    samurai.traverse((o) => {
+      if (!o.isMesh || !o.material.vertexColors || o.geometry.attributes.color) return
+      const n = o.geometry.attributes.position.count
+      o.geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3).fill(1), 3))
     })
 
     /* ================================================================
@@ -2801,6 +2945,7 @@ export default function Samurai3D() {
         knee.rotation.x = 2.42 * w + 2 * alpha
         ankle.rotation.x = 2.29 * w - alpha
       })
+      saya.quaternion.slerpQuaternions(sayaStand, sayaSeated, THREE.MathUtils.smoothstep(w, 0, 0.6))
       const drop = Math.cos(0.05) - Math.cos(alpha) * Math.cos(splay)
       samurai.position.y = -SIT_DROP * w + stand * (P.lift - drop) + Math.sin(t * 1.1) * 0.014 * sway
       samurai.rotation.z = Math.sin(t * 0.5) * 0.01 * sway
@@ -2924,6 +3069,8 @@ export default function Samurai3D() {
     // start drawing and fade the canvas in. AO follows once the page is idle.
     const start = async () => {
       envTexture = await bakedEnv
+      fillTextureSlots(maps, await texturesReady)
+      extraMaps.forEach((t) => (t.needsUpdate = true))
       if (disposed) return
       if (!envTexture) {
         envFallback = renderStudioPMREM(renderer)
@@ -2954,6 +3101,8 @@ export default function Samurai3D() {
       mats.fabric.color.copy(cssColor('--samurai-fabric', '#171a21'))
       mats.red.color.copy(cssColor('--samurai-accent', '#c0392b'))
       mats.redDark.color.copy(cssColor('--samurai-accent-dark', '#8e2a1e'))
+      mats.redLame.color.copy(cssColor('--samurai-accent', '#c0392b'))
+      mats.redDarkLame.color.copy(cssColor('--samurai-accent-dark', '#8e2a1e'))
       mats.metal.color.copy(cssColor('--samurai-armor', '#39414f'))
       mats.kusari.color.copy(cssColor('--samurai-armor', '#39414f'))
       mats.metalDark.color.copy(cssColor('--samurai-armor-dark', '#22272f'))
@@ -3026,6 +3175,7 @@ export default function Samurai3D() {
       geos.clear()
       allMats.forEach((m) => m.dispose())
       Object.values(maps).forEach((t) => t.dispose())
+      extraMaps.forEach((t) => t.dispose())
       shadowMat.dispose()
       poolMat.dispose()
       poolTex.dispose()

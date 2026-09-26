@@ -9,7 +9,30 @@ import { supports3D } from '../lib/capabilities.js'
 
 // Three.js is a large dependency — only fetch it when the scene can run.
 // Swap this for './Robot3D.jsx' to put the robot character back instead.
-const Samurai3D = lazy(() => import('./Samurai3D.jsx'))
+const loadSamurai = () => import('./Samurai3D.jsx')
+const Samurai3D = lazy(loadSamurai)
+
+/**
+ * True once the hero has painted and the browser has a moment to spare.
+ * Building the samurai's geometry takes a few seconds of main thread on a
+ * phone; doing it after the intro is on screen keeps the first paint fast.
+ */
+function useAfterFirstPaint(minDelay = 1000) {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    let idle = 0
+    const timer = setTimeout(() => {
+      if (window.requestIdleCallback) {
+        idle = window.requestIdleCallback(() => setReady(true), { timeout: 1500 })
+      } else setReady(true)
+    }, minDelay)
+    return () => {
+      clearTimeout(timer)
+      if (idle) window.cancelIdleCallback?.(idle)
+    }
+  }, [minDelay])
+  return ready
+}
 
 /** Rotating type-on / type-off effect for the role line. */
 function useTypewriter(words, typeMs = 75, eraseMs = 40, holdMs = 1700) {
@@ -47,6 +70,13 @@ function useTypewriter(words, typeMs = 75, eraseMs = 40, holdMs = 1700) {
 export default function Hero() {
   const typed = useTypewriter(profile.roles)
   const [can3D] = useState(supports3D)
+  const buildSamurai = useAfterFirstPaint()
+
+  // Fetch the samurai's code straight away — that also starts his texture
+  // worker and reflection map — and only hold back building him.
+  useEffect(() => {
+    if (can3D) loadSamurai()
+  }, [can3D])
 
   return (
     <section id="home" className="hero">
@@ -132,9 +162,13 @@ export default function Hero() {
             transition={{ duration: 0.9, delay: 0.32, ease: [0.22, 1, 0.36, 1] }}
           >
             {can3D ? (
-              <Suspense fallback={<div className="robot3d samurai3d" aria-hidden="true" />}>
-                <Samurai3D />
-              </Suspense>
+              buildSamurai ? (
+                <Suspense fallback={<div className="robot3d samurai3d" aria-hidden="true" />}>
+                  <Samurai3D />
+                </Suspense>
+              ) : (
+                <div className="robot3d samurai3d" aria-hidden="true" />
+              )
             ) : (
               <CodePanel />
             )}
