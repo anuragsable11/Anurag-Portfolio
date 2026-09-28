@@ -1,15 +1,7 @@
-import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AnimatePresence, motion } from 'framer-motion'
-import {
-  FiChevronLeft,
-  FiChevronRight,
-  FiInfo,
-  FiLock,
-  FiMaximize2,
-  FiPlus,
-  FiX,
-} from 'react-icons/fi'
+import { AnimatePresence, motion, useInView, useReducedMotion } from 'framer-motion'
+import { FiInfo, FiLock, FiMaximize2, FiPlus, FiX } from 'react-icons/fi'
 import { FaGithub, FaPlay } from 'react-icons/fa'
 import Reveal from './Reveal.jsx'
 import SectionHead from './SectionHead.jsx'
@@ -294,143 +286,138 @@ function ProjectModal({ project, returnFocusTo, onClose }) {
   )
 }
 
-/**
- * What a poster opens into on hover: the landing page, the main action, and
- * the project in a line. With a live demo, Live leads and "+" opens the
- * details; without one, the details lead.
- */
-function ProjectPreview({ project, onOpen }) {
-  const { showcase, links = {} } = project
+/** The frame opened by default: the middle one. */
+const middleOf = (count) => Math.floor((count - 1) / 2)
 
-  return (
-    <div className="shelf-preview">
-      {/* The poster button is the keyboard route to the same place. */}
-      <div
-        className={`preview-art ${showcase ? '' : 'no-art'}`}
-        onClick={onOpen}
-        aria-hidden="true"
-      >
-        {showcase && <Shot showcase={showcase} sizes="420px" />}
-        <span className="preview-title">{project.name}</span>
-      </div>
-
-      <div className="preview-body">
-        <div className="preview-actions">
-          {links.live ? (
-            <a
-              className="bb-btn bb-play preview-main"
-              href={links.live}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={`${project.name} live demo (opens in a new tab)`}
-              onClick={celebrate}
-            >
-              <FaPlay aria-hidden="true" />
-              Live
-            </a>
-          ) : (
-            <button className="bb-btn bb-play preview-main" onClick={onOpen}>
-              <FiInfo aria-hidden="true" />
-              What I built
-            </button>
-          )}
-          {links.github && (
-            <a
-              className="preview-square"
-              href={links.github}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={`${project.name} source code on GitHub (opens in a new tab)`}
-              title="Code"
-              onClick={celebrate}
-            >
-              <FaGithub aria-hidden="true" />
-            </a>
-          )}
-          {links.live && (
-            <button
-              className="preview-square"
-              onClick={onOpen}
-              aria-label={`What I built: ${project.name}`}
-              title="What I built"
-            >
-              <FiPlus aria-hidden="true" />
-            </button>
-          )}
-        </div>
-
-        <p className="preview-meta">
-          <span>{project.year}</span>
-          <span>{project.category}</span>
-          <span>{project.stack[0]}</span>
-        </p>
-        <p className="preview-summary">{project.summary}</p>
-      </div>
-    </div>
+/** False on screens that can't hover — phones and most tablets. */
+function useCanHover() {
+  const query = '(hover: hover)'
+  const [canHover, setCanHover] = useState(
+    () => typeof window === 'undefined' || window.matchMedia(query).matches
   )
+  useEffect(() => {
+    const mq = window.matchMedia(query)
+    const update = () => setCanHover(mq.matches)
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
+  return canHover
 }
 
-/** Opens the preview leftward when opening rightward would run off the row. */
-function placePreview(e) {
-  const item = e.currentTarget.closest('.shelf-item')
-  const row = item?.closest('.shelf-row')
-  const preview = item?.querySelector('.shelf-preview')
-  if (!row || !preview) return
-  const edge = Math.min(row.getBoundingClientRect().right, document.documentElement.clientWidth)
-  const flip = item.getBoundingClientRect().left + preview.offsetWidth > edge - 16
-  item.dataset.flip = String(flip)
-}
+/**
+ * One project as a framed photograph in the rail. Closed, it is a sliver of
+ * its landing page; open, it widens, the shot re-crops into the new width,
+ * and the caption fades in over a scrim.
+ */
+function RailFrame({ project, open, onActivate, onOpen }) {
+  const { showcase, links = {} } = project
+  const hitRef = useRef(null)
+  const lastPointer = useRef('')
 
-// Forwards its ref: AnimatePresence's popLayout measures each child through it.
-const ShelfItem = forwardRef(function ShelfItem({ project, index, onOpen }, ref) {
-  const { showcase } = project
-  const posterRef = useRef(null)
-  const open = () => {
+  const showDetails = () => {
     celebrate()
-    onOpen(project, posterRef.current)
+    onOpen(project, hitRef.current)
   }
 
   return (
-    <motion.li
-      ref={ref}
-      className="shelf-item"
+    <li
+      className={`rail-frame ${open ? 'is-open' : ''} ${showcase ? '' : 'no-art'}`}
       data-accent={project.accent}
-      onPointerEnter={placePreview}
-      layout
-      initial={{ opacity: 0, x: 24 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, scale: 0.94 }}
-      transition={{ duration: 0.45, delay: index * 0.05, ease }}
+      onPointerEnter={(e) => {
+        if (e.pointerType === 'mouse') onActivate()
+      }}
+      onFocus={(e) => {
+        // Keyboard focus only: a tap focuses too on some browsers, and a tap
+        // has its own rule below.
+        if (e.target.matches(':focus-visible')) onActivate()
+      }}
     >
-      <button
-        ref={posterRef}
-        className={`shelf-poster ${showcase ? '' : 'no-art'}`}
-        onClick={open}
-        onFocus={placePreview}
-        aria-label={`${project.name}, ${project.subtitle}. Open details`}
-      >
-        {showcase && (
-          <>
-            {/* The same shot, blurred into a glass base the colour of the product. */}
-            <img className="poster-ambient" src={showcase.imageSmall} alt="" aria-hidden="true" />
-            <span className="poster-art">
-              <Shot showcase={showcase} sizes="(max-width: 760px) 300px, 460px" />
-            </span>
-          </>
-        )}
-        <span className="poster-title">
-          {project.name.split(' ').map((word, i) => (
-            <span key={i}>
-              {i > 0 && ' '}
-              <span className="poster-word">{word}</span>
-            </span>
-          ))}
-        </span>
-      </button>
-      <ProjectPreview project={project} onOpen={open} />
-    </motion.li>
+      <figure className="rail-figure">
+        <div
+          className="rail-pic"
+          style={showcase ? { '--shot': `url(${showcase.image})` } : undefined}
+          aria-hidden="true"
+        />
+        <button
+          ref={hitRef}
+          className="rail-hit"
+          onPointerDown={(e) => {
+            lastPointer.current = e.pointerType
+          }}
+          onClick={() => {
+            // A tap on a closed frame opens it; anything else shows the details.
+            const tap = lastPointer.current === 'touch'
+            lastPointer.current = ''
+            if (tap && !open) onActivate()
+            else showDetails()
+          }}
+          aria-label={`${project.name}, ${project.subtitle}. Open details`}
+        />
+        <figcaption className="rail-caption">
+          <div className="rail-meta">
+            <span className="billboard-category">{project.category}</span>
+            <span className="billboard-year">{project.year}</span>
+          </div>
+          <h3 className="rail-title">
+            {project.name.split(' ').map((word, i) => (
+              <span key={i}>
+                {i > 0 && ' '}
+                <span className="rail-word">{word}</span>
+              </span>
+            ))}
+          </h3>
+          <span className="rail-subtitle">{project.subtitle}</span>
+          <div className="rail-actions">
+            {links.live ? (
+              <a
+                className="bb-btn bb-play"
+                href={links.live}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`${project.name} live demo (opens in a new tab)`}
+                onClick={celebrate}
+              >
+                <FaPlay aria-hidden="true" />
+                Live
+              </a>
+            ) : (
+              <button className="bb-btn bb-play" onClick={showDetails}>
+                <FiInfo aria-hidden="true" />
+                What I built
+              </button>
+            )}
+            {links.github && (
+              <a
+                className="bb-btn bb-glass"
+                href={links.github}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`${project.name} source code on GitHub (opens in a new tab)`}
+                onClick={celebrate}
+              >
+                <FaGithub aria-hidden="true" />
+                Code
+              </a>
+            )}
+            {links.live && (
+              <button
+                className="rail-round"
+                onClick={showDetails}
+                aria-label={`What I built: ${project.name}`}
+                title="What I built"
+              >
+                <FiPlus aria-hidden="true" />
+              </button>
+            )}
+          </div>
+        </figcaption>
+      </figure>
+    </li>
   )
-})
+}
+
+const countFor = (cat) =>
+  cat === 'All' ? projects.length : projects.filter((p) => p.category === cat).length
 
 export default function Projects() {
   const categories = useMemo(
@@ -438,37 +425,34 @@ export default function Projects() {
     []
   )
   const [filter, setFilter] = useState('All')
-  const [active, setActive] = useState(null)
-  const rowRef = useRef(null)
-  const [edges, setEdges] = useState({ start: true, end: true })
+  const [openIndex, setOpenIndex] = useState(() => middleOf(projects.length))
+  const [detail, setDetail] = useState(null)
 
   const visible = useMemo(
     () => (filter === 'All' ? projects : projects.filter((p) => p.category === filter)),
     [filter]
   )
 
-  const openProject = useCallback((project, from) => setActive({ project, from }), [])
-  const closeProject = useCallback(() => setActive(null), [])
+  const openProject = useCallback((project, from) => setDetail({ project, from }), [])
+  const closeProject = useCallback(() => setDetail(null), [])
 
-  const updateEdges = useCallback(() => {
-    const row = rowRef.current
-    if (!row) return
-    setEdges({
-      start: row.scrollLeft <= 4,
-      end: row.scrollLeft + row.clientWidth >= row.scrollWidth - 4,
-    })
-  }, [])
+  // Screens that can't hover play the rail themselves: the next frame opens
+  // every 2.4s while the rail is on screen. A touch holds it for a while.
+  const stageRef = useRef(null)
+  const inView = useInView(stageRef, { amount: 0.35 })
+  const canHover = useCanHover()
+  const reduceMotion = useReducedMotion()
+  const holdUntil = useRef(0)
+  const autoplay = !canHover && !reduceMotion && inView && !detail && visible.length > 1
 
   useEffect(() => {
-    updateEdges()
-    window.addEventListener('resize', updateEdges)
-    return () => window.removeEventListener('resize', updateEdges)
-  }, [updateEdges, visible])
-
-  const scrollRow = (dir) => {
-    const row = rowRef.current
-    row?.scrollBy({ left: dir * row.clientWidth * 0.75, behavior: 'smooth' })
-  }
+    if (!autoplay) return
+    const id = setInterval(() => {
+      if (document.hidden || Date.now() < holdUntil.current) return
+      setOpenIndex((i) => (i + 1) % visible.length)
+    }, 2400)
+    return () => clearInterval(id)
+  }, [autoplay, visible.length])
 
   return (
     <section id="projects" className="section">
@@ -488,8 +472,10 @@ export default function Projects() {
                 className={`filter-btn ${filter === cat ? 'active' : ''}`}
                 aria-pressed={filter === cat}
                 onClick={() => {
-                  if (cat !== filter) act('nod')
+                  if (cat === filter) return
+                  act('nod')
                   setFilter(cat)
+                  setOpenIndex(middleOf(countFor(cat)))
                 }}
               >
                 {filter === cat && (
@@ -505,37 +491,36 @@ export default function Projects() {
           </div>
         </Reveal>
 
-        <Reveal className="shelf" delay={0.08}>
-          <button
-            className={`shelf-nav prev ${edges.start ? 'is-hidden' : ''}`}
-            onClick={() => scrollRow(-1)}
-            aria-label="Scroll projects left"
-            tabIndex={edges.start ? -1 : 0}
+        <Reveal delay={0.08}>
+          <div
+            className="rail-stage"
+            ref={stageRef}
+            onPointerDown={(e) => {
+              if (e.pointerType === 'touch') holdUntil.current = Date.now() + 8000
+            }}
           >
-            <FiChevronLeft aria-hidden="true" />
-          </button>
-
-          <ol ref={rowRef} className="shelf-row" onScroll={updateEdges}>
-            <AnimatePresence mode="popLayout" initial={false}>
-              {visible.map((project, i) => (
-                <ShelfItem
-                  key={project.id}
-                  project={project}
-                  index={i}
-                  onOpen={openProject}
-                />
-              ))}
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.ol
+                key={filter}
+                className="rail"
+                style={{ '--n': visible.length }}
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.35, ease }}
+              >
+                {visible.map((project, i) => (
+                  <RailFrame
+                    key={project.id}
+                    project={project}
+                    open={i === openIndex}
+                    onActivate={() => setOpenIndex(i)}
+                    onOpen={openProject}
+                  />
+                ))}
+              </motion.ol>
             </AnimatePresence>
-          </ol>
-
-          <button
-            className={`shelf-nav next ${edges.end ? 'is-hidden' : ''}`}
-            onClick={() => scrollRow(1)}
-            aria-label="Scroll projects right"
-            tabIndex={edges.end ? -1 : 0}
-          >
-            <FiChevronRight aria-hidden="true" />
-          </button>
+          </div>
         </Reveal>
       </div>
 
@@ -544,11 +529,11 @@ export default function Projects() {
       {typeof document !== 'undefined' &&
         createPortal(
           <AnimatePresence>
-            {active && (
+            {detail && (
               <ProjectModal
-                key={active.project.id}
-                project={active.project}
-                returnFocusTo={active.from}
+                key={detail.project.id}
+                project={detail.project}
+                returnFocusTo={detail.from}
                 onClose={closeProject}
               />
             )}

@@ -108,7 +108,7 @@ export default function About() {
           </div>
 
           {/* The figures, the agent loop and the credo, on one dark glass
-              console — the same surface the project shelf uses. */}
+              console — the same surface the project frames use. */}
           <Reveal className="about-console-slot" delay={0.12}>
             <div className="about-console" onPointerMove={trackPointer}>
               <div className="stats-grid">

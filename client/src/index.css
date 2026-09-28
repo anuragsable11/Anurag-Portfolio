@@ -1154,11 +1154,11 @@ ul {
   position: relative;
 }
 
-/* Dark glass surfaces — project posters, hover previews, the detail view,
+/* Dark glass surfaces — project frames, the detail view,
    the About console and the Journey credentials — are dark in both themes,
    so they redefine the tokens their contents use. --glow is a project's own
    colour. */
-.shelf-item,
+.rail-frame,
 .project-modal,
 .about-console,
 .cert-card {
@@ -1176,166 +1176,267 @@ ul {
   --glow: #60a5fa;
 }
 
-:is(.shelf-item, .project-modal)[data-accent='cyan'] {
+:is(.rail-frame, .project-modal)[data-accent='cyan'] {
   --glow: #2dd4bf;
 }
-:is(.shelf-item, .project-modal)[data-accent='violet'] {
+:is(.rail-frame, .project-modal)[data-accent='violet'] {
   --glow: #a78bfa;
 }
-:is(.shelf-item, .project-modal)[data-accent='sky'] {
+:is(.rail-frame, .project-modal)[data-accent='sky'] {
   --glow: #60a5fa;
 }
-:is(.shelf-item, .project-modal)[data-accent='emerald'] {
+:is(.rail-frame, .project-modal)[data-accent='emerald'] {
   --glow: #34d399;
 }
-:is(.shelf-item, .project-modal)[data-accent='amber'] {
+:is(.rail-frame, .project-modal)[data-accent='amber'] {
   --glow: #fbbf24;
 }
 
-/* ---- The row: every project side by side on one shelf ----
-   Each poster is a tall card: the landing page shows whole across the top,
-   over a glass base made from the same shot blurred, and the name sits in
-   the glass. The shelf runs edge to edge: it reaches out over the section's
-   gutters, so posters scroll all the way to the screen's edges, and its
-   own padding sets the first poster back in line with the heading. The
-   padding also leaves room for hover previews to grow into. It sits a
-   layer up so a preview stays above the next section. */
-.shelf {
-  --poster-w: clamp(460px, 32vw, 620px);
-  --poster-h: calc(var(--poster-w) * 3 / 4);
-  --pad-top: 48px;
-  --pad-bottom: 104px;
-  position: relative;
-  z-index: 2;
-  margin-inline: calc(var(--gutter) * -1);
+/* ---- The rail: every project as a framed photograph, shingled in a row ----
+   The open frame widens to carry its caption; the rest close to slivers.
+   The picture never scales. Its height is locked to the open frame's and its
+   width follows its own aspect, so as a frame widens the shot re-crops into
+   it and the subject stays the same size on screen. Sizes are in container
+   units of the stage, so every frame — and its caption — knows the open
+   width before the move starts. */
+.rail-stage {
+  container-type: inline-size;
 }
 
-.shelf-row {
-  position: relative;
+.rail {
+  --gap: clamp(8px, 0.8vw, 14px);
+  --ease-rail: cubic-bezier(0.22, 1, 0.36, 1);
   display: flex;
-  gap: 20px;
-  margin: calc(var(--pad-top) / -2) 0 calc(var(--pad-bottom) * -1);
-  padding: var(--pad-top) var(--gutter) var(--pad-bottom);
-  scroll-padding-inline: var(--gutter);
+  gap: var(--gap);
   list-style: none;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scroll-snap-type: x proximity;
-  scrollbar-width: none;
 }
 
-.shelf-row::-webkit-scrollbar {
-  display: none;
-}
-
-.shelf-item {
+.rail-frame {
+  /* What the frames share once the gaps are out: 15% each closed, 40% open. */
+  --share: calc(100cqw - (var(--n) - 1) * var(--gap));
+  --open-w: calc(var(--share) * 0.4);
+  /* Tall enough that the open frame shows the shot at 118% of its width, at
+     the picture's own aspect (1599 × 758) — and never under 340px, so the
+     caption leaves room for the picture on smaller screens. */
+  --open-h: max(340px, calc(var(--open-w) * 1.18 * 758 / 1599));
   position: relative;
-  flex-shrink: 0;
-  scroll-snap-align: start;
-  color: var(--fg);
-}
-
-.shelf-item:hover,
-.shelf-item:has(:focus-visible) {
-  z-index: 5;
-}
-
-.shelf-poster {
-  position: relative;
-  display: block;
-  width: var(--poster-w);
-  height: var(--poster-h);
-  padding: 0;
+  flex: 0 0 auto;
+  width: calc(var(--share) * 0.15);
+  height: var(--open-h);
   border-radius: 16px;
   overflow: hidden;
   isolation: isolate;
   background: var(--card);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 24px 48px -26px rgba(0, 0, 0, 0.6);
-  text-align: left;
-  transition: transform 0.4s var(--ease), box-shadow 0.4s ease;
+  color: var(--fg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 18px 36px -24px rgba(0, 0, 0, 0.55);
+  transition: width 0.6s var(--ease-rail), height 0.6s var(--ease-rail), box-shadow 0.6s ease;
 }
 
-.shelf-poster:hover {
-  transform: translateY(-6px);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 36px 64px -30px rgba(0, 0, 0, 0.7),
-    0 18px 50px -30px color-mix(in srgb, var(--glow) 70%, transparent);
+.rail-frame.is-open {
+  width: var(--open-w);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 30px 60px -30px rgba(0, 0, 0, 0.65),
+    0 24px 60px -34px color-mix(in srgb, var(--glow) 75%, transparent);
 }
 
-.shelf-poster:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 3px;
-  border-radius: 16px;
-}
-
-/* The glass: the shot, blurred and dimmed to a wash of its own colours. */
-.poster-ambient {
+.rail-figure {
   position: absolute;
-  top: -20%;
-  left: -20%;
-  z-index: 0;
-  width: 140%;
-  height: 140%;
-  object-fit: cover;
-  filter: blur(36px) saturate(1.6) brightness(0.5);
+  inset: 0;
 }
 
-/* A pool of the project's colour in the glass, behind the name. */
-.shelf-poster::before {
+/* The photograph: dimmed while closed, full once open. */
+.rail-pic {
+  position: absolute;
+  inset: 0;
+  background-image: var(--shot, none);
+  background-repeat: no-repeat;
+  background-size: auto var(--open-h);
+  background-position: 50% 50%;
+  filter: brightness(0.74) saturate(0.8);
+  transition: background-position 0.6s var(--ease-rail), filter 0.6s ease;
+}
+
+.rail-frame.is-open .rail-pic {
+  background-position: 46% 50%;
+  filter: none;
+}
+
+/* No screenshot: light and a dot grid in the project's colour stand in. */
+.rail-frame.no-art .rail-pic {
+  background: radial-gradient(
+      70% 55% at 50% 30%,
+      color-mix(in srgb, var(--glow) 34%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1.5px) 0 0 / 18px 18px,
+    var(--card);
+}
+
+/* The scrim the caption sits on, rising from the foot of the open frame. It
+   darkens and blurs the shot behind the words, so the landing page's own
+   headline can't compete with them; the top of the shot stays sharp. */
+.rail-frame::after {
   content: '';
   position: absolute;
   inset: 0;
   z-index: 1;
   pointer-events: none;
   background: radial-gradient(
-    80% 55% at 0% 100%,
-    color-mix(in srgb, var(--glow) 22%, transparent),
-    transparent 70%
-  );
+      75% 70% at 0% 100%,
+      rgba(8, 9, 12, 0.6),
+      transparent 75%
+    ),
+    linear-gradient(
+      0deg,
+      rgba(8, 9, 12, 0.94) 0%,
+      rgba(8, 9, 12, 0.8) 36%,
+      rgba(8, 9, 12, 0.4) 60%,
+      rgba(8, 9, 12, 0) 82%
+    );
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  -webkit-mask-image: linear-gradient(0deg, #000 50%, transparent 85%);
+  mask-image: linear-gradient(0deg, #000 50%, transparent 85%);
+  opacity: 0;
+  transition: opacity 0.6s ease;
 }
 
-/* The landing page, whole, fading at its foot into the glass. */
-.poster-art {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1;
-  aspect-ratio: 1599 / 758;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(180deg, #000 80%, transparent 100%);
-  mask-image: linear-gradient(180deg, #000 80%, transparent 100%);
-}
-
-.poster-art img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 0.9s var(--ease);
-}
-
-.shelf-poster:hover .poster-art img {
-  transform: scale(1.03);
+.rail-frame.is-open::after {
+  opacity: 1;
 }
 
 /* Glass rim, with a catch of light along the top edge. */
-.shelf-poster::after {
+.rail-frame::before {
   content: '';
   position: absolute;
   inset: 0;
-  z-index: 3;
+  z-index: 4;
   border-radius: inherit;
   pointer-events: none;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }
 
-/* Brushed-silver display type — project names, and the About figures — in
-   the style a top-ten shelf gives its rank numerals. The sweep is exactly
-   one line tall and repeats,
-   so a name that wraps catches the light on every line; the bottom padding
-   keeps the last line's descenders inside the painted box. */
-.poster-title,
-.preview-title,
+/* The whole frame is one button: it opens the frame on a tap, and the
+   project's details otherwise. */
+.rail-hit {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border-radius: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rail-hit:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: -5px;
+  border-radius: 14px;
+}
+
+/* The caption is laid out once at the open width, so it can't rewrap while
+   the frame moves; it fades and lifts in just after the frame starts to
+   open. Clicks pass through it to the frame, except on its buttons. */
+.rail-caption {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 3;
+  width: var(--open-w);
+  padding: 0 clamp(18px, 2.2cqw, 32px) clamp(18px, 2cqw, 28px);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(14px);
+  transition: opacity 0.25s ease, transform 0.4s var(--ease-rail), visibility 0s linear 0.25s;
+}
+
+.rail-frame.is-open .rail-caption {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 0.45s ease 0.14s, transform 0.6s var(--ease-rail) 0.14s, visibility 0s;
+}
+
+.rail-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.rail-title {
+  font-size: clamp(1.6rem, calc(var(--open-w) * 0.075), 3.4rem);
+  white-space: normal;
+  text-wrap: balance;
+}
+
+/* Lines break between words only, never after the hyphen in "To-Do". */
+.rail-word {
+  white-space: nowrap;
+}
+
+.rail-subtitle {
+  display: block;
+  margin-top: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.66);
+}
+
+.rail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.rail-actions > * {
+  pointer-events: auto;
+}
+
+.rail-actions .bb-btn {
+  height: 40px;
+  padding: 0 18px;
+  font-size: 0.88rem;
+}
+
+.rail-round {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(20, 21, 25, 0.45);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #fff;
+  font-size: 1.05rem;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.rail-round:hover {
+  border-color: #fff;
+  background: rgba(20, 21, 25, 0.7);
+}
+
+.rail-round:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+  border-radius: 50%;
+}
+
+/* Brushed-silver display type — project names, and the About figures. The
+   sweep is exactly one line tall and repeats, so a name that wraps catches
+   the light on every line; the bottom padding keeps the last line's
+   descenders inside the painted box. */
+.rail-title,
 .stat-value {
   padding-bottom: 0.12em;
   font-weight: 800;
@@ -1349,223 +1450,24 @@ ul {
   filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.55));
 }
 
-.poster-title {
-  position: absolute;
-  left: 22px;
-  right: 22px;
-  bottom: 18px;
-  z-index: 2;
-  font-size: calc(var(--poster-w) * 0.075);
-  text-wrap: balance;
-}
-
-/* Lines break between words only, never after the hyphen in "To-Do". */
-.poster-word {
-  white-space: nowrap;
-}
-
-/* No screenshot: light and a dot grid in the project's colour stand in. */
-.shelf-poster.no-art,
-.preview-art.no-art {
-  background: radial-gradient(
-      70% 55% at 70% 25%,
-      color-mix(in srgb, var(--glow) 30%, transparent),
-      transparent 70%
-    ),
-    radial-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1.5px) 0 0 / 18px 18px,
-    var(--card);
-}
-
-/* Shelf arrows, shown while the pointer is over the row. */
-.shelf-nav {
-  position: absolute;
-  top: calc(var(--pad-top) / 2 + var(--poster-h) / 2);
-  z-index: 6;
-  width: 44px;
-  height: 44px;
-  margin-top: -22px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(20, 21, 25, 0.78);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  color: #fff;
-  font-size: 1.2rem;
-  box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.5);
-  opacity: 0;
-  transition: opacity 0.2s ease, transform 0.2s ease, background 0.2s ease;
-}
-
-.shelf-nav.prev {
-  left: 12px;
-}
-
-.shelf-nav.next {
-  right: 12px;
-}
-
-.shelf:hover .shelf-nav,
-.shelf-nav:focus-visible {
-  opacity: 1;
-}
-
-.shelf-nav:hover {
-  background: rgba(20, 21, 25, 0.95);
-  transform: scale(1.06);
-}
-
-.shelf-nav:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 2px;
-  border-radius: 50%;
-}
-
-.shelf .shelf-nav.is-hidden {
-  opacity: 0;
-  pointer-events: none;
-}
-
-/* ---- Hover preview: the poster opens into a card, after a beat ---- */
-.shelf-preview {
-  display: none;
-}
-
-@media (hover: hover) and (min-width: 761px) {
-  .shelf-preview {
-    display: block;
-    position: absolute;
-    top: -16px;
-    left: 0;
-    z-index: 2;
-    width: calc(var(--poster-w) * 1.15);
-    border-radius: 14px;
-    overflow: hidden;
-    background: var(--card);
-    box-shadow: 0 28px 60px -14px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.07);
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transform: scale(0.9);
-    transform-origin: top left;
-    transition: opacity 0.18s ease, transform 0.25s var(--ease), visibility 0s linear 0.25s;
+/* Narrower screens: the same rail stood on end. Frames stack full width,
+   closed ones as short bands, and the open one grows in height instead. */
+@media (max-width: 900px) {
+  .rail {
+    flex-direction: column;
   }
 
-  /* Near the right edge it opens leftward instead. */
-  .shelf-item[data-flip='true'] .shelf-preview {
-    left: auto;
-    right: 0;
-    transform-origin: top right;
+  .rail-frame {
+    --open-w: 100cqw;
+    --open-h: max(260px, calc(100cqw * 1.18 * 758 / 1599));
+    width: 100%;
+    height: 60px;
   }
 
-  .shelf-item:hover .shelf-preview,
-  .shelf-item:has(:focus-visible) .shelf-preview {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-    transform: scale(1);
-    transition: opacity 0.25s ease 0.4s, transform 0.4s var(--ease) 0.4s,
-      visibility 0s linear 0.4s;
+  .rail-frame.is-open {
+    width: 100%;
+    height: var(--open-h);
   }
-}
-
-.preview-art {
-  position: relative;
-  display: block;
-  aspect-ratio: 1599 / 758;
-  overflow: hidden;
-  background: var(--card);
-  cursor: pointer;
-}
-
-.preview-art img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center top;
-}
-
-.preview-art::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(0deg, rgba(var(--shade), 1) 0%, rgba(var(--shade), 0.5) 30%, transparent 62%);
-}
-
-.preview-title {
-  position: absolute;
-  left: 18px;
-  right: 18px;
-  bottom: 6px;
-  z-index: 1;
-  font-size: 1.85rem;
-}
-
-.preview-body {
-  padding: 14px 18px 18px;
-}
-
-.preview-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.preview-main {
-  flex: 1;
-  height: 44px;
-  font-size: 0.92rem;
-}
-
-.preview-square {
-  width: 44px;
-  height: 44px;
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-  font-size: 1.05rem;
-  transition: background 0.18s ease;
-}
-
-.preview-square:hover {
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.preview-square:focus-visible {
-  outline: 2px solid #fff;
-  outline-offset: 2px;
-  border-radius: 8px;
-}
-
-.preview-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-top: 16px;
-  font-size: 0.86rem;
-  font-weight: 600;
-  color: var(--fg);
-}
-
-.preview-meta span + span::before {
-  content: '•';
-  margin-right: 6px;
-  color: var(--muted-fg);
-}
-
-.preview-summary {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  margin-top: 8px;
-  font-size: 0.86rem;
-  line-height: 1.55;
-  color: var(--muted-fg);
 }
 
 /* ---- Detail view: the project as a title page ---- */
@@ -1987,10 +1889,6 @@ ul {
 }
 
 @media (max-width: 1024px) {
-  .shelf {
-    --poster-w: 380px;
-  }
-
   .billboard-info {
     width: min(64%, 580px);
   }
@@ -2006,31 +1904,9 @@ ul {
   }
 }
 
-/* Narrow screens: smaller posters you swipe through, and a full-screen
-   detail view where the art sits on top and the words rise out of its
-   faded foot. */
+/* Narrow screens: a full-screen detail view where the art sits on top and
+   the words rise out of its faded foot. */
 @media (max-width: 760px) {
-  /* No hover previews here, so no room kept below for them. */
-  .shelf {
-    --poster-w: 300px;
-    --pad-top: 24px;
-    --pad-bottom: 24px;
-  }
-
-  .shelf-row {
-    gap: 12px;
-  }
-
-  .shelf-nav {
-    display: none;
-  }
-
-  .poster-title {
-    left: 14px;
-    right: 14px;
-    bottom: 12px;
-  }
-
   .project-modal-backdrop {
     padding: 0;
   }
@@ -2118,12 +1994,6 @@ ul {
 
   .project-side {
     padding: 22px 22px 28px;
-  }
-}
-
-@media (hover: none) {
-  .shelf-nav {
-    display: none;
   }
 }
 
