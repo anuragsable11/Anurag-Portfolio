@@ -204,6 +204,7 @@ export const projects = [
     },
     links: {
       live: 'https://sky-snap-weather-website-x92k.vercel.app/',
+      github: 'https://github.com/anuragsable11/SkySnap-Weather-Website-',
     },
   },
   {
@@ -235,6 +236,7 @@ export const projects = [
     },
     links: {
       live: 'https://django-to-do-list-gules.vercel.app/',
+      github: 'https://github.com/anuragsable11/Django-TO-DO-List',
     },
   },
   {
