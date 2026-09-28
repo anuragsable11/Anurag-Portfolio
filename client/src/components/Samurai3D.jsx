@@ -11,6 +11,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 import { createVisibilityGate, cssColor } from '../lib/three-utils.js'
 import { loadBakedEnvironment, renderStudioPMREM } from '../lib/studio-env.js'
 import envUrl from '../assets/samurai-env.png'
@@ -44,7 +45,8 @@ import { MOVES, getState, subscribe } from '../lib/companion.js'
  *    polished gold, mail, woven fabric with sheen, and a blade with a real
  *    hamon (temper line) — mirror-polished ji, cloudy matte ha.
  *  - On desktop, ambient occlusion darkens the gaps between plates, shadows
- *    are 4k and the frame is resolved with 8× MSAA.
+ *    are 4k, and the frame is rendered at 2× or more with 8× MSAA, then
+ *    given a light contrast-adaptive sharpen.
  *
  * He idles standing, then periodically kneels into seiza to meditate — the
  * katana laid across his lap, eyes dimmed to slits that glow with each
@@ -102,6 +104,44 @@ const LEFT = -Math.PI / 2
 // Extruded geometry gets UVs in world units; plates are a fraction of a unit,
 // so this brings their texel density in line with the primitive geometries.
 const UV_SCALE = 3
+
+/**
+ * Contrast-adaptive sharpening (after AMD's CAS), run on the final,
+ * display-ready frame. It restores the crispness the browser's downscale of
+ * a supersampled canvas takes off, and sharpens flat detail more than edges
+ * that are already crisp. Where a neighbour is empty background the weight
+ * falls to zero, so the silhouette never gains a halo.
+ */
+const SharpenShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    amount: { value: 0.5 },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float amount;
+    varying vec2 vUv;
+    void main() {
+      vec2 px = 1.0 / vec2(textureSize(tDiffuse, 0));
+      vec4 c = texture2D(tDiffuse, vUv);
+      vec3 n = texture2D(tDiffuse, vUv + vec2(0.0, px.y)).rgb;
+      vec3 s = texture2D(tDiffuse, vUv - vec2(0.0, px.y)).rgb;
+      vec3 e = texture2D(tDiffuse, vUv + vec2(px.x, 0.0)).rgb;
+      vec3 w = texture2D(tDiffuse, vUv - vec2(px.x, 0.0)).rgb;
+      vec3 lo = min(c.rgb, min(min(n, s), min(e, w)));
+      vec3 hi = max(c.rgb, max(max(n, s), max(e, w)));
+      vec3 amp = sqrt(clamp(min(lo, 1.0 - hi) / max(hi, vec3(1e-4)), 0.0, 1.0));
+      vec3 wgt = -amp * mix(0.125, 0.2, amount);
+      vec3 rgb = (c.rgb + (n + s + e + w) * wgt) / (1.0 + 4.0 * wgt);
+      gl_FragColor = vec4(clamp(rgb, 0.0, 1.0), c.a);
+    }`,
+}
 
 // Start fetching the baked reflection map as soon as this chunk loads, in
 // parallel with React mounting the component.
@@ -1249,7 +1289,12 @@ export default function Samurai3D() {
 
     let disposed = false
     const finePointer = window.matchMedia('(pointer: fine)').matches
-    const dpr = Math.min(window.devicePixelRatio, 2)
+    // Desktop renders at no less than 2× — supersampled on 1× and 1.5×
+    // screens, so the lacing cords, rivets, stitching and gold flecks resolve
+    // instead of breaking up. If the GPU can't keep pace, the resolution
+    // eases back toward the screen's own (see governResolution below).
+    const nativeDpr = Math.min(window.devicePixelRatio || 1, 2)
+    let dpr = finePointer ? Math.min(Math.max(window.devicePixelRatio || 1, 2), 2.5) : nativeDpr
     renderer.setPixelRatio(dpr)
     renderer.setSize(mount.clientWidth, mount.clientHeight)
     renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -3120,7 +3165,10 @@ export default function Samurai3D() {
       c.addPass(gtao)
       const output = new OutputPass()
       c.addPass(output)
-      aoParts = { composer: c, gtao, output }
+      const sharpen = new ShaderPass(SharpenShader)
+      sharpen.material.toneMapped = false
+      c.addPass(sharpen)
+      aoParts = { composer: c, gtao, output, sharpen }
 
       // Rendering into an off-screen target needs different variants of every
       // shader (no tone mapping, linear output), plus the pass shaders. Compile
@@ -3138,9 +3186,13 @@ export default function Samurai3D() {
       const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
       const normals = new THREE.Mesh(tri, gtao.normalMaterial)
       const passes = new THREE.Scene()
-      ;[gtao.gtaoMaterial, gtao.pdMaterial, gtao.copyMaterial, gtao.blendMaterial].forEach((m) =>
-        passes.add(new THREE.Mesh(tri, m))
-      )
+      ;[
+        gtao.gtaoMaterial,
+        gtao.pdMaterial,
+        gtao.copyMaterial,
+        gtao.blendMaterial,
+        sharpen.material,
+      ].forEach((m) => passes.add(new THREE.Mesh(tri, m)))
       renderer.setRenderTarget(aoTarget)
       const compiling = Promise.all([
         renderer.compileAsync(scene, camera),
@@ -3384,6 +3436,32 @@ export default function Samurai3D() {
       controls.update(dt)
     }
 
+    /* ---- Resolution: supersampled on desktop, eased back if the GPU lags ----
+       Over each run of 90 frames, if most took longer than 1/40 s, drop the
+       pixel ratio a quarter step — never below the screen's own. It never
+       steps back up, so the quality can't oscillate. */
+    const perf = { warmup: 45, frames: 0, slow: 0 }
+    const applyDpr = (next) => {
+      dpr = next
+      renderer.setPixelRatio(dpr)
+      aoParts?.composer.setPixelRatio(dpr)
+    }
+    const governResolution = (dt) => {
+      if (dock.on || dt === 0 || dpr <= nativeDpr + 0.01) return
+      if (perf.warmup > 0) {
+        perf.warmup--
+        return
+      }
+      perf.frames++
+      if (dt > 1 / 40) perf.slow++
+      if (perf.frames < 90) return
+      if (perf.slow > perf.frames / 2) {
+        applyDpr(Math.max(nativeDpr, dpr - 0.25))
+        perf.warmup = 30
+      }
+      perf.frames = perf.slow = 0
+    }
+
     /* ---- The loop: runs only while he is on screen and the tab is shown ---- */
     const t0 = performance.now()
 
@@ -3400,6 +3478,7 @@ export default function Samurai3D() {
       update(dt, t)
       if (composer && !dock.on) composer.render()
       else renderer.render(scene, camera)
+      governResolution(dt)
     }
     function wake() {
       if (frame !== null || !started || !gate?.visible || document.hidden) return
@@ -3526,6 +3605,7 @@ export default function Samurai3D() {
       if (aoParts) {
         aoParts.gtao.dispose()
         aoParts.output.dispose()
+        aoParts.sharpen.dispose()
         aoParts.composer.dispose()
       }
       // The baked texture is shared across mounts; this only frees this
