@@ -6,6 +6,8 @@ import docmindLanding from '../assets/projects/docmind-landing-1600.webp'
 import docmindLandingSmall from '../assets/projects/docmind-landing-800.webp'
 import omnichatLanding from '../assets/projects/omnichat-landing-1600.webp'
 import omnichatLandingSmall from '../assets/projects/omnichat-landing-800.webp'
+import skysnapLanding from '../assets/projects/skysnap-landing-1600.webp'
+import skysnapLandingSmall from '../assets/projects/skysnap-landing-800.webp'
 import todoLanding from '../assets/projects/todo-landing-1600.webp'
 import todoLandingSmall from '../assets/projects/todo-landing-800.webp'
 
@@ -190,7 +192,21 @@ export const projects = [
       'Implemented city-based search, dynamic weather icons and localized date/time display with a glassmorphism UI.',
     ],
     stack: ['Django', 'Python', 'OpenWeather API', 'HTML', 'CSS'],
-    links: {},
+    showcase: {
+      image: skysnapLanding,
+      imageSmall: skysnapLandingSmall,
+      width: 1599,
+      height: 758,
+      address: 'sky-snap-weather-website-x92k.vercel.app',
+      alt: 'SkySnap landing page on a starry night-sky background: a sun-and-cloud icon above the headline "What\'s the sky doing?", a city search bar with a Snap it button, and quick picks for London, New York, Tokyo, Mumbai, Paris and Sydney.',
+      headline: "What's the sky doing?",
+      pitch:
+        'Search any city in the world for live temperature, wind, humidity and local time.',
+      promises: ['Any city, worldwide', 'One-tap popular cities', 'Live OpenWeather data'],
+    },
+    links: {
+      live: 'https://sky-snap-weather-website-x92k.vercel.app/',
+    },
   },
   {
     id: 'todo',
