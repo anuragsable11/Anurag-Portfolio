@@ -991,230 +991,834 @@ ul {
 /* ============================================================
    Projects
    ============================================================ */
+
+/* Segmented filter: one track, and a pill that slides to the active tab. */
 .projects-filter {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 26px;
+  gap: 2px;
+  padding: 4px;
+  margin-bottom: 28px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .filter-btn {
-  padding: 6px 14px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: var(--card);
+  position: relative;
+  padding: 6px 16px;
+  border-radius: 999px;
   font-size: 0.82rem;
-  font-weight: 450;
+  font-weight: 500;
   color: var(--muted-fg);
-  transition: all 0.18s ease;
+  transition: color 0.2s ease;
 }
 
 .filter-btn:hover {
   color: var(--fg);
-  background: var(--secondary);
 }
 
 .filter-btn.active {
   color: var(--bg);
+}
+
+.filter-btn:focus-visible {
+  border-radius: 999px;
+}
+
+.filter-pill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
   background: var(--fg);
-  border-color: var(--fg);
-  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 6px 14px -6px rgba(0, 0, 0, 0.35);
 }
 
-.projects-list {
-  display: grid;
-  gap: 14px;
+.filter-label {
+  position: relative;
 }
 
-.project-card {
+/* Project surfaces — posters, hover previews and the detail view — are dark
+   in both themes, so they redefine the tokens their contents use. --glow is
+   the project's own colour. */
+.shelf-item,
+.project-modal {
+  --card: #141519;
+  --bg-subtle: #181a1f;
+  --fg: #f5f5f5;
+  --muted-fg: #a3a3a3;
+  --secondary: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.1);
+  --border-hi: rgba(255, 255, 255, 0.2);
+  --ring: #8a8a8a;
+  --brand: #569fff;
+  --brand-soft: rgba(86, 159, 255, 0.1);
+  --shade: 20, 21, 25;
+  --glow: #60a5fa;
+}
+
+:is(.shelf-item, .project-modal)[data-accent='cyan'] {
+  --glow: #2dd4bf;
+}
+:is(.shelf-item, .project-modal)[data-accent='violet'] {
+  --glow: #a78bfa;
+}
+:is(.shelf-item, .project-modal)[data-accent='sky'] {
+  --glow: #60a5fa;
+}
+:is(.shelf-item, .project-modal)[data-accent='emerald'] {
+  --glow: #34d399;
+}
+:is(.shelf-item, .project-modal)[data-accent='amber'] {
+  --glow: #fbbf24;
+}
+
+/* ---- The row: every project side by side on one shelf ----
+   Each poster is a tall card: the landing page shows whole across the top,
+   over a glass base made from the same shot blurred, and the name sits in
+   the glass. The shelf bleeds to the right edge of the screen, the way a
+   streaming shelf runs off the page, and its padding leaves room for hover
+   previews to grow into. It sits a layer up so a preview stays above the
+   next section. */
+.shelf {
+  --poster-w: 460px;
+  --poster-h: calc(var(--poster-w) * 3 / 4);
+  --pad-top: 48px;
+  --pad-bottom: 104px;
+  position: relative;
+  z-index: 2;
+  margin-right: calc(50% - 50vw);
+}
+
+.shelf-row {
+  position: relative;
+  display: flex;
+  gap: 20px;
+  margin: calc(var(--pad-top) / -2) 0 calc(var(--pad-bottom) * -1);
+  padding: var(--pad-top) 48px var(--pad-bottom) 0;
+  list-style: none;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+
+.shelf-row::-webkit-scrollbar {
+  display: none;
+}
+
+.shelf-item {
+  position: relative;
+  flex-shrink: 0;
+  scroll-snap-align: start;
+  color: var(--fg);
+}
+
+.shelf-item:hover,
+.shelf-item:has(:focus-visible) {
+  z-index: 5;
+}
+
+.shelf-poster {
+  position: relative;
+  display: block;
+  width: var(--poster-w);
+  height: var(--poster-h);
   padding: 0;
+  border-radius: 16px;
   overflow: hidden;
+  isolation: isolate;
+  background: var(--card);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 24px 48px -26px rgba(0, 0, 0, 0.6);
+  text-align: left;
+  transition: transform 0.4s var(--ease), box-shadow 0.4s ease;
 }
 
-.project-card.featured .project-inner {
+.shelf-poster:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 36px 64px -30px rgba(0, 0, 0, 0.7),
+    0 18px 50px -30px color-mix(in srgb, var(--glow) 70%, transparent);
+}
+
+.shelf-poster:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+  border-radius: 16px;
+}
+
+/* The glass: the shot, blurred and dimmed to a wash of its own colours. */
+.poster-ambient {
+  position: absolute;
+  top: -20%;
+  left: -20%;
+  z-index: 0;
+  width: 140%;
+  height: 140%;
+  object-fit: cover;
+  filter: blur(36px) saturate(1.6) brightness(0.5);
+}
+
+/* A pool of the project's colour in the glass, behind the name. */
+.shelf-poster::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: radial-gradient(
+    80% 55% at 0% 100%,
+    color-mix(in srgb, var(--glow) 22%, transparent),
+    transparent 70%
+  );
+}
+
+/* The landing page, whole, fading at its foot into the glass. */
+.poster-art {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  aspect-ratio: 1599 / 758;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(180deg, #000 80%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 80%, transparent 100%);
+}
+
+.poster-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.9s var(--ease);
+}
+
+.shelf-poster:hover .poster-art img {
+  transform: scale(1.03);
+}
+
+/* Glass rim, with a catch of light along the top edge. */
+.shelf-poster::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+/* The name, big, heavy and in brushed silver — the style a top-ten shelf
+   gives its rank numerals. The sweep is exactly one line tall and repeats,
+   so a name that wraps catches the light on every line; the bottom padding
+   keeps the last line's descenders inside the painted box. */
+.poster-title,
+.preview-title {
+  padding-bottom: 0.12em;
+  font-weight: 800;
+  line-height: 0.92;
+  letter-spacing: -0.05em;
+  color: transparent;
+  background: linear-gradient(180deg, #ffffff 0%, #e2e2e2 40%, #9a9a9a 100%) 0 0 / 100% 0.92em
+    repeat-y;
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.55));
+}
+
+.poster-title {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  bottom: 18px;
+  z-index: 2;
+  font-size: calc(var(--poster-w) * 0.075);
+  text-wrap: balance;
+}
+
+/* Lines break between words only, never after the hyphen in "To-Do". */
+.poster-word {
+  white-space: nowrap;
+}
+
+/* No screenshot: light and a dot grid in the project's colour stand in. */
+.shelf-poster.no-art,
+.preview-art.no-art {
+  background: radial-gradient(
+      70% 55% at 70% 25%,
+      color-mix(in srgb, var(--glow) 30%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1.5px) 0 0 / 18px 18px,
+    var(--card);
+}
+
+/* Shelf arrows, shown while the pointer is over the row. */
+.shelf-nav {
+  position: absolute;
+  top: calc(var(--pad-top) / 2 + var(--poster-h) / 2);
+  z-index: 6;
+  width: 44px;
+  height: 44px;
+  margin-top: -22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(20, 21, 25, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 1.2rem;
+  box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease, background 0.2s ease;
+}
+
+.shelf-nav.prev {
+  left: -22px;
+}
+
+.shelf-nav.next {
+  right: 28px;
+}
+
+.shelf:hover .shelf-nav,
+.shelf-nav:focus-visible {
+  opacity: 1;
+}
+
+.shelf-nav:hover {
+  background: rgba(20, 21, 25, 0.95);
+  transform: scale(1.06);
+}
+
+.shelf-nav:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 50%;
+}
+
+.shelf .shelf-nav.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---- Hover preview: the poster opens into a card, after a beat ---- */
+.shelf-preview {
+  display: none;
+}
+
+@media (hover: hover) and (min-width: 761px) {
+  .shelf-preview {
+    display: block;
+    position: absolute;
+    top: -16px;
+    left: 0;
+    z-index: 2;
+    width: calc(var(--poster-w) * 1.15);
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--card);
+    box-shadow: 0 28px 60px -14px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.07);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: scale(0.9);
+    transform-origin: top left;
+    transition: opacity 0.18s ease, transform 0.25s var(--ease), visibility 0s linear 0.25s;
+  }
+
+  /* Near the right edge it opens leftward instead. */
+  .shelf-item[data-flip='true'] .shelf-preview {
+    left: auto;
+    right: 0;
+    transform-origin: top right;
+  }
+
+  .shelf-item:hover .shelf-preview,
+  .shelf-item:has(:focus-visible) .shelf-preview {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: scale(1);
+    transition: opacity 0.25s ease 0.4s, transform 0.4s var(--ease) 0.4s,
+      visibility 0s linear 0.4s;
+  }
+}
+
+.preview-art {
+  position: relative;
+  display: block;
+  aspect-ratio: 1599 / 758;
+  overflow: hidden;
+  background: var(--card);
+  cursor: pointer;
+}
+
+.preview-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+}
+
+.preview-art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, rgba(var(--shade), 1) 0%, rgba(var(--shade), 0.5) 30%, transparent 62%);
+}
+
+.preview-title {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 6px;
+  z-index: 1;
+  font-size: 1.85rem;
+}
+
+.preview-body {
+  padding: 14px 18px 18px;
+}
+
+.preview-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.preview-main {
+  flex: 1;
+  height: 44px;
+  font-size: 0.92rem;
+}
+
+.preview-square {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 1.05rem;
+  transition: background 0.18s ease;
+}
+
+.preview-square:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.preview-square:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.preview-meta span + span::before {
+  content: '•';
+  margin-right: 6px;
+  color: var(--muted-fg);
+}
+
+.preview-summary {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 8px;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  color: var(--muted-fg);
+}
+
+/* ---- Detail view: the project as a title page ---- */
+.project-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.project-modal {
+  position: relative;
+  flex-shrink: 0;
+  width: min(920px, 100%);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--card);
+  color: var(--fg);
+  box-shadow: 0 40px 120px -20px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 4;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(var(--shade), 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 1.1rem;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.modal-close:hover {
+  border-color: #fff;
+  background: rgba(var(--shade), 0.95);
+}
+
+.modal-close:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+  border-radius: 50%;
+}
+
+/* ---- Billboard: the art hangs from the right and fades out to the left,
+   leaving the left side clear for the words ---- */
+.billboard {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  aspect-ratio: 1599 / 758;
+  min-height: 440px;
+  isolation: isolate;
+}
+
+.billboard.no-art {
+  aspect-ratio: auto;
+  min-height: 0;
+}
+
+.billboard-art {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 78%;
+  z-index: -3;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 38%);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 38%);
+}
+
+.billboard-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+}
+
+/* Frosts whatever part of the screenshot still runs under the words. */
+.billboard-frost {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 44%, transparent 64%);
+  mask-image: linear-gradient(90deg, #000 0%, #000 44%, transparent 64%);
+}
+
+.billboard.no-art .billboard-art {
+  inset: 0;
+  width: auto;
+  -webkit-mask-image: none;
+  mask-image: none;
+  background: radial-gradient(
+      42% 90% at 80% 30%,
+      color-mix(in srgb, var(--glow) 26%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      30% 70% at 100% 100%,
+      color-mix(in srgb, var(--glow) 14%, transparent),
+      transparent 70%
+    ),
+    var(--card);
+}
+
+.billboard.no-art .billboard-art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.16) 1px, transparent 1.5px);
+  background-size: 20px 20px;
+  -webkit-mask-image: radial-gradient(ellipse 50% 90% at 80% 40%, #000 10%, transparent 75%);
+  mask-image: radial-gradient(ellipse 50% 90% at 80% 40%, #000 10%, transparent 75%);
+}
+
+/* The shade: dark behind the words, gone by two-thirds across, and a fade at
+   the foot so the art runs into the details below. */
+.billboard-shade {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(0deg, rgba(var(--shade), 1) 0%, rgba(var(--shade), 0.45) 20%, transparent 42%),
+    radial-gradient(
+      45% 55% at 0% 70%,
+      color-mix(in srgb, var(--glow) 16%, transparent),
+      transparent 70%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(var(--shade), 0.92) 0%,
+      rgba(var(--shade), 0.8) 30%,
+      rgba(var(--shade), 0.45) 48%,
+      rgba(var(--shade), 0) 66%
+    ),
+    linear-gradient(180deg, rgba(var(--shade), 0.45) 0%, transparent 18%);
+}
+
+.billboard-zoom {
+  position: absolute;
+  top: 16px;
+  right: 66px;
+  z-index: 2;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(var(--shade), 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #fff;
+  opacity: 0.85;
+  transition: opacity 0.18s ease, background 0.18s ease, border-color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.billboard-zoom:hover {
+  opacity: 1;
+  border-color: #fff;
+  background: rgba(var(--shade), 0.7);
+  transform: scale(1.06);
+}
+
+.billboard-zoom:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+  border-radius: 50%;
+}
+
+.billboard-info {
+  position: relative;
+  width: min(52%, 560px);
+  padding: 44px 0 40px 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.billboard.no-art .billboard-info {
+  width: min(70%, 560px);
+  padding-top: 72px;
+}
+
+.billboard-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.billboard-category {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--glow);
+}
+
+.billboard-year {
+  padding: 1px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.billboard-title {
+  font-size: clamp(2.2rem, 5vw, 3.5rem);
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  line-height: 0.95;
+  color: #fff;
+  text-shadow: 0 4px 30px rgba(0, 0, 0, 0.45);
+}
+
+.billboard-subtitle {
+  margin-top: 12px;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.billboard-summary {
+  margin-top: 14px;
+  max-width: 50ch;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.5);
+}
+
+.billboard-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 16px;
+}
+
+.billboard-stack .chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.billboard-stack .chip:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.billboard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.bb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  height: 42px;
+  padding: 0 20px;
+  border-radius: 8px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.bb-btn:active {
+  transform: scale(0.97);
+}
+
+.bb-btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* The main action is the "play" button: solid white, the brightest thing
+   on the surface. */
+.bb-play {
+  padding-left: 18px;
+  background: #fff;
+  color: #0a0a0a;
+}
+
+.bb-play svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.bb-play:hover {
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.bb-glass {
+  background: rgba(109, 109, 110, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #fff;
+}
+
+.bb-glass:hover {
+  background: rgba(109, 109, 110, 0.38);
+}
+
+/* ---- Details, under the billboard ---- */
+.project-details {
+  position: relative;
+  z-index: 1;
+}
+
+.project-details.has-flow {
   display: grid;
   grid-template-columns: 1.3fr 0.7fr;
 }
 
 .project-main {
-  padding: 26px 28px;
+  padding: 8px 44px 40px;
 }
 
 .project-side {
-  padding: 26px 24px;
+  padding: 8px 32px 40px;
   border-left: 1px solid var(--border);
-  background: var(--bg-subtle);
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.project-card:not(.featured) .project-main {
-  padding: 22px 24px;
-}
-
-.project-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 10px;
-}
-
-.project-tag {
-  display: inline-flex;
-  align-items: center;
-  font-family: var(--mono);
-  font-size: 0.68rem;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  padding: 3px 9px;
-  border-radius: var(--radius-sm);
-  margin-bottom: 12px;
-  color: var(--brand-text);
-  background: var(--brand-soft);
-  border: 1px solid var(--brand-border);
-}
-
-/* Category accents stay in one neutral family; only the tag hue shifts. */
-.project-tag[data-accent='violet'] {
-  color: #8250df;
-  background: rgba(130, 80, 223, 0.08);
-  border-color: rgba(130, 80, 223, 0.25);
-}
-.project-tag[data-accent='sky'],
-.project-tag[data-accent='emerald'],
-.project-tag[data-accent='amber'] {
-  color: var(--muted-fg);
-  background: var(--secondary);
-  border-color: var(--border);
-}
-
-:root[data-theme='dark'] .project-tag[data-accent='violet'] {
-  color: #c095f0;
-  background: rgba(192, 149, 240, 0.1);
-  border-color: rgba(192, 149, 240, 0.25);
-}
-
-.project-title {
-  font-size: clamp(1.2rem, 2.2vw, 1.45rem);
-  font-weight: 600;
-  letter-spacing: -0.03em;
-  line-height: 1.2;
-}
-
-.project-subtitle {
-  font-size: 0.86rem;
-  color: var(--muted-fg);
-  font-family: var(--mono);
-  margin-top: 4px;
-}
-
-.project-year {
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  color: var(--muted-fg);
-  flex-shrink: 0;
-  padding-top: 4px;
-}
-
-.project-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-.project-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--secondary);
-  font-size: 0.78rem;
-  font-weight: 500;
-  color: var(--fg);
-  white-space: nowrap;
-  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
-}
-
-.project-link:hover {
-  border-color: var(--border-hi);
-  background: var(--card);
-  transform: translateY(-1px);
-}
-
-.project-link:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
-.project-link svg:last-child {
-  color: var(--muted-fg);
-}
-
-.project-links {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-/* The live demo is the primary action, so it takes the brand colour. */
-.project-link.live {
-  color: var(--brand-fg);
-  background: var(--brand);
-  border-color: var(--brand);
-}
-
-.project-link.live svg {
-  color: inherit;
-}
-
-.project-link.live:hover {
-  background: var(--brand);
-  border-color: var(--brand);
-  filter: brightness(1.08);
-}
-
-.project-summary {
-  color: var(--muted-fg);
-  font-size: 0.94rem;
-  margin: 12px 0 16px;
-  max-width: 62ch;
 }
 
 .project-points {
   display: grid;
-  gap: 9px;
-  margin-bottom: 18px;
+  gap: 10px;
 }
 
 .project-points li {
   display: flex;
-  gap: 10px;
-  font-size: 0.87rem;
+  gap: 12px;
+  font-size: 0.88rem;
   color: var(--muted-fg);
-  line-height: 1.6;
+  line-height: 1.65;
 }
 
 .project-points li::before {
   content: '';
   flex-shrink: 0;
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   margin-top: 9px;
   border-radius: 50%;
-  background: var(--border-hi);
-}
-
-.project-stack {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  background: var(--glow);
+  box-shadow: 0 0 8px var(--glow);
 }
 
 .project-side h5 {
@@ -1241,80 +1845,192 @@ ul {
 }
 
 .flow-num {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  border-radius: var(--radius-sm);
+  border-radius: 50%;
   font-size: 0.66rem;
-  background: var(--card);
-  border: 1px solid var(--border);
+  background: var(--secondary);
+  border: 1px solid var(--border-hi);
   color: var(--fg);
 }
 
 .flow-connector {
   width: 1px;
   height: 10px;
-  margin-left: 10px;
-  background: var(--border);
+  margin-left: 11.5px;
+  background: linear-gradient(var(--border-hi), var(--border));
 }
 
-.project-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.83rem;
-  font-weight: 500;
-  color: var(--brand-text);
-  margin-top: 4px;
+@media (max-width: 1024px) {
+  .shelf {
+    --poster-w: 380px;
+  }
+
+  .billboard-info {
+    width: min(64%, 580px);
+  }
+
+  .project-details.has-flow {
+    grid-template-columns: 1fr;
+  }
+
+  .project-side {
+    padding-top: 24px;
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
 }
 
-.project-toggle:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
+/* Narrow screens: smaller posters you swipe through, and a full-screen
+   detail view where the art sits on top and the words rise out of its
+   faded foot. */
+@media (max-width: 760px) {
+  /* No hover previews here, so no room kept below for them. */
+  .shelf {
+    --poster-w: 300px;
+    --pad-top: 24px;
+    --pad-bottom: 24px;
+  }
+
+  .shelf-row {
+    gap: 12px;
+    padding-right: 20px;
+  }
+
+  .shelf-nav {
+    display: none;
+  }
+
+  .poster-title {
+    left: 14px;
+    right: 14px;
+    bottom: 12px;
+  }
+
+  .project-modal-backdrop {
+    padding: 0;
+  }
+
+  .project-modal {
+    width: 100%;
+    min-height: 100%;
+    border-radius: 0;
+  }
+
+  .billboard {
+    display: block;
+    aspect-ratio: auto;
+    min-height: 0;
+  }
+
+  .billboard-art {
+    position: relative;
+    inset: auto;
+    width: auto;
+    aspect-ratio: 1599 / 758;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .billboard-frost {
+    display: none;
+  }
+
+  .billboard.no-art .billboard-art {
+    position: absolute;
+    inset: 0;
+    aspect-ratio: auto;
+  }
+
+  .billboard-shade {
+    bottom: auto;
+    aspect-ratio: 1599 / 758;
+    background: linear-gradient(0deg, rgba(var(--shade), 1) 0%, rgba(var(--shade), 0.6) 22%, transparent 55%),
+      linear-gradient(180deg, rgba(var(--shade), 0.45) 0%, transparent 25%);
+  }
+
+  .billboard.no-art .billboard-shade {
+    display: none;
+  }
+
+  .billboard-info,
+  .billboard.no-art .billboard-info {
+    width: 100%;
+    margin-top: -36px;
+    padding: 0 22px 26px;
+  }
+
+  .billboard.no-art .billboard-info {
+    margin-top: 0;
+    padding-top: 76px;
+  }
+
+  .modal-close,
+  .billboard-zoom {
+    top: 12px;
+    width: 36px;
+    height: 36px;
+  }
+
+  .modal-close {
+    right: 12px;
+  }
+
+  .billboard-zoom {
+    right: 56px;
+  }
+
+  .billboard-actions {
+    width: 100%;
+  }
+
+  .bb-btn {
+    flex: 1 1 auto;
+  }
+
+  .project-main {
+    padding: 4px 22px 28px;
+  }
+
+  .project-side {
+    padding: 22px 22px 28px;
+  }
 }
 
-.details-wrap {
-  overflow: hidden;
+@media (hover: none) {
+  .shelf-nav {
+    display: none;
+  }
 }
 
-/* Landing-page showcase on featured projects: the screenshot in a browser
-   frame, beside the product's own pitch. Columns match the card below. */
-.project-showcase {
+/* Full-size screenshot overlay */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
   display: grid;
-  grid-template-columns: 1.3fr 0.7fr;
-  border-bottom: 1px solid var(--border);
+  place-items: center;
+  padding: 24px;
+  background: rgba(5, 6, 8, 0.84);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  cursor: zoom-out;
 }
 
-.showcase-shot {
-  position: relative;
-  display: block;
-  margin: 22px 0 22px 22px;
-  padding: 0;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
+.lightbox-figure {
+  width: min(1280px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   background: #0b0c10;
-  overflow: hidden;
-  cursor: zoom-in;
-  text-align: left;
-  box-shadow: var(--shadow-md);
-  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease,
-    border-color 0.2s ease;
+  box-shadow: 0 40px 100px -24px rgba(0, 0, 0, 0.7);
+  cursor: default;
 }
 
-.showcase-shot:hover {
-  transform: translateY(-3px);
-  border-color: var(--border-hi);
-  box-shadow: var(--shadow-lg);
-}
-
-.showcase-shot:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 3px;
-}
-
-.showcase-shot img,
 .lightbox-figure img {
   display: block;
   width: 100%;
@@ -1326,8 +2042,8 @@ ul {
   align-items: center;
   gap: 12px;
   padding: 9px 12px;
-  background: #16181d;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  background: linear-gradient(180deg, #1d1f25, #16181d);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .browser-dots {
@@ -1341,6 +2057,7 @@ ul {
   height: 9px;
   border-radius: 50%;
   background: #ff5f57;
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.25);
 }
 
 .browser-dots i:nth-child(2) {
@@ -1353,117 +2070,34 @@ ul {
 
 .browser-address {
   flex: 1;
-  max-width: 260px;
+  min-width: 0;
+  max-width: 320px;
   margin-inline: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 3px 12px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
   font-family: var(--mono);
   font-size: 0.68rem;
   color: #9aa0aa;
-  text-align: center;
+}
+
+.browser-address svg {
+  flex-shrink: 0;
+  width: 0.62rem;
+  height: 0.62rem;
+  color: #7d838d;
+}
+
+.browser-url {
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.showcase-zoom {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-radius: var(--radius-sm);
-  background: rgba(10, 10, 12, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(6px);
-  color: #f2f2f2;
-  font-size: 0.72rem;
-  font-weight: 500;
-  opacity: 0;
-  transform: translateY(4px);
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-
-.showcase-shot:hover .showcase-zoom,
-.showcase-shot:focus-visible .showcase-zoom {
-  opacity: 1;
-  transform: none;
-}
-
-.showcase-copy {
-  padding: 26px 24px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 12px;
-}
-
-.showcase-copy h5 {
-  font-family: var(--mono);
-  font-size: 0.68rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted-fg);
-}
-
-.showcase-headline {
-  font-size: 1.12rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.35;
-  color: var(--fg);
-}
-
-.showcase-pitch {
-  font-size: 0.87rem;
-  line-height: 1.6;
-  color: var(--muted-fg);
-}
-
-.showcase-promises {
-  display: grid;
-  gap: 7px;
-  margin-top: 2px;
-}
-
-.showcase-promises li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.84rem;
-  color: var(--fg);
-}
-
-.showcase-promises svg {
-  flex-shrink: 0;
-  color: var(--success);
-}
-
-/* Full-size screenshot overlay */
-.lightbox {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(5, 6, 8, 0.82);
-  backdrop-filter: blur(4px);
-  cursor: zoom-out;
-}
-
-.lightbox-figure {
-  width: min(1280px, 100%);
-  max-height: 100%;
-  overflow: auto;
-  border-radius: var(--radius-lg);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: #0b0c10;
-  box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.6);
-  cursor: default;
 }
 
 .lightbox-close {
@@ -1846,24 +2480,6 @@ a.contact-link:hover {
     gap: 40px;
   }
 
-  .project-card.featured .project-inner,
-  .project-showcase {
-    grid-template-columns: 1fr;
-  }
-
-  .showcase-shot {
-    margin: 20px 20px 0;
-  }
-
-  .showcase-copy {
-    padding: 20px 24px 22px;
-  }
-
-  .project-side {
-    border-left: none;
-    border-top: 1px solid var(--border);
-  }
-
   .hero {
     padding-top: calc(var(--nav-h) + 52px);
     padding-bottom: 64px;
@@ -1893,23 +2509,6 @@ a.contact-link:hover {
   .form-row {
     grid-template-columns: 1fr;
     gap: 0;
-  }
-
-  .project-main,
-  .project-card:not(.featured) .project-main {
-    padding: 20px 18px;
-  }
-
-  .project-side {
-    padding: 20px 18px;
-  }
-
-  .showcase-shot {
-    margin: 16px 16px 0;
-  }
-
-  .showcase-copy {
-    padding: 18px 18px 20px;
   }
 
   .lightbox {

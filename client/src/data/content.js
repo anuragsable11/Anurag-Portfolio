@@ -199,10 +199,6 @@ export const projects = [
       height: 758,
       address: 'sky-snap-weather-website-x92k.vercel.app',
       alt: 'SkySnap landing page on a starry night-sky background: a sun-and-cloud icon above the headline "What\'s the sky doing?", a city search bar with a Snap it button, and quick picks for London, New York, Tokyo, Mumbai, Paris and Sydney.',
-      headline: "What's the sky doing?",
-      pitch:
-        'Search any city in the world for live temperature, wind, humidity and local time.',
-      promises: ['Any city, worldwide', 'One-tap popular cities', 'Live OpenWeather data'],
     },
     links: {
       live: 'https://sky-snap-weather-website-x92k.vercel.app/',
