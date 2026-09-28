@@ -1,4 +1,5 @@
 import {
+  SiAnaconda,
   SiCelery,
   SiCss,
   SiDjango,
@@ -6,6 +7,7 @@ import {
   SiFastapi,
   SiFlask,
   SiGit,
+  SiGithub,
   SiHtml5,
   SiHuggingface,
   SiJavascript,
@@ -13,6 +15,7 @@ import {
   SiOllama,
   SiPostgresql,
   SiPostman,
+  SiPycharm,
   SiPython,
   SiPytorch,
   SiRedis,
@@ -26,8 +29,8 @@ import { RiChatAi3Fill } from 'react-icons/ri'
  *
  * `color` is the brand colour the logo is drawn in on its dark tile; null
  * draws it white. A logo that is itself a filled square (JavaScript, CSS,
- * Celery) also sets `knockout`: it fills the whole tile, and the knockout
- * colour shows through its cut-outs.
+ * Celery, PyCharm) also sets `knockout`: it fills the whole tile, and the
+ * knockout colour shows through its cut-outs.
  *
  * `group` is the kind of skill, which sets the samurai's mood while the
  * visitor plays with that icon (see lib/companion.js).
@@ -50,7 +53,10 @@ export const TECH = [
   { name: 'Prompt Engineering', Icon: RiChatAi3Fill, color: '#A78BFA', group: 'ai' },
   { name: 'Docker', Icon: SiDocker, color: '#2496ED', group: 'tools' },
   { name: 'Git', Icon: SiGit, color: '#F05032', group: 'tools' },
+  { name: 'GitHub', Icon: SiGithub, color: null, group: 'tools' },
   { name: 'Postman', Icon: SiPostman, color: '#FF6C37', group: 'tools' },
+  { name: 'PyCharm', Icon: SiPycharm, color: '#21D789', knockout: '#18181b', group: 'tools' },
+  { name: 'Anaconda', Icon: SiAnaconda, color: '#44A833', group: 'tools' },
   { name: 'JavaScript', Icon: SiJavascript, color: '#F7DF1E', knockout: '#18181b', group: 'web' },
   { name: 'HTML5', Icon: SiHtml5, color: '#E34F26', group: 'web' },
   { name: 'CSS', Icon: SiCss, color: '#2965F1', knockout: '#ffffff', group: 'web' },

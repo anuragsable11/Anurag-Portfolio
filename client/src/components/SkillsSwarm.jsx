@@ -277,7 +277,8 @@ export default function SkillsSwarm({ centerRef }) {
       const ratio = Math.min(window.devicePixelRatio || 1, 2)
       canvas.width = Math.round(w * ratio)
       canvas.height = Math.round(h * ratio)
-      const size = w < 640 ? 60 : 80
+      // Smaller on narrow phones, so every tile finds a spot clear of the rest.
+      const size = w < 480 ? 52 : w < 640 ? 60 : 80
       const resized = size !== view.size
       Object.assign(view, { w, h, ratio, size })
 
