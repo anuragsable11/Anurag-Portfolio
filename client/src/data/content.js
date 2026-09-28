@@ -6,6 +6,8 @@ import docmindLanding from '../assets/projects/docmind-landing-1600.webp'
 import docmindLandingSmall from '../assets/projects/docmind-landing-800.webp'
 import omnichatLanding from '../assets/projects/omnichat-landing-1600.webp'
 import omnichatLandingSmall from '../assets/projects/omnichat-landing-800.webp'
+import quizverseLanding from '../assets/projects/quizverse-landing-1600.webp'
+import quizverseLandingSmall from '../assets/projects/quizverse-landing-800.webp'
 import skysnapLanding from '../assets/projects/skysnap-landing-1600.webp'
 import skysnapLandingSmall from '../assets/projects/skysnap-landing-800.webp'
 import todoLanding from '../assets/projects/todo-landing-1600.webp'
@@ -236,19 +238,34 @@ export const projects = [
     },
   },
   {
-    id: 'sms',
-    name: 'Student Management System',
-    subtitle: 'Records CRUD Platform',
-    year: '2024',
+    id: 'quizverse',
+    name: 'Quizverse',
+    subtitle: 'Timed Trivia Quiz Web Application',
+    year: '2025',
     featured: false,
     category: 'Web App',
-    accent: 'amber',
-    summary: 'A web-based system to manage student records end to end, built with Flask and MySQL.',
+    accent: 'violet',
+    summary:
+      'Timed multiple-choice quizzes across 17 categories and three difficulty levels, with a scorecard that tracks every attempt — questions come from the Open Trivia Database.',
     highlights: [
-      'Built a web-based system to manage student records with add, update, delete and view features using Flask and MySQL.',
+      'Built timed multiple-choice quizzes across 17 categories, pulling questions from the Open Trivia Database.',
+      'Players choose the category, difficulty, number of questions (5–50) and time per question (10–60 s), with instant feedback and a full answer review at the end.',
+      'Built a scorecard with quizzes played, average and best score, a score-history chart and every attempt.',
+      'Added guest play or sign-up and log-in, profile name and photo, keyboard shortcuts, and light and dark mode, responsive down to phone width.',
     ],
-    stack: ['Python', 'Flask', 'MySQL'],
-    links: {},
+    stack: ['React', 'TypeScript', 'Vite', 'Tailwind CSS', 'shadcn/ui', 'React Router', 'Recharts'],
+    showcase: {
+      image: quizverseLanding,
+      imageSmall: quizverseLandingSmall,
+      width: 1580,
+      height: 756,
+      address: 'playquizverse.vercel.app',
+      alt: 'Quizverse landing page in dark mode: the headline "Test what you know. See how you improve." with Start a quiz and Create a free account buttons, beside a quiz card on question 4 of 10 asking which planet has the shortest day, with Jupiter selected.',
+    },
+    links: {
+      live: 'https://playquizverse.vercel.app/',
+      github: 'https://github.com/anuragsable11/Quize-website',
+    },
   },
 ]
 
