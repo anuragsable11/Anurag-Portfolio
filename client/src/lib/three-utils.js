@@ -1,9 +1,10 @@
 import * as THREE from 'three'
 
 /** Reads a CSS custom property and returns it as a THREE.Color. */
-export function cssColor(name, fallback) {
+export function cssColor(name, fallback, el) {
   if (typeof document === 'undefined') return new THREE.Color(fallback)
-  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  // Read from `el` when given, so a scene picks up tokens its container overrides.
+  const raw = getComputedStyle(el || document.documentElement).getPropertyValue(name).trim()
   try {
     return new THREE.Color(raw || fallback)
   } catch {

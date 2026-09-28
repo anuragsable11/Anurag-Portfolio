@@ -228,7 +228,7 @@ export function playMove(name) {
   return true
 }
 
-const SKILL_TARGETS = '[data-skill-group], .project-stack .chip'
+const SKILL_TARGETS = '[data-skill-group], .billboard-stack .chip'
 
 /**
  * Starts the page-wide listeners: which section is in view, hovering or

@@ -53,8 +53,8 @@ export default function AgentGraph3D() {
     addLights(scene)
 
     /* ---- Theme-driven colours ---- */
-    let brand = cssColor('--brand', '#2584f5')
-    let fg = cssColor('--fg', '#0a0a0a')
+    let brand = cssColor('--brand', '#2584f5', mount)
+    let fg = cssColor('--fg', '#0a0a0a', mount)
 
     /* ---- Nodes ---- */
     const nodeGeo = new THREE.IcosahedronGeometry(1, 2)
@@ -190,8 +190,8 @@ export default function AgentGraph3D() {
 
     /* ---- Follow the theme ---- */
     const applyTheme = () => {
-      brand = cssColor('--brand', '#2584f5')
-      fg = cssColor('--fg', '#0a0a0a')
+      brand = cssColor('--brand', '#2584f5', mount)
+      fg = cssColor('--fg', '#0a0a0a', mount)
       nodes.forEach(({ material, shellMat }) => {
         material.color.copy(brand)
         material.emissive.copy(brand)

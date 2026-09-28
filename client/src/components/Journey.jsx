@@ -1,9 +1,20 @@
-import { FiAward } from 'react-icons/fi'
+import { useRef } from 'react'
+import { motion, useReducedMotion, useScroll, useSpring } from 'framer-motion'
+import { FiAward, FiBookOpen, FiBriefcase } from 'react-icons/fi'
 import Reveal from './Reveal.jsx'
 import SectionHead from './SectionHead.jsx'
 import { certifications, timeline } from '../data/content.js'
 
 export default function Journey() {
+  // The rail fills with light as the timeline scrolls past.
+  const railRef = useRef(null)
+  const reduceMotion = useReducedMotion()
+  const { scrollYProgress } = useScroll({
+    target: railRef,
+    offset: ['start 75%', 'end 55%'],
+  })
+  const fill = useSpring(scrollYProgress, { stiffness: 120, damping: 30, restDelta: 0.001 })
+
   return (
     <section id="journey" className="section">
       <div className="container">
@@ -15,12 +26,19 @@ export default function Journey() {
         />
 
         <div className="journey-grid">
-          <div className="timeline">
+          <div className="timeline" ref={railRef}>
+            <motion.span
+              className="timeline-fill"
+              style={{ scaleY: reduceMotion ? 1 : fill }}
+              aria-hidden="true"
+            />
             {timeline.map((item, i) => (
               <Reveal key={item.id} delay={i * 0.1} x={-16} y={0}>
                 <div className="tl-item" data-kind={item.kind}>
-                  <span className="tl-dot" />
-                  <div className="tl-period">{item.period}</div>
+                  <span className="tl-node" aria-hidden="true">
+                    {item.kind === 'experience' ? <FiBriefcase /> : <FiBookOpen />}
+                  </span>
+                  <span className="tl-period">{item.period}</span>
                   <h3 className="tl-title">{item.title}</h3>
                   <div className="tl-org">{item.org}</div>
                   {item.points.length > 0 && (
