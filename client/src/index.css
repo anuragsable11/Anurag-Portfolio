@@ -19,7 +19,9 @@
   --robot-plate: #8d99ab;
 
   /* Hero character — change these to restyle the samurai. */
-  --samurai-fabric: #171a21; /* the body under the armour */
+  --samurai-cotton: #3a4252; /* padded cotton under the armour */
+  --samurai-silk: #34405a; /* the kosode */
+  --samurai-hakama: #4a5160; /* striped hakama */
   --samurai-rope: #b8935a; /* lacing cord */
   --samurai-accent: #c0392b; /* red lacquer */
   --samurai-accent-dark: #8e2a1e;
@@ -28,7 +30,7 @@
   --samurai-gold: #e0a63a;
   --samurai-bowl: #e8e1d4;
   --samurai-steel: #e9edf4;
-  --samurai-cloth: #a8322a; /* matte fabric */
+  --samurai-cloth: #a8322a; /* the silk obi and cords */
   --samurai-leather: #4a3b33;
   --samurai-helmet-lacing: #232a3d; /* the helmet's dark silk lacing */
   --samurai-eye: #ffb347; /* the glow behind the visor */
@@ -66,7 +68,9 @@
   --robot-plate: #2b3540;
 
   /* Hero character — change these to restyle the samurai. */
-  --samurai-fabric: #171a21; /* the body under the armour */
+  --samurai-cotton: #3a4252; /* padded cotton under the armour */
+  --samurai-silk: #34405a; /* the kosode */
+  --samurai-hakama: #4a5160; /* striped hakama */
   --samurai-rope: #b8935a; /* lacing cord */
   --samurai-accent: #c0392b; /* red lacquer */
   --samurai-accent-dark: #8e2a1e;
@@ -75,7 +79,7 @@
   --samurai-gold: #e0a63a;
   --samurai-bowl: #e8e1d4;
   --samurai-steel: #e9edf4;
-  --samurai-cloth: #a8322a; /* matte fabric */
+  --samurai-cloth: #a8322a; /* the silk obi and cords */
   --samurai-leather: #4a3b33;
   --samurai-helmet-lacing: #232a3d; /* the helmet's dark silk lacing */
   --samurai-eye: #ffb347; /* the glow behind the visor */

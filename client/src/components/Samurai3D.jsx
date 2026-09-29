@@ -20,37 +20,54 @@ import { MOVES, getState, subscribe } from '../lib/companion.js'
 /**
  * An original stylised samurai mascot, modelled from primitives.
  *
- * The character is chibi, but the armour is built the way real armour is:
- * a dark fabric body underneath, with separate plates laced over the top and
- * visible gaps between them.
+ * The character is chibi, but the armour is built the way real armour is: a
+ * tōsei-gusoku (late-period armour) with the showpieces of an earlier
+ * ō-yoroi, assembled from many separate, recognisable parts in layers.
  *
- *  - Every plate is a solid, bevelled shell with real thickness, so its edges
- *    catch the light instead of reading as paper.
- *  - Sode, kusazuri, the lower dō, the shikoro, the haidate and the throat
- *    guard are lamellar: rows of lames joined by flat silk braid (sugake
- *    odoshi) that lies against the plates, finished with cross-knots
- *    (hishinui) along the bottom lame.
- *  - The kabuto and menpō are black urushi flecked with gold leaf: a smooth
- *    bowl with low seams, a rolled peak, broad turned-back wings, closely
- *    laced black lames at the neck, and a broad engraved gilt crest of two
- *    swept blades on a chrysanthemum boss. The mask is a sculpted menpō: a
+ * Layers, from the inside out:
+ *  - Clothing. An indigo silk kosode woven with asanoha (it shows at the
+ *    sleeves and armpits); striped, knife-pleated hakama; padded cotton with
+ *    sashiko quilting for linings and the haidate apron; a stiff hakata-woven
+ *    silk obi over the dō. Each fibre has its own finish: silk is smooth with
+ *    a bright, tight sheen and glossy satin in its pattern, cotton is matte,
+ *    braided silk cord sits between, leather is waxed and clear-coated.
+ *  - Mail and splints. Kusari (mail) sleeves and shin guards, with lacquered
+ *    splints, small ikada plates on the upper arm, and gilt-rimmed cops at
+ *    the elbows (hiji-gane) and knees; kawara-haidate — small iron tiles sewn
+ *    in staggered rows on a cloth apron — over the thighs.
+ *  - The dō. A two-piece (ni-mai) dō, hinged under the left arm and tied
+ *    with takahimo cords under the right. Each half is a muna-ita and two
+ *    more plates riveted one over the next (okegawa), then four laced lames
+ *    (mogami) to the waist; flank plates close the sides. Over the front hangs
+ *    an ō-yoroi's tsurubashiri-gawa, stencilled indigo leather with a hishi
+ *    lattice of hanabishi, gilt-edged; above it a gilt kiku kamon. From the
+ *    shoulder straps hang the sendan-no-ita (three laced lames, right) and
+ *    kyūbi-no-ita (one solid plate, left). Kohire cap the points of the
+ *    shoulders; the back has the gattari and machi-uke for a banner pole and
+ *    the agemaki bow on its ring.
+ *  - Sode, kusazuri and the neck guards. Every plate is a solid, bevelled
+ *    shell with real thickness, so its edges catch the light instead of
+ *    reading as paper. Sode, kusazuri, the lower dō, the shikoro and the
+ *    throat guard are lamellar: rows of lames over a dark lining, joined by
+ *    flat silk braid (sugake odoshi), finished with cross-knots (hishinui)
+ *    along the bottom lame. Each sode has its mizunomi-no-kan ring.
+ *  - The kabuto and menpō are black urushi flecked with gold leaf: a sixteen-
+ *    plate bowl with riveted seams, a rolled peak, broad turned-back wings
+ *    with gilt kanamono, closely laced black lames at the neck, a flag ring
+ *    at the back, and a broad engraved gilt crest of two swept blades on a
+ *    chrysanthemum boss. The mask is a sculpted menpō: a
  *    curved brow with heavy folds over each eye, lit slits in gilt rims, a
  *    bridged nose with nostrils, cheek plates carrying the pegs the helmet
  *    cord hooks round, gold sunbursts, a tapered mouth guard with cheek
  *    folds, breathing slots, a horsehair moustache over a mouth open on
  *    gilt teeth, and a laced throat guard beneath.
- *  - Forearms and shins are chain mail (kusari) with iron splints laced over
- *    them; the feet are leather boots on straw soles. The hands are gloved
- *    fists — four curled fingers and a thumb — with an iron tekko over the
- *    back; the katana hand's fingers always wrap the grip, and the other
- *    hand closes on it too in a two-handed guard.
- *  - The dō carries a decorative agemaki bow on a ring at the back, a
- *    gattari bracket, straps over the shoulders, two small hanging plates at
- *    the chest, flank plates and rivets; the kabuto has riveted ridges with
- *    gold shinodare strips, a tiered gilt tehen and a marked visor.
+ *  - The feet are leather boots on straw soles. The hands are gloved fists —
+ *    four curled fingers and a thumb — with an iron tekko over the back; the
+ *    katana hand's fingers always wrap the grip, and the other hand closes on
+ *    it too in a two-handed guard.
  *  - Materials are physical: clear-coated urushi lacquer, hammered iron,
- *    polished gold, mail, woven fabric with sheen, and a blade with a real
- *    hamon (temper line) — mirror-polished ji, cloudy matte ha.
+ *    polished gold, mail, stencilled leather, the textiles above, and a blade
+ *    with a real hamon (temper line) — mirror-polished ji, cloudy matte ha.
  *  - On desktop, ambient occlusion darkens the gaps between plates, shadows
  *    are 4k, and the frame is supersampled (up to 3× the screen's pixels)
  *    with MSAA, then given a light contrast-adaptive sharpen. A quality
@@ -69,7 +86,7 @@ import { MOVES, getState, subscribe } from '../lib/companion.js'
  * that he eases between on springs; actions are keyframes layered on top.
  * Between them he breathes, blinks, glances about and shifts his weight,
  * and his head follows a mouse cursor. His eyes cast their glow onto the
- * mask; the skirt, sode, scarf, bow and crest lag and flare from the body's
+ * mask; the skirt, sode, bow and crest lag and flare from the body's
  * real acceleration; and a fast cut leaves a fading sweep behind the edge.
  * On wide desktop screens he leaves the hero once it scrolls away and waits
  * in the corner; reduced motion turns all of this down to plain pose changes.
@@ -265,6 +282,14 @@ const TEXTURE_SPEC = {
   flakeR: { repeat: 1 },
   engraveN: { repeat: 3 },
   engraveC: { repeat: 3, srgb: true },
+  stencilC: { repeat: 1, srgb: true },
+  stencilN: { repeat: 1 },
+  // Textiles. The kosode and hakama carry world-scale UVs (see clothUV).
+  asanohaC: { repeat: 1, srgb: true },
+  asanohaR: { repeat: 1 },
+  shimaC: { repeat: 1, srgb: true },
+  obiC: { repeat: 8, srgb: true, clampV: true },
+  sashikoC: { repeat: 1, srgb: true },
 }
 
 /** Empty textures the materials can hold until the worker's pixels arrive. */
@@ -325,6 +350,40 @@ function foldCloth(geo, height, { rings = [], creases = 0.03, seed = 1 } = {}) {
     pos.setXYZ(i, v.x * k, v.y, v.z * k)
   }
   geo.computeVertexNormals()
+  return geo
+}
+
+/**
+ * Hakama cloth: knife pleats round a cylinder — each pleat rises gently and
+ * folds under sharply — pressed flat at the waist and opening toward the
+ * hem, then foldCloth's bunching and creases on top. `pleats` must be a
+ * whole number, so the cloth meets itself at the seam.
+ */
+function pleatCloth(geo, height, { pleats = 10, depth = 0.05, seed = 1, rings = [], creases = 0.02 } = {}) {
+  const pos = geo.attributes.position
+  const v = new THREE.Vector3()
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i)
+    const t = v.y / height + 0.5
+    const s = (Math.atan2(v.x, v.z) / (Math.PI * 2)) * pleats + seed * 0.37
+    const p = s - Math.floor(s)
+    const saw = p < 0.85 ? p / 0.85 : (1 - p) / 0.15
+    const k = 1 + depth * (saw - 0.5) * (0.35 + 0.65 * (1 - t))
+    pos.setXYZ(i, v.x * k, v.y, v.z * k)
+  }
+  return foldCloth(geo, height, { rings, creases, seed })
+}
+
+/**
+ * Gives a cloth cylinder world-scale UVs: `density` pattern tiles per unit,
+ * rounded to a whole number round the circumference so the weave meets
+ * itself at the seam, and square in world space.
+ */
+function clothUV(geo, radius, height, density) {
+  const around = Math.max(1, Math.round(2 * Math.PI * radius * density))
+  const up = (height * around) / (2 * Math.PI * radius)
+  const uv = geo.attributes.uv
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * around, uv.getY(i) * up)
   return geo
 }
 
@@ -1583,19 +1642,59 @@ export default function Samurai3D() {
         sheen: 1,
         sheenRoughness: 0.6,
         map: maps.fabricTone,
+        roughnessMap: maps.grain,
         normalMap: maps.weaveN,
         normalScale: flat(0.8),
         ...extra,
       })
 
+    // The textiles differ as real fibres do. Cotton is matte, its sheen dull
+    // and broad; silk is smooth, with a bright, tight sheen, and its woven
+    // pattern is picked out in glossier satin floats; braided silk cord sits
+    // between the two; leather belongs to the lacquer family above.
     const mats = {
-      fabric: woven('--samurai-fabric', '#171a21', {
+      // Padded cotton: linings, the haidate apron, the quilted undergarment
+      // where it shows. Sashiko running stitches over indigo.
+      fabric: woven('--samurai-cotton', '#3a4252', {
         roughness: 0.95,
+        sheen: 0.35,
+        sheenRoughness: 0.85,
         sheenColor: new THREE.Color(0x4a5566),
+        map: maps.sashikoC,
       }),
-      cloth: woven('--samurai-cloth', '#a8322a', {
-        sheenColor: new THREE.Color(0xff9d8a),
-        normalScale: flat(0.5),
+      // The kosode: indigo silk woven with asanoha
+      silk: woven('--samurai-silk', '#34405a', {
+        roughness: 0.48,
+        sheenRoughness: 0.3,
+        sheenColor: new THREE.Color(0xd2dcf2),
+        map: maps.asanohaC,
+        roughnessMap: maps.asanohaR,
+        normalScale: flat(0.3),
+      }),
+      // The hakama: firm striped cotton, pleated
+      hakama: woven('--samurai-hakama', '#4a5160', {
+        roughness: 0.9,
+        sheen: 0.45,
+        sheenRoughness: 0.75,
+        sheenColor: new THREE.Color(0x7d8699),
+        map: maps.shimaC,
+        normalScale: flat(0.75),
+      }),
+      // The uwa-obi: stiff hakata-woven silk
+      obi: woven('--samurai-cloth', '#a8322a', {
+        roughness: 0.62,
+        sheenRoughness: 0.4,
+        sheenColor: new THREE.Color(0xffb4a0),
+        map: maps.obiC,
+        normalScale: flat(0.4),
+      }),
+      // Braided silk cord: the agemaki bow
+      silkCord: woven('--samurai-cloth', '#a8322a', {
+        roughness: 0.5,
+        sheenRoughness: 0.3,
+        sheenColor: new THREE.Color(0xffb4a0),
+        normalMap: maps.braidN,
+        normalScale: flat(0.9),
       }),
       rope: woven('--samurai-rope', '#b8935a', {
         roughness: 0.58,
@@ -1713,6 +1812,18 @@ export default function Samurai3D() {
       envMapIntensity: 1.8,
     })
     mats.crest.userData.wear = 0.1
+    // The tsurubashiri-gawa: stencilled indigo leather. Like the kabuto, its
+    // colour is all in the map, so the material itself is white.
+    mats.stencil = lacquered('--samurai-stencil-tint', '#ffffff', {
+      roughness: 0.66,
+      clearcoat: 0.2,
+      clearcoatRoughness: 0.55,
+      envMapIntensity: 0.8,
+      map: maps.stencilC,
+      normalMap: maps.stencilN,
+      normalScale: flat(0.6),
+    })
+    mats.stencil.userData.wear = -0.3
     mats.helmetLacing = woven('--samurai-helmet-lacing', '#232a3d', {
       roughness: 0.6,
       sheenRoughness: 0.4,
@@ -1796,6 +1907,58 @@ export default function Samurai3D() {
       s.scale.setScalar(scale)
       parent.add(s)
       return s
+    }
+
+    /**
+     * A kiku kamon as a gilt fitting: a disc, sixteen petals and a domed
+     * heart, lying in the XY plane and facing +Z. `r` is the petals' reach.
+     */
+    const KIKU_PETAL = track(new THREE.SphereGeometry(1, 10, 6))
+    const kikuMon = (r) => {
+      const mon = new THREE.Group()
+      const disc = mesh(new THREE.CylinderGeometry(r * 0.72, r * 0.78, r * 0.22, 32), mats.gold)
+      disc.rotation.x = Math.PI / 2
+      mon.add(disc)
+      mon.add(
+        mesh(
+          mergeCopies(
+            KIKU_PETAL,
+            Array.from({ length: 16 }, (_, i) => {
+              const a = (i / 16) * Math.PI * 2
+              return new THREE.Matrix4().compose(
+                new THREE.Vector3(Math.sin(a) * r * 0.62, Math.cos(a) * r * 0.62, r * 0.12),
+                new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -a),
+                new THREE.Vector3(r * 0.14, r * 0.34, r * 0.1)
+              )
+            })
+          ),
+          mats.gold
+        )
+      )
+      const dome = mesh(new THREE.SphereGeometry(r * 0.3, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), mats.gold)
+      dome.rotation.x = Math.PI / 2
+      dome.position.z = r * 0.12
+      mon.add(dome)
+      return mon
+    }
+
+    /** A row of dome rivets round an arc, `count` of them spread over `sweep`. */
+    const RIVET = track(new THREE.SphereGeometry(0.0085, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2))
+    const rivetRow = (parent, r, y, [start, sweep], count, material = mats.metalDark, scale = 1) => {
+      const up = new THREE.Vector3(0, 1, 0)
+      const at = []
+      for (let i = 0; i < count; i++) {
+        const a = start + (sweep * (i + 0.5)) / count
+        const n = new THREE.Vector3(Math.sin(a), 0, Math.cos(a))
+        at.push(
+          new THREE.Matrix4().compose(
+            n.clone().multiplyScalar(r).setY(y),
+            new THREE.Quaternion().setFromUnitVectors(up, n),
+            new THREE.Vector3(scale, scale, scale)
+          )
+        )
+      }
+      parent.add(mesh(mergeCopies(RIVET, at), material))
     }
 
     /**
@@ -2041,41 +2204,72 @@ export default function Samurai3D() {
         hip.rotation.order = 'YXZ'
         samurai.add(hip)
 
+        // Hakama: striped cotton trousers, knife-pleated, gathered where they
+        // are tucked into the suneate below the knee
         const thigh = mesh(
-          foldCloth(new THREE.CylinderGeometry(0.18, 0.16, 0.46, 40, 12), 0.46, {
-            rings: [
-              [0.1, 0.05, 0.08],
-              [0.22, -0.02, 0.06],
-            ],
-            creases: 0.035,
-            seed: side + 3,
-          }),
-          mats.fabric
+          clothUV(
+            pleatCloth(new THREE.CylinderGeometry(0.176, 0.162, 0.46, 80, 16), 0.46, {
+              pleats: 10,
+              depth: 0.075,
+              rings: [
+                [0.1, 0.03, 0.08],
+                [0.22, -0.02, 0.06],
+              ],
+              creases: 0.02,
+              seed: side + 3,
+            }),
+            0.17,
+            0.46,
+            3
+          ),
+          mats.hakama
         )
         thigh.position.y = -0.25
         hip.add(thigh)
 
-        // Haidate: three small laced lames over the front of the thigh
-        await lamellar(hip, {
-          rows: 3,
-          rowH: 0.072,
-          gap: 0.018,
-          rTop: 0.2,
-          flare: 0.08,
-          span: arc(FRONT, Math.PI * 0.62),
-          y: -0.07,
-          material: [mats.red, mats.red, mats.redDark],
-          trim: mats.gold,
-          hang: 0.05,
-          cordsPer: 2,
-        })
+        // Kawara-haidate: a cloth apron over the front and outside of the
+        // thigh, faced with small iron tiles sewn on in staggered rows like a
+        // roof, and bound along its hem with leather.
+        {
+          const H_TOP = -0.05
+          const H_BOT = -0.45
+          const center = side * 0.25
+          const apronSpan = arc(center, Math.PI * 0.72)
+          const apronR = (y) => 0.19 + (0.187 - 0.19) * ((H_TOP - y) / (H_TOP - H_BOT))
+          const apron = plate(apronR(H_TOP), apronR(H_BOT), H_TOP - H_BOT, apronSpan, mats.fabric, 0.008)
+          apron.position.y = (H_TOP + H_BOT) / 2
+          hip.add(apron)
+          const hem = plate(apronR(H_BOT) + 0.003, apronR(H_BOT) + 0.003, 0.022, apronSpan, mats.leather, 0.012)
+          hem.position.y = H_BOT + 0.011
+          hip.add(hem)
+
+          const ROWS = 5
+          const TILE_H = 0.058
+          const TILE_GAP = 0.012
+          const STEP = 0.4
+          for (let row = 0; row < ROWS; row++) {
+            const top = H_TOP - 0.018 - row * (TILE_H + TILE_GAP)
+            const r0 = apronR(top) + 0.014
+            const r1 = apronR(top - TILE_H) + 0.014
+            const odd = row % 2
+            const count = odd ? 4 : 5
+            const first = center - ((count - 1) * STEP) / 2
+            for (let c = 0; c < count; c++) {
+              const tile = plate(r0, r1, TILE_H, arc(first + c * STEP, 0.34), mats.metal, 0.012, 2)
+              tile.position.y = top - TILE_H / 2
+              hip.add(tile)
+            }
+            // A knot of thread at the top of each tile, where it is sewn on
+            rivetRow(hip, r0 + 0.001, top - 0.012, [first - STEP / 2, count * STEP], count, mats.rope, 0.8)
+          }
+        }
 
         const knee = new THREE.Group()
         knee.position.y = -0.5
         hip.add(knee)
 
         // The joint itself, so the bend never opens a gap behind the cop
-        knee.add(mesh(new THREE.SphereGeometry(0.15, 24, 16), mats.fabric))
+        knee.add(mesh(new THREE.SphereGeometry(0.15, 24, 16), mats.hakama))
 
         const kneeCop = mesh(new THREE.SphereGeometry(0.15, 36, 24), mats.red)
         kneeCop.position.set(0, 0, 0.06)
@@ -2182,22 +2376,25 @@ export default function Samurai3D() {
       samurai.add(body)
 
       // The undergarment. Every armour piece sits on top of this with a gap.
-      torso = mesh(new RoundedBoxGeometry(0.72, 0.84, 0.56, 8, 0.22), mats.fabric)
+      torso = mesh(new RoundedBoxGeometry(0.72, 0.84, 0.56, 8, 0.22), mats.silk)
       torso.position.y = 0.46
       body.add(torso)
 
       // The hips: a padded block under the sash that joins the torso to the
       // tops of both thighs, so the skirt panels hang over cloth, not air.
-      const pelvis = mesh(new RoundedBoxGeometry(0.72, 0.36, 0.5, 6, 0.16), mats.fabric)
+      const pelvis = mesh(new RoundedBoxGeometry(0.72, 0.36, 0.5, 6, 0.16), mats.hakama)
       pelvis.position.y = -0.09
       body.add(pelvis)
 
-      const neck = mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.2, 40), mats.fabric)
+      const neck = mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.2, 40), mats.silk)
       neck.position.y = 0.93
       body.add(neck)
 
-      // Dō: a solid chest plate on each side, with laced lames hanging below.
-      // Front and back are separate; small flank plates close most of the gap.
+      // Dō: a two-piece (ni-mai) dō, hinged under the left arm and tied under
+      // the right. Each half is built the tōsei-gusoku way — the muna-ita on
+      // top, then horizontal plates riveted one over the next (okegawa), then
+      // laced lames (mogami) to the waist — and the front carries the
+      // stencilled leather tsurubashiri-gawa of an ō-yoroi.
       cuirass = new THREE.Group()
       cuirass.position.y = 0.52
       cuirass.scale.z = 0.74
@@ -2207,9 +2404,19 @@ export default function Samurai3D() {
         [FRONT, Math.PI * 0.88, 5],
         [BACK, Math.PI * 0.72, 4],
       ]) {
-        const chest = plate(0.42, 0.435, 0.2, arc(center, sweep), mats.red, 0.03)
-        chest.position.y = 0.16
-        cuirass.add(chest)
+        // Three plates from the top down. Each lower plate's upper edge tucks
+        // under the plate above; a line of rivets holds every lap.
+        const span = arc(center, sweep)
+        for (const [yTop, yBot, rTop, rBot, mat] of [
+          [0.26, 0.19, 0.42, 0.424, mats.red],
+          [0.2, 0.125, 0.418, 0.43, mats.redDark],
+          [0.135, 0.06, 0.424, 0.436, mats.red],
+        ]) {
+          const band = plate(rTop, rBot, yTop - yBot, span, mat, 0.026)
+          band.position.y = (yTop + yBot) / 2
+          cuirass.add(band)
+          if (yBot > 0.1) rivetRow(cuirass, rBot + 0.002, yBot + 0.011, span, 11)
+        }
 
         const rim = plate(0.43, 0.43, 0.022, arc(center, sweep), mats.gold, 0.04)
         rim.position.y = 0.265
@@ -2236,58 +2443,143 @@ export default function Samurai3D() {
         cuirass.add(flank)
       })
 
-      ;[-0.3, -0.13, 0.13, 0.3].forEach((x) => {
-        stud(cuirass, x, 0.21, Math.sqrt(0.432 ** 2 - x * x) + 0.004, Math.asin(x / 0.432))
-      })
+      // A row of rivets under the gilt rim of each muna-ita, seated on the plate
+      rivetRow(cuirass, 0.422, 0.244, arc(FRONT, Math.PI * 0.88), 9)
+      rivetRow(cuirass, 0.422, 0.244, arc(BACK, Math.PI * 0.72), 9)
+      // And across the right waki-ita, above the ties (the hinge covers the left)
+      rivetRow(cuirass, 0.419, 0.225, arc(RIGHT, 0.5), 3)
 
-      // A row of small iron rivets under the gilt rim of each chest plate
-      const rimRivet = new THREE.SphereGeometry(0.009, 8, 6)
-      const rimRivets = []
-      ;[
-        [FRONT, Math.PI * 0.88],
-        [BACK, Math.PI * 0.72],
-      ].forEach(([center, sweep]) => {
-        for (let i = 0; i < 9; i++) {
-          const a = center - sweep / 2 + (sweep * (i + 0.5)) / 9
-          rimRivets.push(new THREE.Matrix4().makeTranslation(Math.sin(a) * 0.437, 0.244, Math.cos(a) * 0.437))
-        }
-      })
-      ;[LEFT, RIGHT].forEach((c) => {
-        for (const dy of [0.12, 0.22]) {
-          rimRivets.push(new THREE.Matrix4().makeTranslation(Math.sin(c) * 0.423, dy, Math.cos(c) * 0.423))
-        }
-      })
-      cuirass.add(mesh(mergeCopies(rimRivet, rimRivets), mats.metalDark))
-      rimRivet.dispose()
+      // The house's kamon, a gilt kiku, riveted to the middle chest plate
+      const kamon = kikuMon(0.058)
+      kamon.position.set(0, 0.19, 0.438)
+      cuirass.add(kamon)
 
-      // Chest device: a simple geometric mark on a gold disc
-      const monPlate = mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.03, 48), mats.gold)
-      monPlate.position.set(0, 0.16, 0.445)
-      monPlate.rotation.x = Math.PI / 2
-      cuirass.add(monPlate)
-
-      const monRing = mesh(new THREE.TorusGeometry(0.066, 0.014, 12, 48), mats.metalDark)
-      monRing.position.set(0, 0.16, 0.462)
-      cuirass.add(monRing)
-
-      // Sendan-no-ita and kyubi-no-ita: the two small laced plates that hang
-      // from the shoulder straps over the top of the chest.
+      // Tsurubashiri-gawa: stencilled leather laced over the front of the dō
+      // below the chest plates, so a bowstring would never catch on the
+      // lacing. It is edged all round with a gilt fukurin and fixed at the
+      // corners with gilt studs.
+      const TSURU_TOP = 0.118
+      const TSURU_BOT = -0.29
+      const TSURU_H = TSURU_TOP - TSURU_BOT
+      const TSURU_SPAN = 1.15
+      const tsuruR = [0.474, 0.497]
+      const tsuru = plate(tsuruR[0], tsuruR[1], TSURU_H, arc(FRONT, TSURU_SPAN), mats.stencil, 0.012)
+      tsuru.position.y = (TSURU_TOP + TSURU_BOT) / 2
+      cuirass.add(tsuru)
+      for (const [y, r] of [
+        [TSURU_TOP - 0.008, tsuruR[0] + 0.004],
+        [TSURU_BOT + 0.008, tsuruR[1] + 0.004],
+      ]) {
+        const edge = plate(r, r, 0.016, arc(FRONT, TSURU_SPAN + 0.02), mats.gold, 0.02)
+        edge.position.y = y
+        cuirass.add(edge)
+      }
       for (const side of [-1, 1]) {
-        await lamellar(cuirass, {
-          rows: 2,
-          rowH: 0.06,
-          gap: 0.014,
-          rTop: 0.464,
-          flare: 0.03,
-          span: arc(side * 0.6, 0.28),
-          y: 0.33,
-          material: [mats.red, mats.redDark],
-          trim: mats.gold,
-          hang: 0.03,
-          cordsPer: 1,
-          thickness: 0.018,
-          cross: false,
-        })
+        const edge = plate(
+          tsuruR[0] + 0.004,
+          tsuruR[1] + 0.004,
+          TSURU_H,
+          arc((side * TSURU_SPAN) / 2, 0.034),
+          mats.gold,
+          0.02,
+          2
+        )
+        edge.position.y = tsuru.position.y
+        cuirass.add(edge)
+        for (const [y, r] of [
+          [TSURU_TOP - 0.008, tsuruR[0] + 0.02],
+          [TSURU_BOT + 0.008, tsuruR[1] + 0.02],
+        ]) {
+          const a = (side * TSURU_SPAN) / 2
+          stud(cuirass, Math.sin(a) * r, y, Math.cos(a) * r, a, 0.6)
+        }
+      }
+
+      // Sendan-no-ita (the wearer's right) and kyūbi-no-ita (left): the two
+      // small guards hanging from the shoulder straps over the chest. As on an
+      // ō-yoroi, the sendan-no-ita is three laced lames that can flex, and
+      // the kyūbi-no-ita a single solid plate with gilt fittings.
+      await lamellar(cuirass, {
+        rows: 3,
+        rowH: 0.048,
+        gap: 0.012,
+        rTop: 0.464,
+        flare: 0.03,
+        span: arc(0.6, 0.28),
+        y: 0.33,
+        material: [mats.red, mats.redDark, mats.red],
+        trim: mats.gold,
+        hang: 0.03,
+        cordsPer: 1,
+        thickness: 0.018,
+        cross: false,
+      })
+      {
+        const kyubi = new THREE.Group()
+        cuirass.add(kyubi)
+        const KY_TOP = 0.33
+        const KY_H = 0.17
+        const span = arc(-0.6, 0.26)
+        const board = plate(0.466, 0.471, KY_H, span, mats.red, 0.02)
+        board.position.y = KY_TOP - KY_H / 2
+        kyubi.add(board)
+        for (const y of [KY_TOP - 0.009, KY_TOP - KY_H + 0.009]) {
+          const edge = plate(0.472, 0.473, 0.018, [span[0] - 0.01, span[1] + 0.02], mats.gold, 0.03)
+          edge.position.y = y
+          kyubi.add(edge)
+        }
+        const flower = kikuMon(0.026)
+        flower.position.set(Math.sin(-0.6) * 0.476, KY_TOP - KY_H / 2, Math.cos(-0.6) * 0.476)
+        flower.rotation.y = -0.6
+        kyubi.add(flower)
+        rivetRow(kyubi, 0.472, KY_TOP - 0.03, [span[0] + 0.03, span[1] - 0.06], 2, mats.gold, 1.2)
+      }
+
+      // Chōtsugai: the gilt hinge joining the two halves under the left arm —
+      // three knuckles on a pin, each leaf riveted to its half.
+      {
+        const hinge = new THREE.Group()
+        hinge.position.set(-0.436, 0.16, 0)
+        cuirass.add(hinge)
+        const pin = mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.2, 10), mats.gold)
+        hinge.add(pin)
+        for (let i = 0; i < 3; i++) {
+          const knuckle = mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.05, 14), mats.gold)
+          knuckle.position.y = -0.066 + i * 0.066
+          hinge.add(knuckle)
+          const leaf = mesh(new RoundedBoxGeometry(0.012, 0.046, 0.07, 2, 0.004), mats.gold)
+          leaf.position.set(0.002, knuckle.position.y, (i % 2 ? -1 : 1) * 0.045)
+          hinge.add(leaf)
+          stud(hinge, -0.006, knuckle.position.y, (i % 2 ? -1 : 1) * 0.06, -Math.PI / 2, 0.35)
+        }
+      }
+
+      // Takahimo: the cords that close the dō under the right arm, drawn
+      // through a pair of rings and tied in a flat bow.
+      {
+        const tie = new THREE.Group()
+        tie.position.set(0.442, 0.12, 0)
+        tie.rotation.y = Math.PI / 2
+        cuirass.add(tie)
+        for (const z of [-0.05, 0.05]) {
+          const ring = mesh(new THREE.TorusGeometry(0.016, 0.004, 8, 20), mats.gold)
+          ring.position.set(z, 0.03, 0)
+          tie.add(ring)
+        }
+        const knot = mesh(new THREE.SphereGeometry(0.018, 12, 10), mats.rope)
+        knot.scale.set(1.3, 0.9, 0.7)
+        tie.add(knot)
+        for (const s of [-1, 1]) {
+          const loop = mesh(new THREE.TorusGeometry(0.024, 0.007, 8, 24), mats.rope)
+          loop.position.set(s * 0.03, 0.004, 0.004)
+          loop.rotation.z = s * 0.5
+          loop.scale.set(1, 0.7, 0.6)
+          tie.add(loop)
+          const end = mesh(new RoundedBoxGeometry(0.012, 0.09, 0.008, 2, 0.004), mats.rope)
+          end.position.set(s * 0.014, -0.05, 0.004)
+          end.rotation.z = s * 0.18
+          tie.add(end)
+        }
       }
       await breathe()
 
@@ -2339,8 +2631,61 @@ export default function Samurai3D() {
           }
         }
         over.add(mesh(mergeCopies(stitch, overStitches), mats.rope))
+
+        // Kohire: the small lacquered guard at the end of each watagami,
+        // capping the point of the shoulder above the sode, gilt-edged along
+        // its outer rim. The sode hangs from it by the sode-tsuke-no-o, tied
+        // in a flat knot on top. Built as a shell round a front-to-back axis.
+        const kohire = new THREE.Group()
+        kohire.position.set(side * 0.36, 0.72, 0)
+        body.add(kohire)
+        const KO_R = 0.15
+        const KO_A = side * (Math.PI - 0.72)
+        const shell = plate(KO_R, KO_R, 0.22, arc(KO_A, 0.56), mats.red, 0.016)
+        shell.rotation.x = Math.PI / 2
+        kohire.add(shell)
+        const rim = plate(KO_R + 0.004, KO_R + 0.004, 0.224, arc(KO_A - side * 0.28, 0.05), mats.gold, 0.022, 2)
+        rim.rotation.x = Math.PI / 2
+        kohire.add(rim)
+        const onKohire = (a, lift) => new THREE.Vector3(Math.sin(a), -Math.cos(a), 0).multiplyScalar(KO_R + lift)
+        for (const z of [-0.07, 0.07]) {
+          const at = onKohire(KO_A - side * 0.16, 0.002)
+          const s = stud(kohire, at.x, at.y, z, 0, 0.4)
+          s.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), at.clone().normalize())
+        }
+        const knotAt = onKohire(KO_A + side * 0.12, 0.012)
+        const cordKnot = mesh(new THREE.SphereGeometry(0.02, 12, 10), mats.rope)
+        cordKnot.position.copy(knotAt)
+        cordKnot.scale.set(1.4, 0.7, 1)
+        kohire.add(cordKnot)
+        for (const z of [-1, 1]) {
+          const loop = mesh(new THREE.TorusGeometry(0.018, 0.005, 6, 18), mats.rope)
+          loop.position.copy(knotAt).setZ(z * 0.024)
+          loop.rotation.set(0, Math.PI / 2, z * 0.5)
+          kohire.add(loop)
+        }
       })
       stitch.dispose()
+
+      // Machi-uke: the lacquered cup at the small of the back that the foot of
+      // a sashimono banner pole would stand in, on a riveted bracket.
+      {
+        const MZ = -0.39
+        const cup = mesh(new THREE.CylinderGeometry(0.032, 0.026, 0.05, 20, 1, true), mats.saya)
+        cup.position.set(0, 0.235, MZ)
+        body.add(cup)
+        const lip = mesh(new THREE.TorusGeometry(0.032, 0.005, 8, 24), mats.gold)
+        lip.position.set(0, 0.26, MZ)
+        lip.rotation.x = Math.PI / 2
+        body.add(lip)
+        const base = mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.006, 20), mats.saya)
+        base.position.set(0, 0.211, MZ)
+        body.add(base)
+        const bracket = mesh(new RoundedBoxGeometry(0.1, 0.04, 0.03, 2, 0.006), mats.metalDark)
+        bracket.position.set(0, 0.235, -0.358)
+        body.add(bracket)
+        ;[-0.037, 0.037].forEach((x) => stud(body, x, 0.235, -0.373, Math.PI, 0.35))
+      }
 
       // Gattari: the bracket on the upper back plate that a banner pole would
       // seat in, and beneath it the ring (agemaki-no-kan) the bow hangs from.
@@ -2362,22 +2707,22 @@ export default function Samurai3D() {
       body.add(agemaki)
       const loopGeo = track(new THREE.TorusGeometry(0.075, 0.021, 14, 48))
       ;[-1, 1].forEach((s) => {
-        const loop = new THREE.Mesh(loopGeo, mats.cloth)
+        const loop = new THREE.Mesh(loopGeo, mats.silkCord)
         loop.castShadow = loop.receiveShadow = true
         loop.position.set(s * 0.078, 0.03, 0)
         loop.rotation.set(0.25, 0, s * 0.6)
         agemaki.add(loop)
 
-        const tail = mesh(new RoundedBoxGeometry(0.042, 0.32, 0.018, 3, 0.012), mats.cloth)
+        const tail = mesh(new RoundedBoxGeometry(0.042, 0.32, 0.018, 3, 0.012), mats.silkCord)
         tail.position.set(s * 0.045, -0.18, 0.004)
         tail.rotation.z = s * 0.1
         agemaki.add(tail)
       })
-      const agemakiKnot = mesh(new THREE.SphereGeometry(0.048, 24, 16), mats.cloth)
+      const agemakiKnot = mesh(new THREE.SphereGeometry(0.048, 24, 16), mats.silkCord)
       agemakiKnot.scale.set(1.3, 0.9, 0.8)
       agemaki.add(agemakiKnot)
 
-      // Obi sash, tied in a knot on the left hip
+      // Uwa-obi: the hakata-woven silk belt over the dō, knotted on the left hip
       const sash = mesh(
         foldCloth(new THREE.CylinderGeometry(0.4, 0.4, 0.15, 64, 8), 0.15, {
           rings: [
@@ -2387,7 +2732,7 @@ export default function Samurai3D() {
           creases: 0.015,
           seed: 2,
         }),
-        mats.cloth
+        mats.obi
       )
       sash.position.y = 0.1
       sash.scale.z = 0.74
@@ -2397,18 +2742,18 @@ export default function Samurai3D() {
       sashKnot.position.set(-0.31, 0.09, 0.23)
       sashKnot.rotation.y = -0.8
       body.add(sashKnot)
-      const knotCore = mesh(new THREE.SphereGeometry(0.06, 24, 16), mats.cloth)
+      const knotCore = mesh(new THREE.SphereGeometry(0.06, 24, 16), mats.obi)
       knotCore.scale.set(1.3, 0.85, 0.9)
       sashKnot.add(knotCore)
       ;[-1, 1].forEach((s) => {
-        const loop = new THREE.Mesh(track(new THREE.TorusGeometry(0.06, 0.024, 12, 40)), mats.cloth)
+        const loop = new THREE.Mesh(track(new THREE.TorusGeometry(0.06, 0.024, 12, 40)), mats.obi)
         loop.castShadow = loop.receiveShadow = true
         loop.position.set(s * 0.07, 0.02, 0)
         loop.rotation.set(0.35, 0, s * 0.7)
         sashKnot.add(loop)
       })
       ;[0.03, -0.045].forEach((x, i) => {
-        const tail = mesh(new RoundedBoxGeometry(0.08, 0.3, 0.03, 4, 0.014), mats.cloth)
+        const tail = mesh(new RoundedBoxGeometry(0.08, 0.3, 0.03, 4, 0.014), mats.obi)
         tail.position.set(x, -0.19 - i * 0.03, 0.02 - i * 0.03)
         tail.rotation.z = 0.12 - i * 0.3
         sashKnot.add(tail)
@@ -2574,14 +2919,10 @@ export default function Samurai3D() {
         shoulder.position.set(side * 0.46, 0.72, 0)
         body.add(shoulder)
 
-        const cord = mesh(new THREE.TorusGeometry(0.09, 0.02, 12, 48), mats.rope)
-        cord.position.set(side * 0.02, 0.1, 0)
-        cord.rotation.x = Math.PI / 2
-        shoulder.add(cord)
-
-        const capKnot = mesh(new THREE.SphereGeometry(0.045, 24, 16), mats.rope)
-        capKnot.position.set(side * 0.02, 0.12, 0)
-        shoulder.add(capKnot)
+        // The ball of the shoulder, in the kosode's silk, under the kohire
+        const shoulderBall = mesh(new THREE.SphereGeometry(0.1, 24, 16), mats.silk)
+        shoulderBall.position.set(side * 0.01, 0.02, 0)
+        shoulder.add(shoulderBall)
 
         // Sode: five lames draped over the outside of the shoulder
         const outward = side > 0 ? RIGHT : LEFT
@@ -2607,25 +2948,78 @@ export default function Samurai3D() {
           sode.add(rv)
         })
 
+        // The kosode sleeve: asanoha silk, bunched above the elbow
         const upper = mesh(
-          foldCloth(new THREE.CylinderGeometry(0.12, 0.11, 0.34, 40, 12), 0.34, {
-            rings: [
-              [0.08, 0.06, 0.08],
-              [0.24, 0.025, 0.07],
-            ],
-            creases: 0.03,
-            seed: side * 2 + 5,
-          }),
-          mats.fabric
+          clothUV(
+            foldCloth(new THREE.CylinderGeometry(0.12, 0.11, 0.34, 40, 12), 0.34, {
+              rings: [
+                [0.08, 0.06, 0.08],
+                [0.24, 0.025, 0.07],
+              ],
+              creases: 0.03,
+              seed: side * 2 + 5,
+            }),
+            0.115,
+            0.34,
+            5
+          ),
+          mats.silk
         )
         upper.position.y = -0.36
         shoulder.add(upper)
+
+        // Kote, upper arm: mail over the sleeve from under the sode to just
+        // above the elbow (the cloth puffs out below it), with ikada — small
+        // lacquered plates sewn on like a raft — over the outside.
+        const upperMail = mesh(new THREE.CylinderGeometry(0.125, 0.121, 0.2, 40, 1, true), mats.kusari)
+        upperMail.position.y = -0.35
+        shoulder.add(upperMail)
+        for (const [y, r0, r1] of [
+          [-0.3, 0.137, 0.136],
+          [-0.385, 0.135, 0.134],
+        ]) {
+          for (const k of [-1, 0, 1]) {
+            const ikada = plate(r0, r1, 0.07, arc(outward + k * 0.45, 0.36), mats.red, 0.01, 2)
+            ikada.position.y = y
+            shoulder.add(ikada)
+          }
+          rivetRow(shoulder, r0 + 0.001, y, [outward - 0.675, 1.35], 3, mats.metalDark, 0.8)
+        }
+
+        // Mizunomi-no-kan: the gilt ring on the back of the sode's fourth lame,
+        // where the cords that steady it are tied
+        {
+          const a = outward + side * Math.PI * 0.36
+          const ring = mesh(new THREE.TorusGeometry(0.018, 0.0045, 8, 20), mats.gold)
+          ring.position.set(Math.sin(a) * 0.31, 0.065 - 0.305, Math.cos(a) * 0.31)
+          ring.rotation.y = a
+          sode.add(ring)
+        }
 
         const elbow = new THREE.Group()
         elbow.position.y = -0.56
         shoulder.add(elbow)
         // The joint: padded cloth that fills the bend when the arm folds
-        elbow.add(mesh(new THREE.SphereGeometry(0.108, 24, 16), mats.fabric))
+        elbow.add(mesh(new THREE.SphereGeometry(0.108, 24, 16), mats.silk))
+        // Hiji-gane: a gilt-rimmed cop over the point of the elbow
+        {
+          const d = new THREE.Vector3(side * 0.75, 0, -0.66).normalize()
+          const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d)
+          const cop = mesh(new THREE.SphereGeometry(0.072, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), mats.red)
+          cop.position.copy(d).multiplyScalar(0.09)
+          cop.quaternion.copy(q)
+          cop.scale.set(1, 0.5, 1)
+          elbow.add(cop)
+          const rim = mesh(new THREE.TorusGeometry(0.07, 0.008, 8, 36), mats.gold)
+          rim.position.copy(d).multiplyScalar(0.092)
+          rim.quaternion.copy(q).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2))
+          elbow.add(rim)
+          const boss = mesh(STUD, mats.gold)
+          boss.position.copy(d).multiplyScalar(0.125)
+          boss.quaternion.copy(q)
+          boss.scale.setScalar(0.5)
+          elbow.add(boss)
+        }
 
         // Kote: mail sleeve with three lacquered splints on the outside
         const fore = mesh(new THREE.CylinderGeometry(0.105, 0.1, 0.36, 40), mats.kusari)
@@ -2912,7 +3306,7 @@ export default function Samurai3D() {
           )
         }
       }
-      mask.add(mesh(mergeCopies(strand, strands), mats.fabric))
+      mask.add(mesh(mergeCopies(strand, strands), mats.helmetLacing))
       strand.dispose()
 
       // Gold sunbursts lacquered onto the cheeks, either side of the nose.
@@ -2978,21 +3372,9 @@ export default function Samurai3D() {
         thickness: 0.02,
       })
 
-      // A cloth collar draped round the neck, flattened so it hangs rather
-      // than inflates.
-      const scarf = mesh(new THREE.TorusGeometry(0.34, 0.075, 14, 56), mats.cloth)
-      scarf.position.y = -0.5
-      scarf.rotation.x = Math.PI / 2
-      scarf.scale.set(1, 1, 0.6)
-      headRig.add(scarf)
-
-      tails = [0.1, -0.06].map((x, i) => {
-        const tail = mesh(new RoundedBoxGeometry(0.13, 0.36, 0.06, 4, 0.03), mats.cloth)
-        tail.position.set(x, -0.76 - i * 0.05, 0.27 - i * 0.05)
-        tail.rotation.z = 0.2 - i * 0.35
-        headRig.add(tail)
-        return tail
-      })
+      // (No cloth collar: the yodare-kake above closes the throat, as on real
+      // armour, and the dō's own collar sits beneath it.)
+      tails = []
       await breathe()
 
       /* ================================================================
@@ -3031,7 +3413,8 @@ export default function Samurai3D() {
       const seam = taperTube(new THREE.TubeGeometry(seamCurve, 24, 0.009, 6), seamCurve, 24, 6, (t) =>
         0.6 + t * 0.4
       )
-      const SEAMS = 8
+      // Sixteen plates, as a suji-bachi is built, each seam raised and riveted
+      const SEAMS = 16
       bowlRig.add(
         mesh(
           mergeCopies(
@@ -3048,7 +3431,7 @@ export default function Samurai3D() {
       const hoshiAt = []
       const up = new THREE.Vector3(0, 1, 0)
       for (let i = 0; i < SEAMS; i++) {
-        for (const phi of [0.36, 0.6, 0.84, 1.08, 1.32]) {
+        for (const phi of i % 2 ? [0.62, 0.98, 1.32] : [0.4, 0.68, 0.96, 1.24]) {
           const n = new THREE.Vector3(Math.sin(phi), Math.cos(phi), 0).applyAxisAngle(up, (i / SEAMS) * Math.PI * 2)
           hoshiAt.push(
             new THREE.Matrix4().compose(
@@ -3064,10 +3447,26 @@ export default function Samurai3D() {
 
       // Shinodare: gilt strips running down from the crown over the front,
       // back and side seams, broad at the top and narrowing toward the rim
-      for (const i of [0, 2, 4, 6]) {
+      for (const i of [0, 4, 8, 12]) {
         const strip = mesh(meridianStrip(0.607, 0.17, 1.28, 0.05, 0.022), mats.gold)
         strip.rotation.y = (i / SEAMS) * Math.PI * 2
         bowlRig.add(strip)
+      }
+
+      // Kasa-jirushi-no-kan: the gilt ring low on the back of the bowl that a
+      // small identifying flag is tied to, hanging from a riveted mount
+      {
+        const n = new THREE.Vector3(0, Math.cos(1.18), -Math.sin(1.18))
+        const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), n)
+        const ring = mesh(new THREE.TorusGeometry(0.03, 0.0075, 10, 28), mats.gold)
+        ring.position.copy(n).multiplyScalar(0.612).add(new THREE.Vector3(0, -0.028, 0))
+        ring.quaternion.copy(q)
+        bowlRig.add(ring)
+        const mount = mesh(STUD, mats.gold)
+        mount.position.copy(n).multiplyScalar(0.602)
+        mount.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), n)
+        mount.scale.setScalar(0.55)
+        bowlRig.add(mount)
       }
 
       // Tehen-no-kanamono: the tiered gilt fitting round the vent at the crown
@@ -3129,6 +3528,14 @@ export default function Samurai3D() {
         const lip = plate(0.27, 0.272, 0.024, span, mats.helmet, 0.034)
         lip.position.y = -0.168
         wingRig.add(lip)
+        // A gilt kiku kanamono on the turned-back face, where it shows from
+        // the front
+        const a = side * (Math.PI / 2 - 0.62)
+        const out = new THREE.Vector3(Math.sin(a), 0.278, Math.cos(a)).normalize()
+        const mon = kikuMon(0.046)
+        mon.position.set(Math.sin(a) * 0.232, 0.02, Math.cos(a) * 0.232)
+        mon.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), out)
+        wingRig.add(mon)
       })
 
       // Maedate: a broad gilt crest, two swept blades rising from a
@@ -3206,7 +3613,7 @@ export default function Samurai3D() {
           }
         }
       }
-      katana.add(mesh(mergeCopies(wrap, wrapMatrices), mats.fabric))
+      katana.add(mesh(mergeCopies(wrap, wrapMatrices), mats.helmetLacing))
       wrap.dispose()
 
       const menuki = mesh(new THREE.OctahedronGeometry(0.035, 2), mats.gold)
@@ -4367,7 +4774,9 @@ export default function Samurai3D() {
 
     /* ---- Theme ---- */
     const applyTheme = () => {
-      mats.fabric.color.copy(cssColor('--samurai-fabric', '#171a21'))
+      mats.fabric.color.copy(cssColor('--samurai-cotton', '#3a4252'))
+      mats.silk.color.copy(cssColor('--samurai-silk', '#34405a'))
+      mats.hakama.color.copy(cssColor('--samurai-hakama', '#4a5160'))
       mats.red.color.copy(cssColor('--samurai-accent', '#c0392b'))
       mats.redDark.color.copy(cssColor('--samurai-accent-dark', '#8e2a1e'))
       mats.redLame.color.copy(cssColor('--samurai-accent', '#c0392b'))
@@ -4380,7 +4789,8 @@ export default function Samurai3D() {
       mats.straw.color.copy(cssColor('--samurai-rope', '#b8935a'))
       mats.bowl.color.copy(cssColor('--samurai-bowl', '#e8e1d4'))
       mats.steel.color.copy(cssColor('--samurai-steel', '#e9edf4'))
-      mats.cloth.color.copy(cssColor('--samurai-cloth', '#a8322a'))
+      mats.obi.color.copy(cssColor('--samurai-cloth', '#a8322a'))
+      mats.silkCord.color.copy(cssColor('--samurai-cloth', '#a8322a'))
       mats.leather.color.copy(cssColor('--samurai-leather', '#4a3b33'))
       mats.helmetLacing.color.copy(cssColor('--samurai-helmet-lacing', '#232a3d'))
       // The eyes are tinted by mood every frame, starting from this colour.

@@ -591,6 +591,234 @@ function engraving(S) {
   return { engraveN: tex(S, S, toNormal(h, S, S, 2.4)), engraveC: tex(S, S, toGray(shade, 0, 1)) }
 }
 
+/**
+ * Stencilled leather for the tsurubashiri-gawa, the panel laced over the
+ * front of an ō-yoroi's dō: a hishi (diamond) lattice of double lines with a
+ * four-petalled hanabishi in every diamond, stencilled in pale lacquer on
+ * indigo-dyed leather. Unlike the grey maps, the colour map carries the real
+ * colours (its material is white). The stencil stands a hair proud of the
+ * grain and is rubbed thin in patches.
+ */
+function stencil(S) {
+  const r = rng(131)
+  const n = 3 // diamonds per tile along each diagonal
+  const cell = S / n
+  const grainF = noise(S, S, r, [[S / 4, 0.5], [S / 8, 0.3], [S / 16, 0.2]])
+  const wear = noise(S, S, r, [[5, 0.6], [11, 0.4]])
+  const { f1, f2 } = worley(S, S, r, Math.round(S / 9))
+  const ground = [0.17, 0.21, 0.31]
+  const ink = [0.84, 0.79, 0.67]
+  const out = new Uint8Array(S * S * 4)
+  const h = new Float32Array(S * S)
+  const lw = cell * 0.03
+  const R = cell * 0.2
+  const aa = (d) => clamp01(0.5 - d) // 1 inside (d < 0), a pixel of soft edge
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const u = (n * (x + y)) / S
+      const v = (n * (x - y)) / S
+      const fu = u - Math.floor(u)
+      const fv = v - Math.floor(v)
+      // Distance in pixels to the nearest diamond edge
+      const e = (Math.min(fu, 1 - fu, fv, 1 - fv) * cell) / Math.SQRT2
+      const line = Math.max(aa(e - lw), 0.85 * aa(Math.abs(e - lw * 3.2) - lw * 0.45))
+      // The hanabishi: four petals along the image axes, a dot at the heart
+      const dx = ((fu - 0.5 + (fv - 0.5)) * cell) / 2
+      const dy = ((fu - 0.5 - (fv - 0.5)) * cell) / 2
+      let flower = 0
+      for (const [ax, ay] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        const along = dx * ax + dy * ay - R * 0.6
+        const across = dx * ay - dy * ax
+        // A petal with a notch at its tip, as the hanabishi is drawn
+        const q = Math.sqrt((along / (R * 0.55)) ** 2 + (across / (R * 0.34)) ** 2) - 1
+        const notch = Math.hypot(along - R * 0.62, across) - R * 0.14
+        flower = Math.max(flower, aa(Math.max(q * R * 0.34, -notch)))
+      }
+      flower = Math.max(flower, aa(Math.hypot(dx, dy) - R * 0.16))
+      const i = y * S + x
+      const rubbed = clamp01((wear[i] - 0.52) * 3.5)
+      const m = Math.max(line, flower) * (1 - 0.35 * rubbed)
+      const pore = smooth(clamp01((f2[i] - f1[i]) / 0.3))
+      const tone = 0.82 + 0.26 * grainF[i] + 0.08 * pore
+      for (let c = 0; c < 3; c++) {
+        out[i * 4 + c] = Math.round(clamp01(ground[c] * tone * (1 - m) + ink[c] * (0.9 + 0.1 * grainF[i]) * m) * 255)
+      }
+      out[i * 4 + 3] = 255
+      h[i] = pore * 0.35 + grainF[i] * 0.25 + m * 0.9
+    }
+  }
+  return { stencilC: tex(S, S, out), stencilN: tex(S, S, toNormal(h, S, S, 1.6)) }
+}
+
+/** Distance from p to the segment ab. */
+function segDist(px, py, ax, ay, bx, by) {
+  const dx = bx - ax
+  const dy = by - ay
+  const t = clamp01(((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy || 1))
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+}
+
+/**
+ * Asanoha (hemp leaf) woven into silk, for the kosode worn under the armour.
+ * On a triangle lattice, every triangle's edges and the lines from its
+ * corners to its centre are woven as glossy satin floats in a lighter thread
+ * than the twill ground, so the six-pointed stars catch the light. Five
+ * triangles across and three double rows down keep the lattice within 4% of
+ * equilateral on a square tile.
+ *   asanohaC  colour multiplier: satin 1, ground ~0.6
+ *   asanohaR  roughness multiplier: the satin is much smoother
+ */
+function asanoha(S) {
+  const r = rng(149)
+  const n = 5
+  const m = 3
+  const side = S / n
+  const h = S / (2 * m)
+  const lw = Math.max(0.9, S / 220)
+  const slub = noise(S, S, r, [[S / 8, 0.6, S / 64], [S / 16, 0.4, S / 128]])
+  const col = new Float32Array(S * S)
+  const rough = new Float32Array(S * S)
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const j = (y + 0.5) / h
+      const i = (x + 0.5) / side - j / 2
+      const I = Math.floor(i)
+      const J = Math.floor(j)
+      const fi = i - I
+      const fj = j - J
+      // The triangle holding this pixel, as three lattice points (i, j)
+      const tri = fi + fj < 1 ? [[I, J], [I + 1, J], [I, J + 1]] : [[I + 1, J], [I + 1, J + 1], [I, J + 1]]
+      const pts = tri.map(([a, b]) => [(a + b / 2) * side, b * h])
+      const gx = (pts[0][0] + pts[1][0] + pts[2][0]) / 3
+      const gy = (pts[0][1] + pts[1][1] + pts[2][1]) / 3
+      const px = x + 0.5
+      const py = y + 0.5
+      let d = Infinity
+      for (let k = 0; k < 3; k++) {
+        const [ax, ay] = pts[k]
+        const [bx, by] = pts[(k + 1) % 3]
+        d = Math.min(d, segDist(px, py, ax, ay, bx, by), segDist(px, py, ax, ay, gx, gy))
+      }
+      const satin = clamp01(lw + 0.5 - d)
+      const idx = y * S + x
+      col[idx] = 0.58 + 0.08 * slub[idx] + 0.42 * satin
+      rough[idx] = 1 - 0.5 * satin + 0.06 * slub[idx]
+    }
+  }
+  return { asanohaC: tex(S, S, toGray(col, 0, 1)), asanohaR: tex(S, S, toGray(rough, 0, 1)) }
+}
+
+/**
+ * Shima: the woven stripes of a hakama — broad dark bands split by fine
+ * light pinstripes and a mid-tone stripe, the threads a little uneven
+ * (slubbed) along their length. Stripes run up the leg (constant in x).
+ */
+function shima(S) {
+  const r = rng(157)
+  // [width as a share of the tile, tone]
+  const bands = [
+    [0.2, 0.52],
+    [0.012, 1],
+    [0.05, 0.72],
+    [0.012, 1],
+    [0.2, 0.52],
+    [0.03, 0.82],
+    [0.16, 0.46],
+    [0.012, 0.95],
+    [0.03, 0.82],
+    [0.294, 0.5],
+  ]
+  const toneAt = new Float32Array(S)
+  let x0 = 0
+  for (const [w, tone] of bands) {
+    const x1 = x0 + w * S
+    for (let x = Math.floor(x0); x < Math.min(S, Math.ceil(x1)); x++) toneAt[x] = tone
+    x0 = x1
+  }
+  const slub = noise(S, S, r, [[S / 2, 0.6, S / 32], [S / 4, 0.4, S / 64]])
+  const f = new Float32Array(S * S)
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) f[y * S + x] = toneAt[x] * (0.9 + 0.2 * slub[y * S + x])
+  }
+  return tex(S, S, toGray(f, 0, 1))
+}
+
+/**
+ * Hakata-ori, the stiff silk woven for obi: bands along the belt (x runs
+ * round the waist, y across it) with a row of tokko — the vajra motif, two
+ * lozenges meeting at a waisted bar — down the middle.
+ */
+function hakata(S) {
+  const r = rng(163)
+  const slub = noise(S, S, r, [[S / 32, 0.6, S / 4], [S / 64, 0.4, S / 8]])
+  // [from, to, tone] across the belt (v 0 → 1)
+  const bands = [
+    [0, 0.07, 0.45],
+    [0.07, 0.1, 1],
+    [0.1, 0.15, 0.55],
+    [0.15, 0.85, 0.78],
+    [0.85, 0.9, 0.55],
+    [0.9, 0.93, 1],
+    [0.93, 1, 0.45],
+  ]
+  const f = new Float32Array(S * S)
+  const period = S / 2
+  for (let y = 0; y < S; y++) {
+    const v = (y + 0.5) / S
+    let tone = 0.78
+    for (const [a, b, t] of bands) if (v >= a && v < b) tone = t
+    for (let x = 0; x < S; x++) {
+      let t = tone
+      if (v > 0.25 && v < 0.75) {
+        // Tokko: two lozenges tip to tip, joined by a waisted bar
+        const cx = (((x + 0.5) % period) / period - 0.5) * 2
+        const cy = (v - 0.5) / 0.25
+        const lozenge = Math.abs(Math.abs(cx) - 0.55) / 0.42 + Math.abs(cy) / 0.9
+        const bar = Math.abs(cx) < 0.18 && Math.abs(cy) < 0.2
+        if (lozenge < 1 || bar) t = 1
+        else if (lozenge < 1.18) t = 0.6
+      }
+      f[y * S + x] = t * (0.93 + 0.14 * slub[y * S + x])
+    }
+  }
+  return tex(S, S, toGray(f, 0, 1))
+}
+
+/**
+ * Sashiko: the quilting stitches of padded cotton — rows of short running
+ * stitches along a square grid, the stitches stopping short of each
+ * crossing, in a pale thread over indigo cotton.
+ */
+function sashiko(S) {
+  const r = rng(167)
+  const cells = 8
+  const c = S / cells
+  const slub = noise(S, S, r, [[S / 8, 0.5], [S / 16, 0.5]])
+  const f = new Float32Array(S * S)
+  const lw = Math.max(0.8, S / 300)
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const fx = ((x + 0.5) % c) / c
+      const fy = ((y + 0.5) % c) / c
+      // Three stitches per cell edge, each 60% of its slot, none at the crossings
+      const dash = (t) => {
+        const s = t * 3
+        const u = s - Math.floor(s)
+        return u > 0.2 && u < 0.8 && t > 0.08 && t < 0.92
+      }
+      const onV = Math.min(fx, 1 - fx) * c < lw && dash(fy)
+      const onH = Math.min(fy, 1 - fy) * c < lw && dash(fx)
+      f[y * S + x] = onV || onH ? 1 : 0.46 + 0.1 * slub[y * S + x]
+    }
+  }
+  return tex(S, S, toGray(f, 0, 1))
+}
+
 /** A soft halo for the eye slits (white, with falloff in alpha). */
 function glow(S) {
   const out = new Uint8Array(S * S * 4)
@@ -628,6 +856,11 @@ export function generateTextures(quality = 'high') {
     ...blade(s, S * 2),
     ...goldFlake(S),
     ...engraving(S),
+    ...stencil(s),
+    ...asanoha(s),
+    shimaC: shima(s),
+    obiC: hakata(s),
+    sashikoC: sashiko(s),
     glow: glow(64),
   }
 }
