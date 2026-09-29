@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { fetchBakedEnvironment } from './samurai-preload.js'
 
 /**
  * The reflection environment for the samurai.
@@ -102,25 +103,11 @@ export function encodePMREM(renderer, target) {
 }
 
 /**
- * Fetches the baked PNG and decodes it into a ready-to-use CubeUV texture,
- * which three.js uses directly without running PMREM.
+ * Decodes the baked PNG's pixels (see fetchBakedEnvironment in
+ * samurai-preload.js) into a ready-to-use CubeUV texture, which three.js
+ * uses directly without running PMREM.
  */
-export async function loadBakedEnvironment(url) {
-  const blob = await (await fetch(url)).blob()
-  const bitmap = await createImageBitmap(blob, {
-    premultiplyAlpha: 'none',
-    colorSpaceConversion: 'none',
-  })
-  const width = bitmap.width
-  const height = bitmap.height / 2
-  const canvas = document.createElement('canvas')
-  canvas.width = bitmap.width
-  canvas.height = bitmap.height
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })
-  ctx.drawImage(bitmap, 0, 0)
-  bitmap.close?.()
-  const px = ctx.getImageData(0, 0, canvas.width, canvas.height).data
-
+export function decodeBakedEnvironment({ px, width, height }) {
   const lower = width * height * 4
   const data = new Uint16Array(width * height * 4)
   const one = THREE.DataUtils.toHalfFloat(1)
@@ -145,4 +132,9 @@ export async function loadBakedEnvironment(url) {
   texture.generateMipmaps = false
   texture.needsUpdate = true
   return texture
+}
+
+/** Fetches and decodes the baked PNG in one go. */
+export async function loadBakedEnvironment(url) {
+  return decodeBakedEnvironment(await fetchBakedEnvironment(url))
 }

@@ -13,8 +13,8 @@ import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 import { createVisibilityGate, cssColor } from '../lib/three-utils.js'
-import { loadBakedEnvironment, renderStudioPMREM } from '../lib/studio-env.js'
-import envUrl from '../assets/samurai-env.png'
+import { decodeBakedEnvironment, renderStudioPMREM } from '../lib/studio-env.js'
+import { preloadSamurai } from '../lib/samurai-preload.js'
 import { MOVES, getState, subscribe } from '../lib/companion.js'
 
 /**
@@ -33,20 +33,30 @@ import { MOVES, getState, subscribe } from '../lib/companion.js'
  *  - The kabuto and menpō are black urushi flecked with gold leaf: a smooth
  *    bowl with low seams, a rolled peak, broad turned-back wings, closely
  *    laced black lames at the neck, and a broad engraved gilt crest of two
- *    swept blades on a chrysanthemum boss. The mask has a curved brow, an
- *    eye band with lit slits, cheek plates, a tapered mouth guard with
- *    breathing slots and gold sunbursts, and a laced throat guard beneath.
+ *    swept blades on a chrysanthemum boss. The mask is a sculpted menpō: a
+ *    curved brow with heavy folds over each eye, lit slits in gilt rims, a
+ *    bridged nose with nostrils, cheek plates carrying the pegs the helmet
+ *    cord hooks round, gold sunbursts, a tapered mouth guard with cheek
+ *    folds, breathing slots, a horsehair moustache over a mouth open on
+ *    gilt teeth, and a laced throat guard beneath.
  *  - Forearms and shins are chain mail (kusari) with iron splints laced over
- *    them; the feet are leather boots on straw soles.
- *  - The dō carries a decorative agemaki bow at the back, two small hanging
- *    plates at the chest, flank plates and rivets; the kabuto has riveted
- *    ridges with gold shinodare strips, a tiered tehen and a marked visor.
+ *    them; the feet are leather boots on straw soles. The hands are gloved
+ *    fists — four curled fingers and a thumb — with an iron tekko over the
+ *    back; the katana hand's fingers always wrap the grip, and the other
+ *    hand closes on it too in a two-handed guard.
+ *  - The dō carries a decorative agemaki bow on a ring at the back, a
+ *    gattari bracket, straps over the shoulders, two small hanging plates at
+ *    the chest, flank plates and rivets; the kabuto has riveted ridges with
+ *    gold shinodare strips, a tiered gilt tehen and a marked visor.
  *  - Materials are physical: clear-coated urushi lacquer, hammered iron,
  *    polished gold, mail, woven fabric with sheen, and a blade with a real
  *    hamon (temper line) — mirror-polished ji, cloudy matte ha.
  *  - On desktop, ambient occlusion darkens the gaps between plates, shadows
- *    are 4k, and the frame is rendered at 2× or more with 8× MSAA, then
- *    given a light contrast-adaptive sharpen.
+ *    are 4k, and the frame is supersampled (up to 3× the screen's pixels)
+ *    with MSAA, then given a light contrast-adaptive sharpen. A quality
+ *    ladder (see qualityLadder) is climbed or descended from the GPU's real
+ *    frame times, so a strong GPU gets every pixel and a weak one stays
+ *    smooth.
  *
  * He idles standing, then periodically kneels into seiza to meditate — the
  * katana laid across his lap, eyes dimmed to slits that glow with each
@@ -58,16 +68,21 @@ import { MOVES, getState, subscribe } from '../lib/companion.js'
  * actions. Moods are whole-body poses (stance, arms via IK, blade, eyes)
  * that he eases between on springs; actions are keyframes layered on top.
  * Between them he breathes, blinks, glances about and shifts his weight,
- * and his head follows a mouse cursor. On wide desktop screens he leaves the
- * hero once it scrolls away and waits in the corner; reduced motion turns
- * all of this down to plain pose changes.
+ * and his head follows a mouse cursor. His eyes cast their glow onto the
+ * mask; the skirt, sode, scarf, bow and crest lag and flare from the body's
+ * real acceleration; and a fast cut leaves a fading sweep behind the edge.
+ * On wide desktop screens he leaves the hero once it scrolls away and waits
+ * in the corner; reduced motion turns all of this down to plain pose changes.
  *
  * Load time is dominated by GPU shader compilation, so the scene is built to
  * keep that small: the reflection map is baked offline (see studio-env.js),
  * every material shares one of four shader programs, repeated pieces are
  * merged rather than instanced, shaders compile in parallel off the main
  * thread, and the AO pass is only switched on once the character is already
- * on screen, with its shader variants compiled in the background first.
+ * on screen, with its shader variants compiled in the background first. The
+ * surface maps and reflection map are started by the Hero before this chunk
+ * even arrives, and the geometry is built in short slices between frames,
+ * so the page keeps animating while he is put together.
  *
  * Layout, standing, bottom to top (world units, floor at y = 0):
  *   0.04  sandals        1.15  hips / sash (HIP_Y)
@@ -143,52 +158,83 @@ const SharpenShader = {
     }`,
 }
 
-// Start fetching the baked reflection map as soon as this chunk loads, in
-// parallel with React mounting the component.
-const bakedEnv = loadBakedEnvironment(envUrl).catch(() => null)
+// The surface maps (a worker) and the baked reflection map (a fetch) were
+// started by the Hero before this chunk was fetched; these are the same
+// promises, so they are usually settled by the time he mounts.
+const { textures: texturesReady, env: envPixels } = preloadSamurai()
 
 const lerp = THREE.MathUtils.lerp
 const clamp = THREE.MathUtils.clamp
 const smootherstep = (k) => k * k * k * (k * (k * 6 - 15) + 10)
 
+/** Lets the browser paint a frame between slices of a long job. */
+const yieldToBrowser = () =>
+  typeof scheduler !== 'undefined' && scheduler.yield
+    ? scheduler.yield()
+    : new Promise((resolve) => {
+        const channel = new MessageChannel()
+        channel.port1.onmessage = () => resolve()
+        channel.port2.postMessage(null)
+      })
+
+/* ================================================================
+   Quality ladder
+   ================================================================ */
+
+/**
+ * The rungs a device can render on, top first. Each renders the scene at
+ * `dpr` times the CSS size and, where it has ambient occlusion, the
+ * occlusion at `ao` times that; rungs without AO skip the post-processing
+ * chain and draw straight to the canvas. Desktops climb to nine samples per
+ * screen pixel (on a 1× display) and drop as far as 1× with no AO; phones
+ * only ever trade resolution.
+ *
+ * On a high-density display, AO rungs below the display's own ratio are
+ * left out: occlusion is not worth a blurred picture, though a plain lower
+ * ratio remains as the last resort.
+ *
+ * `cost` is a relative GPU cost (1 = 1× without AO), used to predict whether
+ * the rung above still fits. It was fitted to timings on an integrated GPU:
+ * a fixed cost per frame (draw calls, the shadow pass, the floor), the
+ * scene's pixels, and — with AO — one more scene pass for normals plus the
+ * occlusion's own pixels, which are dear.
+ */
+function qualityLadder(finePointer, nativeDpr) {
+  const rungs = finePointer
+    ? [
+        [3, 1],
+        [2.5, 1],
+        [2, 1],
+        [2, 0.5],
+        [1.5, 0.5],
+        [2, 0],
+        [1.25, 0.5],
+        [1, 0.5],
+        [1.5, 0],
+        [1.25, 0],
+        [1, 0],
+      ].filter(([dpr, ao]) => ao === 0 || dpr >= nativeDpr - 0.01)
+    : [nativeDpr, 1.5, 1.25, 1]
+        .filter((d, i, all) => d <= nativeDpr && all.indexOf(d) === i)
+        .map((d) => [d, 0])
+  return rungs.map(([dpr, ao]) => ({
+    dpr,
+    ao,
+    cost: 1 + 0.42 * (dpr * dpr - 1) + (ao > 0 ? 0.41 + 1.4 * (dpr * ao) ** 1.5 : 0),
+  }))
+}
+// Where a desktop starts: a discrete GPU at 2× with full AO, an integrated
+// one at 1.5× without. The governor measures and moves from there.
+const START_DISCRETE = { dpr: 2, ao: 1 }
+const START_INTEGRATED = { dpr: 1.5, ao: 0 }
+const rungOf = (ladder, want) =>
+  Math.max(0, ladder.findIndex((q) => q.dpr === want.dpr && q.ao === want.ao))
+// Never more rendered pixels than this per frame, whatever the rung says.
+const MAX_PIXELS = 3.6e6
+
 /* ================================================================
    Surface maps — generated in a worker, off the main thread
    ================================================================ */
-
-// Phones get half-resolution maps: a quarter of the memory and the work.
-const TEXTURE_QUALITY =
-  typeof window !== 'undefined' &&
-  (window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 720)
-    ? 'low'
-    : 'high'
-
-/** Asks a worker for the surface maps; falls back to generating them here. */
-function requestTextures(quality) {
-  const inline = () => import('../lib/samurai-textures.js').then((m) => m.generateTextures(quality))
-  return new Promise((resolve) => {
-    let worker
-    try {
-      worker = new Worker(new URL('../lib/samurai-textures.worker.js', import.meta.url), {
-        type: 'module',
-      })
-    } catch {
-      resolve(inline())
-      return
-    }
-    worker.onmessage = (e) => {
-      worker.terminate()
-      resolve(e.data)
-    }
-    worker.onerror = () => {
-      worker.terminate()
-      resolve(inline())
-    }
-    worker.postMessage({ quality })
-  })
-}
-
-// Start as soon as this chunk loads, alongside the environment map.
-const texturesReady = requestTextures(TEXTURE_QUALITY).catch(() => null)
 
 // Lames carry one row of kozane scales each; eight scales span this width.
 const KOZANE_TILE = 0.28
@@ -297,9 +343,21 @@ function foldCloth(geo, height, { rings = [], creases = 0.03, seed = 1 } = {}) {
  * plate's bottom (0) to its top (1), so each lame carries one row of kozane.
  * A per-vertex `wear` value marks the edges and corners, where lacquer rubs
  * through and iron is polished bright; it is turned into vertex colour when
- * the part is baked.
+ * the part is baked. The outer radius runs linearly from bottom to top, or
+ * follows `profile(t)` (t = 0 at the bottom, 1 at the top) so a plate can
+ * hug a curved surface such as the face.
  */
-function shellGeometry(rTop, rBottom, height, [start, sweep], thickness, segs, uvMode = 'world') {
+function shellGeometry(
+  rTop,
+  rBottom,
+  height,
+  [start, sweep],
+  thickness,
+  segs,
+  uvMode = 'world',
+  bevelSegments = 4,
+  profile = null
+) {
   const r = (rTop + rBottom) / 2
   const inner = r - thickness
   const bevelThickness = Math.min(thickness * 0.5, height * 0.25)
@@ -325,7 +383,7 @@ function shellGeometry(rTop, rBottom, height, [start, sweep], thickness, segs, u
     bevelEnabled: true,
     bevelThickness,
     bevelSize,
-    bevelSegments: 3,
+    bevelSegments,
     curveSegments: 1,
   })
   geo.translate(0, 0, -depth / 2)
@@ -334,7 +392,7 @@ function shellGeometry(rTop, rBottom, height, [start, sweep], thickness, segs, u
   const pos = geo.attributes.position
   for (let i = 0; i < pos.count; i++) {
     const t = clamp(pos.getY(i) / height + 0.5, 0, 1)
-    const k = (rBottom + (rTop - rBottom) * t) / r
+    const k = (profile ? profile(t) : rBottom + (rTop - rBottom) * t) / r
     pos.setX(i, pos.getX(i) * k)
     pos.setZ(i, pos.getZ(i) * k)
   }
@@ -502,7 +560,7 @@ function crestGeometry() {
     bevelEnabled: true,
     bevelThickness: 0.007,
     bevelSize: 0.006,
-    bevelSegments: 2,
+    bevelSegments: 3,
     curveSegments: 8,
   })
   geo.translate(0, 0, -0.013)
@@ -561,6 +619,48 @@ function tsubaGeometry(radius, depth) {
   const creased = toCreasedNormals(geo, 0.8)
   if (creased !== geo) geo.dispose()
   return creased
+}
+
+/**
+ * A thin strip laid over a sphere's surface along a meridian (the XY plane,
+ * from polar angle phi0 down to phi1), `w0` wide at the top tapering to
+ * `w1`, standing `lift` off the surface with real thickness. Each face is
+ * smooth along the curve and creased against its neighbours.
+ */
+function meridianStrip(R, phi0, phi1, w0, w1, lift = 0.003, thick = 0.004, segs = 20) {
+  const position = []
+  const uv = []
+  const index = []
+  const rIn = R + lift
+  const rOut = rIn + thick
+  // Four faces, each its own vertex strip: top, bottom, and the two sides.
+  const faces = [
+    [rOut, -1, rOut, 1],
+    [rIn, 1, rIn, -1],
+    [rIn, -1, rOut, -1],
+    [rOut, 1, rIn, 1],
+  ]
+  for (const [rA, sA, rB, sB] of faces) {
+    const base = position.length / 3
+    for (let k = 0; k <= segs; k++) {
+      const t = k / segs
+      const phi = phi0 + (phi1 - phi0) * t
+      const w = (w0 + (w1 - w0) * t) / 2
+      position.push(rA * Math.sin(phi), rA * Math.cos(phi), sA * w)
+      position.push(rB * Math.sin(phi), rB * Math.cos(phi), sB * w)
+      uv.push(t * (phi1 - phi0) * R * UV_SCALE, 0, t * (phi1 - phi0) * R * UV_SCALE, w * 2 * UV_SCALE)
+      if (k < segs) {
+        const i = base + k * 2
+        index.push(i, i + 2, i + 1, i + 1, i + 2, i + 3)
+      }
+    }
+  }
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(position, 3))
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2))
+  geo.setIndex(index)
+  geo.computeVertexNormals()
+  return geo
 }
 
 /* ================================================================
@@ -1289,12 +1389,31 @@ export default function Samurai3D() {
 
     let disposed = false
     const finePointer = window.matchMedia('(pointer: fine)').matches
-    // Desktop renders at no less than 2× — supersampled on 1× and 1.5×
-    // screens, so the lacing cords, rivets, stitching and gold flecks resolve
-    // instead of breaking up. If the GPU can't keep pace, the resolution
-    // eases back toward the screen's own (see governResolution below).
     const nativeDpr = Math.min(window.devicePixelRatio || 1, 2)
-    let dpr = finePointer ? Math.min(Math.max(window.devicePixelRatio || 1, 2), 2.5) : nativeDpr
+    // Integrated GPUs (and software renderers) start lower on the quality
+    // ladder and with lighter shadows; the governor (see govern below)
+    // measures the real frame cost and climbs or descends from there.
+    const gl = renderer.getContext()
+    let gpuName = ''
+    try {
+      const info = gl.getExtension('WEBGL_debug_renderer_info')
+      gpuName = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : ''
+    } catch {
+      // Not exposed: assume a discrete GPU and let the governor decide.
+    }
+    const integrated =
+      /Intel|UHD|Iris|HD Graphics|Mali|Adreno|PowerVR|SwiftShader|llvmpipe|Mesa|Radeon\(TM\) (Vega|Graphics)|Radeon Graphics/i.test(
+        gpuName
+      )
+    const ladder = qualityLadder(finePointer, nativeDpr)
+    let rung = finePointer ? rungOf(ladder, integrated ? START_INTEGRATED : START_DISCRETE) : 0
+    // The rung's pixel ratio, capped so a large canvas never exceeds MAX_PIXELS.
+    const rungDpr = (i) => {
+      const w = mount.clientWidth || 1
+      const h = mount.clientHeight || 1
+      return Math.min(ladder[i].dpr, Math.sqrt(MAX_PIXELS / (w * h)))
+    }
+    let dpr = rungDpr(rung)
     renderer.setPixelRatio(dpr)
     renderer.setSize(mount.clientWidth, mount.clientHeight)
     renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -1332,7 +1451,9 @@ export default function Samurai3D() {
     const key = new THREE.DirectionalLight(0xfff3e6, 2.5)
     key.position.set(3.6, 6.5, 5.2)
     key.castShadow = true
-    key.shadow.mapSize.setScalar(finePointer ? 4096 : 2048)
+    // A 4k map is a 16-megapixel depth pass every frame: discrete GPUs only.
+    const bigShadows = finePointer && !integrated
+    key.shadow.mapSize.setScalar(bigShadows ? 4096 : 2048)
     key.shadow.camera.near = 1
     key.shadow.camera.far = 30
     key.shadow.camera.left = -4
@@ -1341,7 +1462,7 @@ export default function Samurai3D() {
     key.shadow.camera.bottom = -1.5
     key.shadow.bias = -0.0006
     key.shadow.normalBias = 0.018
-    key.shadow.radius = finePointer ? 7 : 4
+    key.shadow.radius = bigShadows ? 7 : 4
 
     const rimL = new THREE.DirectionalLight(0xa8c8ff, 2.3)
     rimL.position.set(-4.5, 3.5, -5)
@@ -1630,6 +1751,14 @@ export default function Samurai3D() {
      * sode and both legs all reuse the same few shells.
      */
     const shellCache = new Map()
+    // Segments follow the arc length, so every plate's curve stays smooth
+    // with a sub-pixel chord error at the top rung: one segment per 0.03
+    // units where a discrete GPU can draw 3×, a little coarser (and a bevel
+    // ring fewer) where an integrated one draws every vertex three times.
+    const ARC_STEP = integrated ? 0.045 : 0.03
+    const BEVEL_SEGS = integrated ? 3 : 4
+    const arcSegments = (r, sweep, atLeast = 0) =>
+      Math.max(atLeast, Math.min(96, Math.ceil((r * sweep) / ARC_STEP)))
     const plate = (
       rTop,
       rBottom,
@@ -1637,14 +1766,19 @@ export default function Samurai3D() {
       [start, sweep],
       material,
       thickness = 0.026,
-      segs = 18,
-      uvMode = 'world'
+      minSegs = 8,
+      uvMode = 'world',
+      profile = null
     ) => {
+      const segs = arcSegments((rTop + rBottom) / 2, sweep, minSegs)
       const key = [rTop, rBottom, height, sweep, thickness, segs].map((v) => v.toFixed(4)).join() + uvMode
-      let geo = shellCache.get(key)
+      // A profiled plate is one of a kind: it is not cached.
+      let geo = profile ? null : shellCache.get(key)
       if (!geo) {
-        geo = track(shellGeometry(rTop, rBottom, height, arc(0, sweep), thickness, segs, uvMode))
-        shellCache.set(key, geo)
+        geo = track(
+          shellGeometry(rTop, rBottom, height, arc(0, sweep), thickness, segs, uvMode, BEVEL_SEGS, profile)
+        )
+        if (!profile) shellCache.set(key, geo)
       }
       const m = new THREE.Mesh(geo, material)
       m.castShadow = true
@@ -1672,7 +1806,20 @@ export default function Samurai3D() {
      * Nodes listed in `keep` (and everything under them) still animate on
      * their own, so they are left alone.
      */
-    const bake = (root, keep = []) => {
+    // Long jobs run in slices: after this much work, control returns to the
+    // browser so it can paint a frame — and stops for good once unmounted.
+    const SLICE_MS = 12
+    const ABORT = Symbol('samurai unmounted')
+    let sliceStart = performance.now()
+    const breathe = async () => {
+      if (disposed) throw ABORT
+      if (performance.now() - sliceStart < SLICE_MS) return
+      await yieldToBrowser()
+      if (disposed) throw ABORT
+      sliceStart = performance.now()
+    }
+
+    const bake = async (root, keep = []) => {
       root.updateMatrixWorld(true)
       const inv = new THREE.Matrix4().copy(root.matrixWorld).invert()
       const byMaterial = new Map()
@@ -1680,6 +1827,9 @@ export default function Samurai3D() {
       root.traverse((o) => {
         if (!o.isMesh || keep.includes(o)) return
         for (let p = o.parent; p && p !== root; p = p.parent) if (keep.includes(p)) return
+        sources.push(o)
+      })
+      for (const o of sources) {
         const local = new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld)
         const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone()
         if (o.material.vertexColors) paintWear(g, o.material.userData.wear || 0, o.matrixWorld)
@@ -1687,8 +1837,8 @@ export default function Samurai3D() {
         g.applyMatrix4(local)
         if (!byMaterial.has(o.material)) byMaterial.set(o.material, [])
         byMaterial.get(o.material).push(g)
-        sources.push(o)
-      })
+        await breathe()
+      }
       const merged = []
       for (const [material, parts] of byMaterial) {
         const geo = parts.length === 1 ? parts[0] : mergeGeometries(parts)
@@ -1699,6 +1849,7 @@ export default function Samurai3D() {
           return
         }
         merged.push(mesh(geo, material))
+        await breathe()
       }
       sources.forEach((o) => o.parent.remove(o))
       merged.forEach((m) => root.add(m))
@@ -1729,7 +1880,7 @@ export default function Samurai3D() {
     /* ---- Silk lacing: every cord of a group merged into one mesh ---- */
     // Each segment is [from, to, outwardNormal]. The braid is flattened
     // against the plate it crosses, so it reads as lacing, not as dowels.
-    const CORD = track(new THREE.CylinderGeometry(0.0085, 0.0085, 1, 6, 1))
+    const CORD = track(new THREE.CylinderGeometry(0.0085, 0.0085, 1, 8, 1))
     const lace = (parent, segments, material = mats.rope) => {
       if (!segments.length) return
       const x = new THREE.Vector3()
@@ -1755,9 +1906,11 @@ export default function Samurai3D() {
      * Rows of lames laced together with pairs of silk braid — how sode,
      * kusazuri and shikoro are really built. The radius grows linearly
      * downward by `flare`, so the rows open out like a skirt. The bottom
-     * lame is finished with hishinui cross-knots.
+     * lame is finished with hishinui cross-knots. Behind the rows runs one
+     * continuous lining shell, so the gaps between lames show dark cloth,
+     * never daylight.
      */
-    const lamellar = (
+    const lamellar = async (
       parent,
       {
         rows,
@@ -1775,6 +1928,7 @@ export default function Samurai3D() {
         thickness = 0.024,
         cross = true,
         lacing = mats.rope,
+        lining = mats.fabric,
       }
     ) => {
       const group = new THREE.Group()
@@ -1782,6 +1936,20 @@ export default function Samurai3D() {
       parent.add(group)
 
       const rAt = (yy) => rTop - flare * yy
+      if (lining) {
+        const depth = rows * rowH + (rows - 1) * gap
+        const back = thickness + 0.005
+        const liner = plate(
+          rAt(0.012) - back,
+          rAt(-depth) - back,
+          depth + 0.012,
+          [span[0] + 0.02, span[1] - 0.04],
+          lining,
+          0.012
+        )
+        liner.position.y = (0.012 - depth) / 2
+        group.add(liner)
+      }
       const cordAt = (a, yy) => {
         const r = rAt(yy) + thickness * 0.32 + 0.003
         return new THREE.Vector3(Math.sin(a) * r, yy, Math.cos(a) * r)
@@ -1804,10 +1972,11 @@ export default function Samurai3D() {
         const top = -i * (rowH + gap)
         bottom = top - rowH
         const mat = Array.isArray(material) ? material[i % material.length] : material
-        const lame = plate(rAt(top), rAt(bottom), rowH, span, LAME.get(mat) || mat, thickness, 18, 'lame')
+        const lame = plate(rAt(top), rAt(bottom), rowH, span, LAME.get(mat) || mat, thickness, 8, 'lame')
         lame.position.y = top - rowH / 2
         group.add(lame)
         if (i < rows - 1) pairs(bottom + rowH * 0.3, bottom - gap - rowH * 0.3)
+        await breathe()
       }
       if (hang) pairs(hang, -rowH * 0.3)
       if (cross) {
@@ -1824,6 +1993,7 @@ export default function Samurai3D() {
         }
       }
       lace(group, segments, lacing)
+      await breathe()
 
       if (trim) {
         const edge = plate(
@@ -1846,924 +2016,1272 @@ export default function Samurai3D() {
     }
 
     /* ================================================================
-       Legs — fabric underneath, laced thigh lames, splinted mail shins.
-       Hip, knee and ankle each bend, so he can kneel into seiza.
+       The model — built in slices between frames (see breathe above)
        ================================================================ */
-    const legs = [-1, 1].map((side) => {
-      const hip = new THREE.Group()
-      hip.position.set(side * 0.32, HIP_Y, 0)
-      // Splay (Y) is applied outside the lift (X), so a raised thigh still
-      // swings out sideways rather than twisting.
-      hip.rotation.order = 'YXZ'
-      samurai.add(hip)
+    // Everything the animation drives, filled in by buildModel.
+    let legs = []
+    let arms = []
+    let panels = []
+    let eyes = []
+    let glows = []
+    let tails = []
+    let body, torso, cuirass, skirt, headRig, helmet, katana, saya, sayaStand, sayaSeated
+    let crest, agemaki, eyeLight
 
-      const thigh = mesh(
-        foldCloth(new THREE.CylinderGeometry(0.18, 0.16, 0.46, 40, 12), 0.46, {
-          rings: [
-            [0.1, 0.05, 0.08],
-            [0.22, -0.02, 0.06],
-          ],
-          creases: 0.035,
-          seed: side + 3,
-        }),
-        mats.fabric
-      )
-      thigh.position.y = -0.25
-      hip.add(thigh)
+    const buildModel = async () => {
+      /* ================================================================
+         Legs — fabric underneath, laced thigh lames, splinted mail shins.
+         Hip, knee and ankle each bend, so he can kneel into seiza.
+         ================================================================ */
+      for (const side of [-1, 1]) {
+        const hip = new THREE.Group()
+        hip.position.set(side * 0.32, HIP_Y, 0)
+        // Splay (Y) is applied outside the lift (X), so a raised thigh still
+        // swings out sideways rather than twisting.
+        hip.rotation.order = 'YXZ'
+        samurai.add(hip)
 
-      // Haidate: three small laced lames over the front of the thigh
-      lamellar(hip, {
-        rows: 3,
-        rowH: 0.072,
-        gap: 0.018,
-        rTop: 0.2,
-        flare: 0.08,
-        span: arc(FRONT, Math.PI * 0.62),
-        y: -0.07,
-        material: [mats.red, mats.red, mats.redDark],
-        trim: mats.gold,
-        hang: 0.05,
-        cordsPer: 2,
-      })
-
-      const knee = new THREE.Group()
-      knee.position.y = -0.5
-      hip.add(knee)
-
-      const kneeCop = mesh(new THREE.SphereGeometry(0.15, 36, 24), mats.red)
-      kneeCop.position.set(0, 0, 0.06)
-      kneeCop.scale.z = 0.8
-      knee.add(kneeCop)
-
-      const kneeTrim = mesh(new THREE.TorusGeometry(0.14, 0.016, 12, 64), mats.gold)
-      kneeTrim.position.set(0, 0, 0.13)
-      knee.add(kneeTrim)
-      stud(knee, 0, 0, 0.175, 0, 0.8)
-
-      // The shin is sleeved in kusari (mail) under the splints
-      const shin = mesh(new THREE.CylinderGeometry(0.15, 0.14, 0.4, 40), mats.kusari)
-      shin.position.y = -0.27
-      knee.add(shin)
-
-      // Suneate: five separate iron splints, mail showing between them
-      ;[-2, -1, 0, 1, 2].forEach((k) => {
-        const splint = plate(0.168, 0.176, 0.32, arc(FRONT + k * 0.44, 0.32), mats.metal, 0.02)
-        splint.position.y = -0.29
-        knee.add(splint)
-      })
-
-      const shinTrim = plate(0.174, 0.176, 0.028, arc(FRONT, Math.PI * 0.9), mats.gold, 0.014)
-      shinTrim.position.y = -0.12
-      knee.add(shinTrim)
-      const shinCuff = plate(0.158, 0.16, 0.024, arc(FRONT, Math.PI * 0.9), mats.leather, 0.014)
-      shinCuff.position.y = -0.455
-      knee.add(shinCuff)
-
-      // Cords binding the splints on, knotted at the back of the calf
-      ;[-0.16, -0.41].forEach((yy) => {
-        const tie = mesh(new THREE.TorusGeometry(0.168, 0.008, 6, 48), mats.rope)
-        tie.position.set(0, yy, 0.0135)
-        tie.rotation.x = Math.PI / 2
-        knee.add(tie)
-        const knot = mesh(new THREE.SphereGeometry(0.02, 10, 8), mats.rope)
-        knot.position.set(side * 0.07, yy, -0.14)
-        knot.scale.set(1.3, 0.8, 1)
-        knee.add(knot)
-      })
-
-      const ankle = new THREE.Group()
-      ankle.position.y = -0.5
-      knee.add(ankle)
-
-      // Kegutsu: a leather boot with a rounded toe over a flat vamp, a rolled
-      // cuff, two instep straps and a plaited straw sole.
-      const foot = mesh(new THREE.SphereGeometry(0.2, 36, 22), mats.leather)
-      foot.position.set(0, -0.01, 0.1)
-      foot.scale.set(0.95, 0.5, 1.45)
-      ankle.add(foot)
-
-      const vamp = mesh(new RoundedBoxGeometry(0.3, 0.1, 0.46, 4, 0.045), mats.leather)
-      vamp.position.set(0, -0.06, 0.1)
-      ankle.add(vamp)
-
-      const cuff = mesh(new THREE.TorusGeometry(0.15, 0.032, 14, 48), mats.leather)
-      cuff.position.y = 0.04
-      cuff.rotation.x = Math.PI / 2
-      ankle.add(cuff)
-
-      const sole = mesh(new RoundedBoxGeometry(0.32, 0.04, 0.48, 4, 0.018), mats.straw)
-      sole.position.set(0, -0.1, 0.1)
-      ankle.add(sole)
-
-      ;[
-        [0.15, 0.07, 0.3],
-        [0.27, 0.035, 0.55],
-      ].forEach(([z, yy, tilt]) => {
-        const strap = mesh(new RoundedBoxGeometry(0.34, 0.045, 0.055, 3, 0.02), mats.leather)
-        strap.position.set(0, yy, z)
-        strap.rotation.x = tilt
-        ankle.add(strap)
-        // A small brass buckle on the outside of each strap
-        const buckle = mesh(new THREE.TorusGeometry(0.02, 0.0045, 6, 4), mats.gold)
-        buckle.position.set(side * 0.15, yy + 0.012, z)
-        buckle.rotation.set(tilt - Math.PI / 2, 0, Math.PI / 4)
-        ankle.add(buckle)
-      })
-
-      // Welt stitching round the boot, just above the sole
-      const stitch = new THREE.BoxGeometry(0.006, 0.006, 0.017)
-      const stitches = Array.from({ length: 28 }, (_, i) => {
-        const a = (i / 28) * Math.PI * 2
-        return new THREE.Matrix4().compose(
-          new THREE.Vector3(Math.sin(a) * 0.158, -0.075, 0.1 + Math.cos(a) * 0.238),
-          new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), a),
-          new THREE.Vector3(1, 1, 1)
+        const thigh = mesh(
+          foldCloth(new THREE.CylinderGeometry(0.18, 0.16, 0.46, 40, 12), 0.46, {
+            rings: [
+              [0.1, 0.05, 0.08],
+              [0.22, -0.02, 0.06],
+            ],
+            creases: 0.035,
+            seed: side + 3,
+          }),
+          mats.fabric
         )
+        thigh.position.y = -0.25
+        hip.add(thigh)
+
+        // Haidate: three small laced lames over the front of the thigh
+        await lamellar(hip, {
+          rows: 3,
+          rowH: 0.072,
+          gap: 0.018,
+          rTop: 0.2,
+          flare: 0.08,
+          span: arc(FRONT, Math.PI * 0.62),
+          y: -0.07,
+          material: [mats.red, mats.red, mats.redDark],
+          trim: mats.gold,
+          hang: 0.05,
+          cordsPer: 2,
+        })
+
+        const knee = new THREE.Group()
+        knee.position.y = -0.5
+        hip.add(knee)
+
+        // The joint itself, so the bend never opens a gap behind the cop
+        knee.add(mesh(new THREE.SphereGeometry(0.15, 24, 16), mats.fabric))
+
+        const kneeCop = mesh(new THREE.SphereGeometry(0.15, 36, 24), mats.red)
+        kneeCop.position.set(0, 0, 0.06)
+        kneeCop.scale.z = 0.8
+        knee.add(kneeCop)
+
+        const kneeTrim = mesh(new THREE.TorusGeometry(0.14, 0.016, 12, 64), mats.gold)
+        kneeTrim.position.set(0, 0, 0.13)
+        knee.add(kneeTrim)
+        stud(knee, 0, 0, 0.175, 0, 0.8)
+
+        // The shin is sleeved in kusari (mail) under the splints
+        const shin = mesh(new THREE.CylinderGeometry(0.15, 0.14, 0.4, 40), mats.kusari)
+        shin.position.y = -0.27
+        knee.add(shin)
+
+        // Suneate: five separate iron splints, mail showing between them
+        ;[-2, -1, 0, 1, 2].forEach((k) => {
+          const splint = plate(0.168, 0.176, 0.32, arc(FRONT + k * 0.44, 0.32), mats.metal, 0.02)
+          splint.position.y = -0.29
+          knee.add(splint)
+        })
+
+        const shinTrim = plate(0.174, 0.176, 0.028, arc(FRONT, Math.PI * 0.9), mats.gold, 0.014)
+        shinTrim.position.y = -0.12
+        knee.add(shinTrim)
+        const shinCuff = plate(0.158, 0.16, 0.024, arc(FRONT, Math.PI * 0.9), mats.leather, 0.014)
+        shinCuff.position.y = -0.455
+        knee.add(shinCuff)
+
+        // Cords binding the splints on, knotted at the back of the calf
+        ;[-0.16, -0.41].forEach((yy) => {
+          const tie = mesh(new THREE.TorusGeometry(0.168, 0.008, 6, 48), mats.rope)
+          tie.position.set(0, yy, 0.0135)
+          tie.rotation.x = Math.PI / 2
+          knee.add(tie)
+          const knot = mesh(new THREE.SphereGeometry(0.02, 10, 8), mats.rope)
+          knot.position.set(side * 0.07, yy, -0.14)
+          knot.scale.set(1.3, 0.8, 1)
+          knee.add(knot)
+        })
+
+        const ankle = new THREE.Group()
+        ankle.position.y = -0.5
+        knee.add(ankle)
+
+        // Kegutsu: a leather boot with a rounded toe over a flat vamp, a rolled
+        // cuff, two instep straps and a plaited straw sole.
+        const foot = mesh(new THREE.SphereGeometry(0.2, 36, 22), mats.leather)
+        foot.position.set(0, -0.01, 0.1)
+        foot.scale.set(0.95, 0.5, 1.45)
+        ankle.add(foot)
+
+        const vamp = mesh(new RoundedBoxGeometry(0.3, 0.1, 0.46, 4, 0.045), mats.leather)
+        vamp.position.set(0, -0.06, 0.1)
+        ankle.add(vamp)
+
+        const cuff = mesh(new THREE.TorusGeometry(0.15, 0.032, 14, 48), mats.leather)
+        cuff.position.y = 0.04
+        cuff.rotation.x = Math.PI / 2
+        ankle.add(cuff)
+
+        const sole = mesh(new RoundedBoxGeometry(0.32, 0.04, 0.48, 4, 0.018), mats.straw)
+        sole.position.set(0, -0.1, 0.1)
+        ankle.add(sole)
+
+        ;[
+          [0.15, 0.07, 0.3],
+          [0.27, 0.035, 0.55],
+        ].forEach(([z, yy, tilt]) => {
+          const strap = mesh(new RoundedBoxGeometry(0.34, 0.045, 0.055, 3, 0.02), mats.leather)
+          strap.position.set(0, yy, z)
+          strap.rotation.x = tilt
+          ankle.add(strap)
+          // A small brass buckle on the outside of each strap
+          const buckle = mesh(new THREE.TorusGeometry(0.02, 0.0045, 6, 4), mats.gold)
+          buckle.position.set(side * 0.15, yy + 0.012, z)
+          buckle.rotation.set(tilt - Math.PI / 2, 0, Math.PI / 4)
+          ankle.add(buckle)
+        })
+
+        // Welt stitching round the boot, just above the sole
+        const stitch = new THREE.BoxGeometry(0.006, 0.006, 0.017)
+        const stitches = Array.from({ length: 28 }, (_, i) => {
+          const a = (i / 28) * Math.PI * 2
+          return new THREE.Matrix4().compose(
+            new THREE.Vector3(Math.sin(a) * 0.158, -0.075, 0.1 + Math.cos(a) * 0.238),
+            new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), a),
+            new THREE.Vector3(1, 1, 1)
+          )
+        })
+        ankle.add(mesh(mergeCopies(stitch, stitches), mats.rope))
+        stitch.dispose()
+
+        legs.push({ hip, knee, ankle, side })
+        await breathe()
+      }
+
+      /* ================================================================
+         Body — fabric torso, a laced dō, separated kusazuri
+         ================================================================ */
+      body = new THREE.Group()
+      body.position.y = HIP_Y
+      samurai.add(body)
+
+      // The undergarment. Every armour piece sits on top of this with a gap.
+      torso = mesh(new RoundedBoxGeometry(0.72, 0.84, 0.56, 8, 0.22), mats.fabric)
+      torso.position.y = 0.46
+      body.add(torso)
+
+      // The hips: a padded block under the sash that joins the torso to the
+      // tops of both thighs, so the skirt panels hang over cloth, not air.
+      const pelvis = mesh(new RoundedBoxGeometry(0.72, 0.36, 0.5, 6, 0.16), mats.fabric)
+      pelvis.position.y = -0.09
+      body.add(pelvis)
+
+      const neck = mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.2, 40), mats.fabric)
+      neck.position.y = 0.93
+      body.add(neck)
+
+      // Dō: a solid chest plate on each side, with laced lames hanging below.
+      // Front and back are separate; small flank plates close most of the gap.
+      cuirass = new THREE.Group()
+      cuirass.position.y = 0.52
+      cuirass.scale.z = 0.74
+      body.add(cuirass)
+
+      for (const [center, sweep, cords] of [
+        [FRONT, Math.PI * 0.88, 5],
+        [BACK, Math.PI * 0.72, 4],
+      ]) {
+        const chest = plate(0.42, 0.435, 0.2, arc(center, sweep), mats.red, 0.03)
+        chest.position.y = 0.16
+        cuirass.add(chest)
+
+        const rim = plate(0.43, 0.43, 0.022, arc(center, sweep), mats.gold, 0.04)
+        rim.position.y = 0.265
+        cuirass.add(rim)
+
+        await lamellar(cuirass, {
+          rows: 4,
+          rowH: 0.068,
+          gap: 0.02,
+          rTop: 0.44,
+          flare: 0.07,
+          span: arc(center, sweep + 0.06),
+          y: 0.038,
+          material: [mats.red, mats.red, mats.redDark, mats.red],
+          hang: 0.05,
+          cordsPer: cords,
+        })
+      }
+
+      // Waki-ita: iron plates under the arms, tucked beneath the chest halves
+      ;[LEFT, RIGHT].forEach((c) => {
+        const flank = plate(0.408, 0.42, 0.17, arc(c, 0.62), mats.metal, 0.024)
+        flank.position.y = 0.17
+        cuirass.add(flank)
       })
-      ankle.add(mesh(mergeCopies(stitch, stitches), mats.rope))
+
+      ;[-0.3, -0.13, 0.13, 0.3].forEach((x) => {
+        stud(cuirass, x, 0.21, Math.sqrt(0.432 ** 2 - x * x) + 0.004, Math.asin(x / 0.432))
+      })
+
+      // A row of small iron rivets under the gilt rim of each chest plate
+      const rimRivet = new THREE.SphereGeometry(0.009, 8, 6)
+      const rimRivets = []
+      ;[
+        [FRONT, Math.PI * 0.88],
+        [BACK, Math.PI * 0.72],
+      ].forEach(([center, sweep]) => {
+        for (let i = 0; i < 9; i++) {
+          const a = center - sweep / 2 + (sweep * (i + 0.5)) / 9
+          rimRivets.push(new THREE.Matrix4().makeTranslation(Math.sin(a) * 0.437, 0.244, Math.cos(a) * 0.437))
+        }
+      })
+      ;[LEFT, RIGHT].forEach((c) => {
+        for (const dy of [0.12, 0.22]) {
+          rimRivets.push(new THREE.Matrix4().makeTranslation(Math.sin(c) * 0.423, dy, Math.cos(c) * 0.423))
+        }
+      })
+      cuirass.add(mesh(mergeCopies(rimRivet, rimRivets), mats.metalDark))
+      rimRivet.dispose()
+
+      // Chest device: a simple geometric mark on a gold disc
+      const monPlate = mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.03, 48), mats.gold)
+      monPlate.position.set(0, 0.16, 0.445)
+      monPlate.rotation.x = Math.PI / 2
+      cuirass.add(monPlate)
+
+      const monRing = mesh(new THREE.TorusGeometry(0.066, 0.014, 12, 48), mats.metalDark)
+      monRing.position.set(0, 0.16, 0.462)
+      cuirass.add(monRing)
+
+      // Sendan-no-ita and kyubi-no-ita: the two small laced plates that hang
+      // from the shoulder straps over the top of the chest.
+      for (const side of [-1, 1]) {
+        await lamellar(cuirass, {
+          rows: 2,
+          rowH: 0.06,
+          gap: 0.014,
+          rTop: 0.464,
+          flare: 0.03,
+          span: arc(side * 0.6, 0.28),
+          y: 0.33,
+          material: [mats.red, mats.redDark],
+          trim: mats.gold,
+          hang: 0.03,
+          cordsPer: 1,
+          thickness: 0.018,
+          cross: false,
+        })
+      }
+      await breathe()
+
+      // Watagami: stitched leather shoulder straps tying the dō on. Each runs
+      // up the chest, over the shoulder and down the back; the front end is
+      // fastened with a brass buckle.
+      const stitch = new THREE.BoxGeometry(0.005, 0.014, 0.006)
+      const stitchRows = (count, step, z) => {
+        const rows = []
+        for (let i = 0; i < count; i++) {
+          for (const x of [-0.029, 0.029]) {
+            rows.push(new THREE.Matrix4().makeTranslation(x, (-(count - 1) / 2 + i) * step, z))
+          }
+        }
+        return rows
+      }
+      ;[-1, 1].forEach((side) => {
+        for (const front of [1, -1]) {
+          const strapRig = new THREE.Group()
+          strapRig.position.set(side * 0.24, 0.82, front * 0.19)
+          strapRig.rotation.z = side * 0.25
+          body.add(strapRig)
+          strapRig.add(mesh(new RoundedBoxGeometry(0.075, 0.34, 0.026, 3, 0.01), mats.leather))
+          strapRig.add(mesh(mergeCopies(stitch, stitchRows(12, 0.027, front * 0.013)), mats.rope))
+          if (front < 0) continue
+
+          const buckle = mesh(new THREE.TorusGeometry(0.03, 0.006, 6, 4), mats.gold)
+          buckle.rotation.z = Math.PI / 4
+          buckle.scale.set(1.3, 1, 1)
+          buckle.position.set(0, -0.05, 0.017)
+          strapRig.add(buckle)
+          const tongue = mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.05, 6), mats.gold)
+          tongue.position.set(0, -0.05, 0.021)
+          strapRig.add(tongue)
+        }
+        // Over the shoulder, lying on the torso's rounded corner
+        const over = new THREE.Group()
+        over.position.set(side * 0.245, 0.868, 0)
+        over.rotation.z = -side * 0.47
+        body.add(over)
+        over.add(mesh(new RoundedBoxGeometry(0.075, 0.026, 0.4, 3, 0.01), mats.leather))
+        const lengthwise = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2)
+        const overStitches = []
+        for (let i = 0; i < 13; i++) {
+          for (const x of [-0.029, 0.029]) {
+            overStitches.push(
+              new THREE.Matrix4().compose(new THREE.Vector3(x, 0.013, (i - 6) * 0.028), lengthwise, new THREE.Vector3(1, 1, 1))
+            )
+          }
+        }
+        over.add(mesh(mergeCopies(stitch, overStitches), mats.rope))
+      })
       stitch.dispose()
 
-      return { hip, knee, ankle, side }
-    })
+      // Gattari: the bracket on the upper back plate that a banner pole would
+      // seat in, and beneath it the ring (agemaki-no-kan) the bow hangs from.
+      const gattari = mesh(new RoundedBoxGeometry(0.11, 0.05, 0.022, 3, 0.008), mats.metalDark)
+      gattari.position.set(0, 0.755, -0.33)
+      body.add(gattari)
+      const gattariTube = mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.07, 16), mats.gold)
+      gattariTube.position.set(0, 0.76, -0.352)
+      body.add(gattariTube)
+      ;[-0.04, 0.04].forEach((x) => stud(body, x, 0.755, -0.342, Math.PI, 0.45))
+      const kan = mesh(new THREE.TorusGeometry(0.024, 0.006, 8, 24), mats.gold)
+      kan.position.set(0, 0.715, -0.345)
+      body.add(kan)
 
-    /* ================================================================
-       Body — fabric torso, a laced dō, separated kusazuri
-       ================================================================ */
-    const body = new THREE.Group()
-    body.position.y = HIP_Y
-    samurai.add(body)
+      // Agemaki: the large decorative silk bow on the back of the dō. It
+      // hangs from the ring, so it swings on its own.
+      agemaki = new THREE.Group()
+      agemaki.position.set(0, 0.66, -0.36)
+      body.add(agemaki)
+      const loopGeo = track(new THREE.TorusGeometry(0.075, 0.021, 14, 48))
+      ;[-1, 1].forEach((s) => {
+        const loop = new THREE.Mesh(loopGeo, mats.cloth)
+        loop.castShadow = loop.receiveShadow = true
+        loop.position.set(s * 0.078, 0.03, 0)
+        loop.rotation.set(0.25, 0, s * 0.6)
+        agemaki.add(loop)
 
-    // The undergarment. Every armour piece sits on top of this with a gap.
-    const torso = mesh(new RoundedBoxGeometry(0.72, 0.84, 0.56, 8, 0.22), mats.fabric)
-    torso.position.y = 0.46
-    body.add(torso)
-
-    const neck = mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.2, 40), mats.fabric)
-    neck.position.y = 0.93
-    body.add(neck)
-
-    // Dō: a solid chest plate on each side, with laced lames hanging below.
-    // Front and back are separate; small flank plates close most of the gap.
-    const cuirass = new THREE.Group()
-    cuirass.position.y = 0.52
-    cuirass.scale.z = 0.74
-    body.add(cuirass)
-
-    ;[
-      [FRONT, Math.PI * 0.88, 5],
-      [BACK, Math.PI * 0.72, 4],
-    ].forEach(([center, sweep, cords]) => {
-      const chest = plate(0.42, 0.435, 0.2, arc(center, sweep), mats.red, 0.03)
-      chest.position.y = 0.16
-      cuirass.add(chest)
-
-      const rim = plate(0.43, 0.43, 0.022, arc(center, sweep), mats.gold, 0.04)
-      rim.position.y = 0.265
-      cuirass.add(rim)
-
-      lamellar(cuirass, {
-        rows: 4,
-        rowH: 0.068,
-        gap: 0.02,
-        rTop: 0.44,
-        flare: 0.07,
-        span: arc(center, sweep + 0.06),
-        y: 0.038,
-        material: [mats.red, mats.red, mats.redDark, mats.red],
-        hang: 0.05,
-        cordsPer: cords,
+        const tail = mesh(new RoundedBoxGeometry(0.042, 0.32, 0.018, 3, 0.012), mats.cloth)
+        tail.position.set(s * 0.045, -0.18, 0.004)
+        tail.rotation.z = s * 0.1
+        agemaki.add(tail)
       })
-    })
+      const agemakiKnot = mesh(new THREE.SphereGeometry(0.048, 24, 16), mats.cloth)
+      agemakiKnot.scale.set(1.3, 0.9, 0.8)
+      agemaki.add(agemakiKnot)
 
-    // Waki-ita: iron plates under the arms, tucked beneath the chest halves
-    ;[LEFT, RIGHT].forEach((c) => {
-      const flank = plate(0.408, 0.42, 0.17, arc(c, 0.62), mats.metal, 0.024)
-      flank.position.y = 0.17
-      cuirass.add(flank)
-    })
+      // Obi sash, tied in a knot on the left hip
+      const sash = mesh(
+        foldCloth(new THREE.CylinderGeometry(0.4, 0.4, 0.15, 64, 8), 0.15, {
+          rings: [
+            [0.3, 0.025, 0.08],
+            [0.72, 0.02, 0.06],
+          ],
+          creases: 0.015,
+          seed: 2,
+        }),
+        mats.cloth
+      )
+      sash.position.y = 0.1
+      sash.scale.z = 0.74
+      body.add(sash)
 
-    ;[-0.3, -0.13, 0.13, 0.3].forEach((x) => {
-      stud(cuirass, x, 0.21, Math.sqrt(0.432 ** 2 - x * x) + 0.004, Math.asin(x / 0.432))
-    })
+      const sashKnot = new THREE.Group()
+      sashKnot.position.set(-0.31, 0.09, 0.23)
+      sashKnot.rotation.y = -0.8
+      body.add(sashKnot)
+      const knotCore = mesh(new THREE.SphereGeometry(0.06, 24, 16), mats.cloth)
+      knotCore.scale.set(1.3, 0.85, 0.9)
+      sashKnot.add(knotCore)
+      ;[-1, 1].forEach((s) => {
+        const loop = new THREE.Mesh(track(new THREE.TorusGeometry(0.06, 0.024, 12, 40)), mats.cloth)
+        loop.castShadow = loop.receiveShadow = true
+        loop.position.set(s * 0.07, 0.02, 0)
+        loop.rotation.set(0.35, 0, s * 0.7)
+        sashKnot.add(loop)
+      })
+      ;[0.03, -0.045].forEach((x, i) => {
+        const tail = mesh(new RoundedBoxGeometry(0.08, 0.3, 0.03, 4, 0.014), mats.cloth)
+        tail.position.set(x, -0.19 - i * 0.03, 0.02 - i * 0.03)
+        tail.rotation.z = 0.12 - i * 0.3
+        sashKnot.add(tail)
+      })
 
-    // A row of small iron rivets under the gilt rim of each chest plate
-    const rimRivet = new THREE.SphereGeometry(0.009, 8, 6)
-    const rimRivets = []
-    ;[
-      [FRONT, Math.PI * 0.88],
-      [BACK, Math.PI * 0.72],
-    ].forEach(([center, sweep]) => {
-      for (let i = 0; i < 9; i++) {
-        const a = center - sweep / 2 + (sweep * (i + 0.5)) / 9
-        rimRivets.push(new THREE.Matrix4().makeTranslation(Math.sin(a) * 0.437, 0.244, Math.cos(a) * 0.437))
+      // Saya: the empty scabbard, lacquered wood, thrust through the obi on
+      // the left hip and angled back. It has a horn mouth (koiguchi), a knob
+      // (kurikata) for the silk cord (sageo) looped over the obi, and an iron
+      // end cap (kojiri). Kneeling, it swings up to clear the floor.
+      saya = new THREE.Group()
+      saya.position.set(-0.42, 0.16, 0.2)
+      body.add(saya)
+      const SAYA_LEN = 1.18
+      const DOWN = new THREE.Vector3(0, -1, 0)
+      sayaStand = new THREE.Quaternion().setFromUnitVectors(DOWN, new THREE.Vector3(-0.22, -0.42, -0.88).normalize())
+      sayaSeated = new THREE.Quaternion().setFromUnitVectors(DOWN, new THREE.Vector3(-0.2, -0.12, -0.97).normalize())
+      saya.quaternion.copy(sayaStand)
+      const sayaCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0.012, -SAYA_LEN * 0.5, 0),
+        new THREE.Vector3(0.045, -SAYA_LEN, 0),
+      ])
+      const sheath = new THREE.TubeGeometry(sayaCurve, 40, 0.036, 14, false)
+      sheath.scale(0.62, 1, 1)
+      saya.add(mesh(sheath, mats.saya))
+      const koiguchi = mesh(new THREE.CylinderGeometry(0.038, 0.037, 0.04, 18), mats.metalDark)
+      koiguchi.scale.set(0.62, 1, 1)
+      koiguchi.position.y = -0.012
+      saya.add(koiguchi)
+      const kurikata = mesh(new RoundedBoxGeometry(0.018, 0.05, 0.03, 2, 0.007), mats.saya)
+      kurikata.position.set(0.001, -0.15, 0.036)
+      saya.add(kurikata)
+      const kojiri = mesh(new THREE.SphereGeometry(0.036, 16, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), mats.metalDark)
+      kojiri.position.copy(sayaCurve.getPointAt(1))
+      kojiri.scale.set(0.62, 1.4, 1)
+      saya.add(kojiri)
+      // The cord, authored in body space and carried into the saya's frame.
+      saya.updateMatrix()
+      const toSaya = saya.matrix.clone().invert()
+      const knob = kurikata.position.clone().applyMatrix4(saya.matrix)
+      const sageoCurve = new THREE.CatmullRomCurve3(
+        [
+          knob,
+          knob.clone().add(new THREE.Vector3(0.05, -0.12, 0.05)),
+          new THREE.Vector3(-0.3, -0.02, 0.26),
+          new THREE.Vector3(-0.2, 0.06, 0.29),
+          new THREE.Vector3(-0.12, 0.14, 0.29),
+        ].map((p) => p.applyMatrix4(toSaya))
+      )
+      saya.add(mesh(new THREE.TubeGeometry(sageoCurve, 36, 0.009, 6), mats.rope))
+      await breathe()
+
+      // Kusazuri: six separate laced panels hanging off the sash. Each hangs
+      // from a hinge along its top edge, so it can fan out over the floor and
+      // thighs when he sits.
+      skirt = new THREE.Group()
+      skirt.position.y = -0.04
+      skirt.scale.z = 0.76
+      body.add(skirt)
+
+      const SKIRT_R = 0.44
+      panels = []
+      for (let i = 0; i < 6; i++) {
+        const center = (i / 6) * Math.PI * 2
+        const hinge = new THREE.Group()
+        hinge.position.set(Math.sin(center) * SKIRT_R, 0.01, Math.cos(center) * SKIRT_R)
+        hinge.rotation.y = center
+        skirt.add(hinge)
+
+        const flap = new THREE.Group()
+        hinge.add(flap)
+
+        // Undo the hinge transform, so the panel is authored in skirt space.
+        const unhinge = new THREE.Group()
+        unhinge.position.set(0, -0.01, -SKIRT_R)
+        unhinge.rotation.y = -center
+        flap.add(unhinge)
+
+        await lamellar(unhinge, {
+          rows: 4,
+          rowH: 0.078,
+          gap: 0.02,
+          rTop: SKIRT_R,
+          flare: 0.24,
+          span: arc(center, Math.PI * 0.25),
+          y: 0.01,
+          material: [mats.red, mats.red, mats.redDark, mats.red],
+          trim: mats.gold,
+          hang: 0.07,
+          cordsPer: 2,
+        })
+        // Kneeling: the front panel lies over the thighs, the side panels drape
+        // down their outsides, and the rear ones hang almost straight behind.
+        const facing = Math.cos(center)
+        panels.push({ flap, facing, spread: facing > 0.9 ? 1.35 : facing > 0 ? 0.95 : facing > -0.9 ? 0.45 : 0.35 })
       }
-    })
-    ;[LEFT, RIGHT].forEach((c) => {
-      for (const dy of [0.12, 0.22]) {
-        rimRivets.push(new THREE.Matrix4().makeTranslation(Math.sin(c) * 0.423, dy, Math.cos(c) * 0.423))
+
+      /* ================================================================
+         Shoulders and arms — laced sode over fabric sleeves, mail forearms
+         ================================================================ */
+
+      /**
+       * A gloved fist: a leather palm block, four curled fingers and a thumb
+       * closing over them, and an iron tekko over the back of the hand with a
+       * gilt stud and two rivets. Fist space: the grip runs along +Y through
+       * the origin, the knuckles face +Z, the back of the hand faces -Z, and
+       * `side` mirrors it for the other hand.
+       */
+      const fist = (side) => {
+        const hand = new THREE.Group()
+        const palm = mesh(new THREE.SphereGeometry(0.105, 32, 24), mats.leather)
+        palm.position.set(0, 0, -0.055)
+        palm.scale.set(1.05, 1.25, 0.72)
+        hand.add(palm)
+
+        // A finger: a tapered tube curling round the grip from angle a0 to a1
+        // (0 = the knuckle side, ±π = the palm side) at radius R.
+        const finger = (y, a0, a1, radius, R, taper) => {
+          const points = []
+          for (let k = 0; k <= 10; k++) {
+            const a = a0 + ((a1 - a0) * k) / 10
+            points.push(new THREE.Vector3(side * Math.sin(a) * R, y, Math.cos(a) * R))
+          }
+          const curve = new THREE.CatmullRomCurve3(points)
+          const geo = taperTube(new THREE.TubeGeometry(curve, 14, radius, 10), curve, 14, 10, taper)
+          hand.add(mesh(geo, mats.leather))
+        }
+        // Four fingers wrap from the palm's outer edge round the front of the
+        // grip, a groove between each, with a red-lacquered plate riding the
+        // knuckles to match the splints on the forearm.
+        ;[0.085, 0.028, -0.028, -0.085].forEach((y, i) => {
+          finger(y, Math.PI * 0.82, -Math.PI * 0.38, 0.026 - i * 0.0015, 0.074, (t) => 1 - 0.25 * t)
+          const yubigane = plate(0.1, 0.1, 0.04, arc(side * 0.45, 1.05), mats.red, 0.006)
+          yubigane.position.y = y
+          hand.add(yubigane)
+        })
+        // The thumb crosses above them from the inside.
+        finger(0.12, -Math.PI * 0.72, Math.PI * 0.28, 0.03, 0.07, (t) => 1 - 0.3 * t)
+
+        // Tekko: an iron plate over the back of the hand, studded and riveted
+        const tekko = plate(0.107, 0.103, 0.13, arc(BACK, Math.PI * 0.72), mats.metal, 0.018)
+        tekko.position.set(0, 0.01, -0.03)
+        hand.add(tekko)
+        stud(hand, 0, 0.02, -0.14, Math.PI, 0.7)
+        const rivet = new THREE.SphereGeometry(0.008, 8, 6)
+        hand.add(
+          mesh(
+            mergeCopies(rivet, [
+              new THREE.Matrix4().makeTranslation(-0.055, 0.06, -0.128),
+              new THREE.Matrix4().makeTranslation(0.055, 0.06, -0.128),
+            ]),
+            mats.metalDark
+          )
+        )
+        rivet.dispose()
+        return hand
       }
-    })
-    cuirass.add(mesh(mergeCopies(rimRivet, rimRivets), mats.metalDark))
-    rimRivet.dispose()
+      // Knuckles toward the blade's edge (katana +X), as a hammer grip holds it.
+      const GRIP_Q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2)
 
-    // Chest device: a simple geometric mark on a gold disc
-    const monPlate = mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.03, 48), mats.gold)
-    monPlate.position.set(0, 0.16, 0.445)
-    monPlate.rotation.x = Math.PI / 2
-    cuirass.add(monPlate)
+      for (const side of [-1, 1]) {
+        const shoulder = new THREE.Group()
+        shoulder.position.set(side * 0.46, 0.72, 0)
+        body.add(shoulder)
 
-    const monRing = mesh(new THREE.TorusGeometry(0.066, 0.014, 12, 48), mats.metalDark)
-    monRing.position.set(0, 0.16, 0.462)
-    cuirass.add(monRing)
+        const cord = mesh(new THREE.TorusGeometry(0.09, 0.02, 12, 48), mats.rope)
+        cord.position.set(side * 0.02, 0.1, 0)
+        cord.rotation.x = Math.PI / 2
+        shoulder.add(cord)
 
-    // Sendan-no-ita and kyubi-no-ita: the two small laced plates that hang
-    // from the shoulder straps over the top of the chest.
-    ;[-1, 1].forEach((side) => {
-      lamellar(cuirass, {
+        const capKnot = mesh(new THREE.SphereGeometry(0.045, 24, 16), mats.rope)
+        capKnot.position.set(side * 0.02, 0.12, 0)
+        shoulder.add(capKnot)
+
+        // Sode: five lames draped over the outside of the shoulder
+        const outward = side > 0 ? RIGHT : LEFT
+        const sode = await lamellar(shoulder, {
+          rows: 5,
+          rowH: 0.07,
+          gap: 0.02,
+          rTop: 0.24,
+          flare: 0.16,
+          span: arc(outward, Math.PI * 0.86),
+          y: 0.065,
+          material: [mats.red, mats.red, mats.redDark, mats.red, mats.red],
+          trim: mats.gold,
+          topTrim: mats.gold,
+          hang: 0.04,
+          cordsPer: 3,
+        })
+        sode.rotation.z = side * -0.12
+        // Rivets fixing the top plate (kanmuri-ita) of the sode
+        ;[-0.55, 0, 0.55].forEach((o) => {
+          const rv = mesh(new THREE.SphereGeometry(0.009, 8, 6), mats.metalDark)
+          rv.position.set(Math.sin(outward + o) * 0.253, -0.009, Math.cos(outward + o) * 0.253)
+          sode.add(rv)
+        })
+
+        const upper = mesh(
+          foldCloth(new THREE.CylinderGeometry(0.12, 0.11, 0.34, 40, 12), 0.34, {
+            rings: [
+              [0.08, 0.06, 0.08],
+              [0.24, 0.025, 0.07],
+            ],
+            creases: 0.03,
+            seed: side * 2 + 5,
+          }),
+          mats.fabric
+        )
+        upper.position.y = -0.36
+        shoulder.add(upper)
+
+        const elbow = new THREE.Group()
+        elbow.position.y = -0.56
+        shoulder.add(elbow)
+        // The joint: padded cloth that fills the bend when the arm folds
+        elbow.add(mesh(new THREE.SphereGeometry(0.108, 24, 16), mats.fabric))
+
+        // Kote: mail sleeve with three lacquered splints on the outside
+        const fore = mesh(new THREE.CylinderGeometry(0.105, 0.1, 0.36, 40), mats.kusari)
+        fore.position.y = -0.18
+        elbow.add(fore)
+
+        ;[-1, 0, 1].forEach((k) => {
+          const splint = plate(0.126, 0.13, 0.24, arc(outward + k * 0.42, 0.3), mats.red, 0.02)
+          splint.position.y = -0.18
+          elbow.add(splint)
+        })
+
+        const koteTrim = plate(0.122, 0.124, 0.024, arc(outward, Math.PI * 0.86), mats.gold, 0.014)
+        koteTrim.position.y = -0.05
+        elbow.add(koteTrim)
+
+        const koteCuff = plate(0.126, 0.128, 0.024, arc(outward, Math.PI * 0.86), mats.leather, 0.014)
+        koteCuff.position.y = -0.325
+        elbow.add(koteCuff)
+
+        // Ties holding the kote on, knotted on the inside of the forearm
+        // through a small brass ring
+        ;[-0.1, -0.27].forEach((yy, i) => {
+          const tie = mesh(new THREE.TorusGeometry(0.106, 0.007, 6, 40), mats.rope)
+          tie.position.y = yy
+          tie.rotation.x = Math.PI / 2
+          elbow.add(tie)
+          const knot = mesh(new THREE.SphereGeometry(0.015, 10, 8), mats.rope)
+          knot.position.set(-Math.sin(outward) * 0.108, yy, 0.02)
+          elbow.add(knot)
+          if (i === 0) {
+            const ring = mesh(new THREE.TorusGeometry(0.013, 0.0035, 6, 16), mats.gold)
+            ring.position.set(-Math.sin(outward) * 0.112, yy - 0.02, 0.03)
+            ring.rotation.y = outward
+            elbow.add(ring)
+          }
+        })
+
+        stud(elbow, Math.sin(outward) * 0.138, -0.18, 0, outward, 0.8)
+
+        // The free hand: its own rigid part, turned each frame to close on
+        // the grip in two-handed guards. The katana hand is built with the
+        // katana below, so its fingers always wrap the tsuka.
+        let hand = null
+        if (side < 0) {
+          hand = fist(side)
+          hand.position.set(0, -0.4, 0.02)
+          elbow.add(hand)
+        }
+
+        arms.push({ shoulder, elbow, side, sode, hand })
+        await breathe()
+      }
+
+      /* ================================================================
+         Head — a black lacquered menpō with lit eye slits
+         ================================================================ */
+      headRig = new THREE.Group()
+      headRig.position.y = HEAD_Y - HIP_Y
+      headRig.rotation.order = 'YXZ'
+      body.add(headRig)
+
+      // The cranium is an ellipsoid; the mask plates below are built in a
+      // group with the same depth scale, so curved plates sit on its surface.
+      const FACE_R = 0.46
+      const FACE_SY = 0.92
+      const FACE_SZ = 0.94
+      const faceRing = (y) => Math.sqrt(Math.max(FACE_R * FACE_R - (y / FACE_SY) ** 2, 0.02))
+
+      const face = mesh(new THREE.SphereGeometry(FACE_R, 64, 40), mats.helmetRound)
+      face.scale.set(1, FACE_SY, FACE_SZ)
+      headRig.add(face)
+
+      const mask = new THREE.Group()
+      mask.scale.z = FACE_SZ
+      headRig.add(mask)
+
+      // Every mask plate hugs the skull: its outer radius follows the face's
+      // curve from its bottom edge to its top, a set distance proud of it.
+      const hugging = (yBottom, height, proud) => (t) => faceRing(yBottom + height * t) + proud
+
+      // Brow: a heavy ridge following the curve of the skull
+      const brow = plate(
+        faceRing(0.305) + 0.014,
+        faceRing(0.215) + 0.014,
+        0.09,
+        arc(FRONT, Math.PI * 0.9),
+        mats.helmet,
+        0.03,
+        8,
+        'world',
+        hugging(0.215, 0.09, 0.014)
+      )
+      brow.position.y = 0.26
+      mask.add(brow)
+
+      // Eye band: a dark plate the slits are cut into
+      const eyeBand = plate(
+        faceRing(0.21) + 0.01,
+        faceRing(0.02) + 0.01,
+        0.19,
+        arc(FRONT, Math.PI * 0.84),
+        mats.helmet,
+        0.028,
+        8,
+        'world',
+        hugging(0.02, 0.19, 0.01)
+      )
+      eyeBand.position.y = 0.115
+      mask.add(eyeBand)
+
+      // Long, nearly level slits: focused rather than angry. Each is a
+      // flattened capsule set into the band, with a soft additive halo, and
+      // is framed by a gilt rim it opens and closes within.
+      const eyeGeo = track(new THREE.CapsuleGeometry(0.03, 0.19, 8, 24))
+      eyeGeo.rotateZ(Math.PI / 2)
+      eyeGeo.scale(1, 1, 0.45)
+      const glowGeo = track(new THREE.PlaneGeometry(0.42, 0.24))
+      const EYE_R = faceRing(0.11) + 0.024
+      eyes = []
+      glows = []
+      ;[-1, 1].forEach((side) => {
+        const a = side * 0.4
+        const eye = new THREE.Mesh(eyeGeo, mats.eye)
+        eye.position.set(Math.sin(a) * EYE_R, 0.11, Math.cos(a) * EYE_R)
+        eye.rotation.set(0, a, side * 0.06)
+        mask.add(eye)
+        eyes.push(eye)
+
+        const glow = new THREE.Mesh(glowGeo, glowMat)
+        glow.position.set(Math.sin(a) * (EYE_R + 0.025), 0.11, Math.cos(a) * (EYE_R + 0.025))
+        glow.rotation.set(0, a, side * 0.06)
+        mask.add(glow)
+        glows.push(glow)
+
+        const rim = mesh(new THREE.TorusGeometry(0.04, 0.006, 8, 40), mats.gold)
+        rim.position.set(Math.sin(a) * (EYE_R + 0.006), 0.11, Math.cos(a) * (EYE_R + 0.006))
+        rim.rotation.set(0, a, side * 0.06)
+        rim.scale.set(3.15, 0.95, 0.7)
+        mask.add(rim)
+      })
+      // The glow of the eyes falls on the mask, the peak and anything raised
+      // to the face; its colour and strength follow the mood each frame.
+      eyeLight = new THREE.PointLight(0xffb347, 0, 1.3, 2)
+      eyeLight.position.set(0, 0.11, (EYE_R + 0.12) * FACE_SZ)
+      headRig.add(eyeLight)
+
+      /* ---- The sculpted face of the menpō ---- */
+      // A point on the mask's surface at angle `a` round the face, height
+      // `y`, standing `lift` off the cranium; the plates sit 0.01–0.014 proud.
+      const onFace = (a, y, lift) => {
+        const r = faceRing(y) + lift
+        return new THREE.Vector3(Math.sin(a) * r, y, Math.cos(a) * r)
+      }
+      // A raised fold of lacquered iron along a path, thinning to its ends.
+      const fold = (points, radius, material = mats.helmet) => {
+        const curve = new THREE.CatmullRomCurve3(points)
+        const geo = taperTube(new THREE.TubeGeometry(curve, 16, radius, 8), curve, 16, 8, (t) =>
+          0.5 + 0.5 * Math.sin(Math.PI * t)
+        )
+        mask.add(mesh(geo, material))
+      }
+
+      // Brow folds: heavy ridges over each eye, drawn a little toward the centre
+      ;[-1, 1].forEach((side) => {
+        fold(
+          [0, 0.25, 0.5, 0.75, 1].map((t) => onFace(side * (0.66 - 0.5 * t), 0.197 - 0.03 * t, 0.019)),
+          0.013
+        )
+      })
+      // The bridge of the nose, running up between the eyes to the brow plate
+      fold(
+        [0, 0.33, 0.66, 1].map((t) => onFace(0, -0.02 + 0.21 * t, 0.024 - 0.006 * t)),
+        0.012
+      )
+
+      // Cheek plates
+      ;[-1, 1].forEach((side) => {
+        const a = side * 1.0
+        const cheek = plate(
+          faceRing(0.06) + 0.012,
+          faceRing(-0.24) + 0.012,
+          0.3,
+          arc(a, 0.55),
+          mats.helmet,
+          0.024,
+          8,
+          'world',
+          hugging(-0.24, 0.3, 0.012)
+        )
+        cheek.position.y = -0.09
+        mask.add(cheek)
+      })
+
+      // Nose: a ridge with a pair of dark nostrils at its base
+      const nose = mesh(new THREE.ConeGeometry(0.075, 0.2, 24), mats.helmetRound)
+      nose.position.set(0, -0.02, 0.42)
+      nose.rotation.x = -0.42
+      nose.scale.x = 0.85
+      mask.add(nose)
+      ;[-1, 1].forEach((side) => {
+        const nostril = mesh(new THREE.SphereGeometry(0.013, 12, 8), mats.metalDark)
+        nostril.position.set(side * 0.03, -0.116, 0.452)
+        mask.add(nostril)
+      })
+
+      // Mouth guard: tapers in toward the chin. It carries a breathing slot
+      // above the mouth and another below, the mouth itself open on a row of
+      // gilt teeth, and two folds down each cheek.
+      const GUARD_TOP = faceRing(-0.05) + 0.012
+      const GUARD_BOT = faceRing(-0.35) + 0.012
+      const guardR = (yy) => faceRing(yy) + 0.012
+      const guard = plate(
+        GUARD_TOP,
+        GUARD_BOT,
+        0.3,
+        arc(FRONT, Math.PI * 0.72),
+        mats.helmet,
+        0.03,
+        8,
+        'world',
+        hugging(-0.35, 0.3, 0.012)
+      )
+      guard.position.y = -0.2
+      mask.add(guard)
+
+      for (const [yy, h, sweep] of [
+        [-0.118, 0.014, 0.5],
+        [-0.19, 0.034, 0.6],
+        [-0.25, 0.014, 0.44],
+      ]) {
+        const r = guardR(yy) + 0.004
+        const slot = plate(r - 0.002, r + 0.002, h, arc(FRONT, sweep), mats.metalDark, 0.01, 12)
+        slot.position.y = yy
+        mask.add(slot)
+      }
+      const tooth = new THREE.BoxGeometry(0.013, 0.015, 0.008)
+      const teeth = []
+      for (let i = 0; i < 8; i++) {
+        const a = -0.245 + (0.49 * i) / 7
+        const r = guardR(-0.182) + 0.008
+        teeth.push(
+          new THREE.Matrix4().compose(
+            new THREE.Vector3(Math.sin(a) * r, -0.182, Math.cos(a) * r),
+            new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), a),
+            new THREE.Vector3(1, 1, 1)
+          )
+        )
+      }
+      mask.add(mesh(mergeCopies(tooth, teeth), mats.gold))
+      tooth.dispose()
+
+      // Cheek folds, from beside the nostrils down and out toward the jaw
+      const onGuard = (a, yy, lift) => {
+        const r = guardR(yy) + lift
+        return new THREE.Vector3(Math.sin(a) * r, yy, Math.cos(a) * r)
+      }
+      ;[-1, 1].forEach((side) => {
+        fold(
+          [0, 0.33, 0.66, 1].map((t) => onGuard(side * (0.45 + 0.5 * t), -0.13 - 0.14 * t, 0.008)),
+          0.011
+        )
+        fold(
+          [0, 0.33, 0.66, 1].map((t) => onGuard(side * (0.62 + 0.42 * t), -0.215 - 0.1 * t, 0.008)),
+          0.01
+        )
+      })
+
+      // Kuchihige: a horsehair moustache hung beneath the nose in two rows,
+      // each strand splayed outward and lifted a little off the guard
+      const strand = new THREE.CylinderGeometry(0.0045, 0.0012, 0.055, 5)
+      const strands = []
+      const one = new THREE.Vector3(1, 1, 1)
+      for (const [yy, count, phase] of [
+        [-0.134, 16, 0],
+        [-0.142, 15, 0.5],
+      ]) {
+        for (let i = 0; i < count; i++) {
+          const a = -0.36 + (0.72 * (i + phase)) / (count - 1 + phase * 2)
+          const root = onGuard(a, yy, 0.009)
+          const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.4, a, -Math.sign(a) * (0.3 + 0.9 * Math.abs(a)), 'YXZ'))
+          strands.push(
+            new THREE.Matrix4().compose(root, q, one).multiply(new THREE.Matrix4().makeTranslation(0, -0.0275, 0))
+          )
+        }
+      }
+      mask.add(mesh(mergeCopies(strand, strands), mats.fabric))
+      strand.dispose()
+
+      // Gold sunbursts lacquered onto the cheeks, either side of the nose.
+      // They lie over the eye band and the mouth guard, which stand proud of
+      // the skull there, so the whole burst shows.
+      const burst = track(sunburstGeometry())
+      ;[-1, 1].forEach((side) => {
+        const a = side * 0.53
+        const yy = -0.022
+        const r = Math.max(faceRing(0.02) + 0.02, GUARD_TOP + 0.012)
+        const sun = new THREE.Mesh(burst, mats.gold)
+        sun.castShadow = sun.receiveShadow = true
+        sun.position.set(Math.sin(a) * r, yy, Math.cos(a) * r)
+        sun.rotation.order = 'YXZ'
+        sun.rotation.set(0.02, a, side * 0.35)
+        sun.scale.setScalar(1.15)
+        mask.add(sun)
+      })
+
+      // Chin
+      const chin = mesh(new THREE.SphereGeometry(0.065, 32, 20), mats.helmetRound)
+      chin.position.set(0, -0.355, 0.235)
+      chin.scale.set(1.3, 0.75, 0.8)
+      mask.add(chin)
+
+      // Ori-kugi: a gilt peg on each cheek plate, and the helmet cord
+      // (shinobi-no-o) coming down from under the peak, hooked round the peg
+      // with a knot, its end hanging under the jaw
+      ;[-1, 1].forEach((side) => {
+        const at = onFace(side * 1.05, -0.16, 0.03)
+        const peg = mesh(new THREE.CylinderGeometry(0.007, 0.009, 0.036, 8), mats.gold)
+        peg.position.copy(at)
+        peg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), at.clone().setY(0).normalize())
+        mask.add(peg)
+
+        const cordCurve = new THREE.CatmullRomCurve3([
+          onFace(side * 1.24, 0.24, 0.025),
+          onFace(side * 1.19, 0.08, 0.021),
+          onFace(side * 1.12, -0.08, 0.023),
+          onFace(side * 1.05, -0.16, 0.05),
+          onFace(side * 0.98, -0.25, 0.024),
+          onFace(side * 0.86, -0.33, 0.024),
+        ])
+        mask.add(mesh(new THREE.TubeGeometry(cordCurve, 28, 0.009, 8), mats.rope))
+        const knot = mesh(new THREE.SphereGeometry(0.017, 12, 10), mats.rope)
+        knot.position.copy(onFace(side * 1.05, -0.16, 0.052))
+        knot.scale.set(1.2, 0.9, 1)
+        mask.add(knot)
+      })
+
+      // Yodare-kake: two laced lames guarding the throat beneath the mask
+      await lamellar(mask, {
         rows: 2,
         rowH: 0.06,
         gap: 0.014,
-        rTop: 0.464,
-        flare: 0.03,
-        span: arc(side * 0.6, 0.28),
-        y: 0.33,
-        material: [mats.red, mats.redDark],
-        trim: mats.gold,
-        hang: 0.03,
-        cordsPer: 1,
-        thickness: 0.018,
-        cross: false,
-      })
-    })
-
-    // Watagami: stitched leather shoulder straps tying the dō on, each
-    // fastened with a brass buckle
-    ;[-1, 1].forEach((side) => {
-      const strapRig = new THREE.Group()
-      strapRig.position.set(side * 0.24, 0.82, 0.19)
-      strapRig.rotation.z = side * 0.25
-      body.add(strapRig)
-      strapRig.add(mesh(new RoundedBoxGeometry(0.075, 0.34, 0.026, 3, 0.01), mats.leather))
-
-      const stitch = new THREE.BoxGeometry(0.005, 0.014, 0.006)
-      const rows = []
-      for (let i = 0; i < 12; i++) {
-        for (const x of [-0.029, 0.029]) rows.push(new THREE.Matrix4().makeTranslation(x, -0.15 + i * 0.027, 0.013))
-      }
-      strapRig.add(mesh(mergeCopies(stitch, rows), mats.rope))
-      stitch.dispose()
-
-      const buckle = mesh(new THREE.TorusGeometry(0.03, 0.006, 6, 4), mats.gold)
-      buckle.rotation.z = Math.PI / 4
-      buckle.scale.set(1.3, 1, 1)
-      buckle.position.set(0, -0.05, 0.017)
-      strapRig.add(buckle)
-      const tongue = mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.05, 6), mats.gold)
-      tongue.position.set(0, -0.05, 0.021)
-      strapRig.add(tongue)
-    })
-
-    // Agemaki: the large decorative silk bow on the back of the dō
-    const agemaki = new THREE.Group()
-    agemaki.position.set(0, 0.66, -0.36)
-    body.add(agemaki)
-    const loopGeo = track(new THREE.TorusGeometry(0.075, 0.021, 14, 48))
-    ;[-1, 1].forEach((s) => {
-      const loop = new THREE.Mesh(loopGeo, mats.cloth)
-      loop.castShadow = loop.receiveShadow = true
-      loop.position.set(s * 0.078, 0.03, 0)
-      loop.rotation.set(0.25, 0, s * 0.6)
-      agemaki.add(loop)
-
-      const tail = mesh(new RoundedBoxGeometry(0.042, 0.32, 0.018, 3, 0.012), mats.cloth)
-      tail.position.set(s * 0.045, -0.18, 0.004)
-      tail.rotation.z = s * 0.1
-      agemaki.add(tail)
-    })
-    const agemakiKnot = mesh(new THREE.SphereGeometry(0.048, 24, 16), mats.cloth)
-    agemakiKnot.scale.set(1.3, 0.9, 0.8)
-    agemaki.add(agemakiKnot)
-
-    // Obi sash, tied in a knot on the left hip
-    const sash = mesh(
-      foldCloth(new THREE.CylinderGeometry(0.4, 0.4, 0.15, 64, 8), 0.15, {
-        rings: [
-          [0.3, 0.025, 0.08],
-          [0.72, 0.02, 0.06],
-        ],
-        creases: 0.015,
-        seed: 2,
-      }),
-      mats.cloth
-    )
-    sash.position.y = 0.1
-    sash.scale.z = 0.74
-    body.add(sash)
-
-    const sashKnot = new THREE.Group()
-    sashKnot.position.set(-0.31, 0.09, 0.23)
-    sashKnot.rotation.y = -0.8
-    body.add(sashKnot)
-    const knotCore = mesh(new THREE.SphereGeometry(0.06, 24, 16), mats.cloth)
-    knotCore.scale.set(1.3, 0.85, 0.9)
-    sashKnot.add(knotCore)
-    ;[-1, 1].forEach((s) => {
-      const loop = new THREE.Mesh(track(new THREE.TorusGeometry(0.06, 0.024, 12, 40)), mats.cloth)
-      loop.castShadow = loop.receiveShadow = true
-      loop.position.set(s * 0.07, 0.02, 0)
-      loop.rotation.set(0.35, 0, s * 0.7)
-      sashKnot.add(loop)
-    })
-    ;[0.03, -0.045].forEach((x, i) => {
-      const tail = mesh(new RoundedBoxGeometry(0.08, 0.3, 0.03, 4, 0.014), mats.cloth)
-      tail.position.set(x, -0.19 - i * 0.03, 0.02 - i * 0.03)
-      tail.rotation.z = 0.12 - i * 0.3
-      sashKnot.add(tail)
-    })
-
-    // Saya: the empty scabbard, lacquered wood, thrust through the obi on
-    // the left hip and angled back. It has a horn mouth (koiguchi), a knob
-    // (kurikata) for the silk cord (sageo) looped over the obi, and an iron
-    // end cap (kojiri). Kneeling, it swings up to clear the floor.
-    const saya = new THREE.Group()
-    saya.position.set(-0.42, 0.16, 0.2)
-    body.add(saya)
-    const SAYA_LEN = 1.18
-    const DOWN = new THREE.Vector3(0, -1, 0)
-    const sayaStand = new THREE.Quaternion().setFromUnitVectors(DOWN, new THREE.Vector3(-0.22, -0.42, -0.88).normalize())
-    const sayaSeated = new THREE.Quaternion().setFromUnitVectors(DOWN, new THREE.Vector3(-0.2, -0.12, -0.97).normalize())
-    saya.quaternion.copy(sayaStand)
-    const sayaCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0.012, -SAYA_LEN * 0.5, 0),
-      new THREE.Vector3(0.045, -SAYA_LEN, 0),
-    ])
-    const sheath = new THREE.TubeGeometry(sayaCurve, 40, 0.036, 14, false)
-    sheath.scale(0.62, 1, 1)
-    saya.add(mesh(sheath, mats.saya))
-    const koiguchi = mesh(new THREE.CylinderGeometry(0.038, 0.037, 0.04, 18), mats.metalDark)
-    koiguchi.scale.set(0.62, 1, 1)
-    koiguchi.position.y = -0.012
-    saya.add(koiguchi)
-    const kurikata = mesh(new RoundedBoxGeometry(0.018, 0.05, 0.03, 2, 0.007), mats.saya)
-    kurikata.position.set(0.001, -0.15, 0.036)
-    saya.add(kurikata)
-    const kojiri = mesh(new THREE.SphereGeometry(0.036, 16, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), mats.metalDark)
-    kojiri.position.copy(sayaCurve.getPointAt(1))
-    kojiri.scale.set(0.62, 1.4, 1)
-    saya.add(kojiri)
-    // The cord, authored in body space and carried into the saya's frame.
-    saya.updateMatrix()
-    const toSaya = saya.matrix.clone().invert()
-    const knob = kurikata.position.clone().applyMatrix4(saya.matrix)
-    const sageoCurve = new THREE.CatmullRomCurve3(
-      [
-        knob,
-        knob.clone().add(new THREE.Vector3(0.05, -0.12, 0.05)),
-        new THREE.Vector3(-0.3, -0.02, 0.26),
-        new THREE.Vector3(-0.2, 0.06, 0.29),
-        new THREE.Vector3(-0.12, 0.14, 0.29),
-      ].map((p) => p.applyMatrix4(toSaya))
-    )
-    saya.add(mesh(new THREE.TubeGeometry(sageoCurve, 36, 0.009, 6), mats.rope))
-
-    // Kusazuri: six separate laced panels hanging off the sash. Each hangs
-    // from a hinge along its top edge, so it can fan out over the floor and
-    // thighs when he sits.
-    const skirt = new THREE.Group()
-    skirt.position.y = -0.04
-    skirt.scale.z = 0.76
-    body.add(skirt)
-
-    const SKIRT_R = 0.44
-    const panels = []
-    for (let i = 0; i < 6; i++) {
-      const center = (i / 6) * Math.PI * 2
-      const hinge = new THREE.Group()
-      hinge.position.set(Math.sin(center) * SKIRT_R, 0.01, Math.cos(center) * SKIRT_R)
-      hinge.rotation.y = center
-      skirt.add(hinge)
-
-      const flap = new THREE.Group()
-      hinge.add(flap)
-
-      // Undo the hinge transform, so the panel is authored in skirt space.
-      const unhinge = new THREE.Group()
-      unhinge.position.set(0, -0.01, -SKIRT_R)
-      unhinge.rotation.y = -center
-      flap.add(unhinge)
-
-      lamellar(unhinge, {
-        rows: 4,
-        rowH: 0.078,
-        gap: 0.02,
-        rTop: SKIRT_R,
-        flare: 0.24,
-        span: arc(center, Math.PI * 0.25),
-        y: 0.01,
-        material: [mats.red, mats.red, mats.redDark, mats.red],
-        trim: mats.gold,
-        hang: 0.07,
-        cordsPer: 2,
-      })
-      // Kneeling: the front panel lies over the thighs, the side panels drape
-      // down their outsides, and the rear ones hang almost straight behind.
-      const facing = Math.cos(center)
-      panels.push({ flap, spread: facing > 0.9 ? 1.35 : facing > 0 ? 0.95 : facing > -0.9 ? 0.45 : 0.35 })
-    }
-
-    /* ================================================================
-       Shoulders and arms — laced sode over fabric sleeves, mail forearms
-       ================================================================ */
-    const arms = [-1, 1].map((side) => {
-      const shoulder = new THREE.Group()
-      shoulder.position.set(side * 0.46, 0.72, 0)
-      body.add(shoulder)
-
-      const cord = mesh(new THREE.TorusGeometry(0.09, 0.02, 12, 48), mats.rope)
-      cord.position.set(side * 0.02, 0.1, 0)
-      cord.rotation.x = Math.PI / 2
-      shoulder.add(cord)
-
-      const capKnot = mesh(new THREE.SphereGeometry(0.045, 24, 16), mats.rope)
-      capKnot.position.set(side * 0.02, 0.12, 0)
-      shoulder.add(capKnot)
-
-      // Sode: five lames draped over the outside of the shoulder
-      const outward = side > 0 ? RIGHT : LEFT
-      const sode = lamellar(shoulder, {
-        rows: 5,
-        rowH: 0.07,
-        gap: 0.02,
-        rTop: 0.24,
-        flare: 0.16,
-        span: arc(outward, Math.PI * 0.86),
-        y: 0.065,
-        material: [mats.red, mats.red, mats.redDark, mats.red, mats.red],
-        trim: mats.gold,
-        topTrim: mats.gold,
-        hang: 0.04,
-        cordsPer: 3,
-      })
-      sode.rotation.z = side * -0.12
-      // Rivets fixing the top plate (kanmuri-ita) of the sode
-      ;[-0.55, 0, 0.55].forEach((o) => {
-        const rv = mesh(new THREE.SphereGeometry(0.009, 8, 6), mats.metalDark)
-        rv.position.set(Math.sin(outward + o) * 0.253, -0.009, Math.cos(outward + o) * 0.253)
-        sode.add(rv)
+        rTop: 0.285,
+        flare: 0.6,
+        span: arc(FRONT, Math.PI * 0.9),
+        y: -0.37,
+        material: mats.helmetLame,
+        lacing: mats.helmetLacing,
+        cordsPer: 4,
+        thickness: 0.02,
       })
 
-      const upper = mesh(
-        foldCloth(new THREE.CylinderGeometry(0.12, 0.11, 0.34, 40, 12), 0.34, {
-          rings: [
-            [0.08, 0.06, 0.08],
-            [0.24, 0.025, 0.07],
-          ],
-          creases: 0.03,
-          seed: side * 2 + 5,
-        }),
-        mats.fabric
-      )
-      upper.position.y = -0.36
-      shoulder.add(upper)
+      // A cloth collar draped round the neck, flattened so it hangs rather
+      // than inflates.
+      const scarf = mesh(new THREE.TorusGeometry(0.34, 0.075, 14, 56), mats.cloth)
+      scarf.position.y = -0.5
+      scarf.rotation.x = Math.PI / 2
+      scarf.scale.set(1, 1, 0.6)
+      headRig.add(scarf)
 
-      const elbow = new THREE.Group()
-      elbow.position.y = -0.56
-      shoulder.add(elbow)
-
-      // Kote: mail sleeve with three lacquered splints on the outside
-      const fore = mesh(new THREE.CylinderGeometry(0.105, 0.1, 0.36, 40), mats.kusari)
-      fore.position.y = -0.18
-      elbow.add(fore)
-
-      ;[-1, 0, 1].forEach((k) => {
-        const splint = plate(0.126, 0.13, 0.24, arc(outward + k * 0.42, 0.3), mats.red, 0.02)
-        splint.position.y = -0.18
-        elbow.add(splint)
+      tails = [0.1, -0.06].map((x, i) => {
+        const tail = mesh(new RoundedBoxGeometry(0.13, 0.36, 0.06, 4, 0.03), mats.cloth)
+        tail.position.set(x, -0.76 - i * 0.05, 0.27 - i * 0.05)
+        tail.rotation.z = 0.2 - i * 0.35
+        headRig.add(tail)
+        return tail
       })
+      await breathe()
 
-      const koteTrim = plate(0.122, 0.124, 0.024, arc(outward, Math.PI * 0.86), mats.gold, 0.014)
-      koteTrim.position.y = -0.05
-      elbow.add(koteTrim)
+      /* ================================================================
+         Kabuto — black lacquer flecked with gold, a broad engraved crest
+         ================================================================ */
+      helmet = new THREE.Group()
+      helmet.position.y = 0.14
+      headRig.add(helmet)
 
-      const koteCuff = plate(0.126, 0.128, 0.024, arc(outward, Math.PI * 0.86), mats.leather, 0.014)
-      koteCuff.position.y = -0.325
-      elbow.add(koteCuff)
+      const bowlRig = new THREE.Group()
+      bowlRig.position.y = 0.16
+      bowlRig.scale.y = 1.12
+      helmet.add(bowlRig)
 
-      // Ties holding the kote on, knotted on the inside of the forearm
-      // through a small brass ring
-      ;[-0.1, -0.27].forEach((yy, i) => {
-        const tie = mesh(new THREE.TorusGeometry(0.106, 0.007, 6, 40), mats.rope)
-        tie.position.y = yy
-        tie.rotation.x = Math.PI / 2
-        elbow.add(tie)
-        const knot = mesh(new THREE.SphereGeometry(0.015, 10, 8), mats.rope)
-        knot.position.set(-Math.sin(outward) * 0.108, yy, 0.02)
-        elbow.add(knot)
-        if (i === 0) {
-          const ring = mesh(new THREE.TorusGeometry(0.013, 0.0035, 6, 16), mats.gold)
-          ring.position.set(-Math.sin(outward) * 0.112, yy - 0.02, 0.03)
-          ring.rotation.y = outward
-          elbow.add(ring)
-        }
-      })
-
-      stud(elbow, Math.sin(outward) * 0.138, -0.18, 0, outward, 0.8)
-
-      // Tekko: an iron plate over the back of the gloved hand
-      const hand = mesh(new THREE.SphereGeometry(0.12, 32, 24), mats.leather)
-      hand.position.y = -0.4
-      hand.scale.set(1, 1.15, 0.92)
-      elbow.add(hand)
-
-      const tekko = plate(0.13, 0.12, 0.12, arc(outward, Math.PI * 0.7), mats.metal, 0.018)
-      tekko.position.y = -0.38
-      elbow.add(tekko)
-
-      return { shoulder, elbow, side, sode }
-    })
-
-    /* ================================================================
-       Head — a black lacquered menpō with lit eye slits
-       ================================================================ */
-    const headRig = new THREE.Group()
-    headRig.position.y = HEAD_Y - HIP_Y
-    headRig.rotation.order = 'YXZ'
-    body.add(headRig)
-
-    // The cranium is an ellipsoid; the mask plates below are built in a
-    // group with the same depth scale, so curved plates sit on its surface.
-    const FACE_R = 0.46
-    const FACE_SY = 0.92
-    const FACE_SZ = 0.94
-    const faceRing = (y) => Math.sqrt(Math.max(FACE_R * FACE_R - (y / FACE_SY) ** 2, 0.02))
-
-    const face = mesh(new THREE.SphereGeometry(FACE_R, 48, 32), mats.helmetRound)
-    face.scale.set(1, FACE_SY, FACE_SZ)
-    headRig.add(face)
-
-    const mask = new THREE.Group()
-    mask.scale.z = FACE_SZ
-    headRig.add(mask)
-
-    // Brow: a heavy ridge following the curve of the skull
-    const brow = plate(
-      faceRing(0.305) + 0.014,
-      faceRing(0.215) + 0.014,
-      0.09,
-      arc(FRONT, Math.PI * 0.9),
-      mats.helmet,
-      0.03
-    )
-    brow.position.y = 0.26
-    mask.add(brow)
-
-    // Eye band: a dark plate the slits are cut into
-    const eyeBand = plate(
-      faceRing(0.21) + 0.01,
-      faceRing(0.02) + 0.01,
-      0.19,
-      arc(FRONT, Math.PI * 0.84),
-      mats.helmet,
-      0.028
-    )
-    eyeBand.position.y = 0.115
-    mask.add(eyeBand)
-
-    // Long, nearly level slits: focused rather than angry. Each is a
-    // flattened capsule set into the band, with a soft additive halo.
-    const eyeGeo = track(new THREE.CapsuleGeometry(0.03, 0.19, 8, 24))
-    eyeGeo.rotateZ(Math.PI / 2)
-    eyeGeo.scale(1, 1, 0.45)
-    const glowGeo = track(new THREE.PlaneGeometry(0.42, 0.24))
-    const EYE_R = faceRing(0.11) + 0.024
-    const eyes = []
-    const glows = []
-    ;[-1, 1].forEach((side) => {
-      const a = side * 0.4
-      const eye = new THREE.Mesh(eyeGeo, mats.eye)
-      eye.position.set(Math.sin(a) * EYE_R, 0.11, Math.cos(a) * EYE_R)
-      eye.rotation.set(0, a, side * 0.06)
-      mask.add(eye)
-      eyes.push(eye)
-
-      const glow = new THREE.Mesh(glowGeo, glowMat)
-      glow.position.set(Math.sin(a) * (EYE_R + 0.025), 0.11, Math.cos(a) * (EYE_R + 0.025))
-      glow.rotation.set(0, a, side * 0.06)
-      mask.add(glow)
-      glows.push(glow)
-    })
-
-    // Cheek plates
-    ;[-1, 1].forEach((side) => {
-      const a = side * 1.0
-      const cheek = plate(
-        faceRing(0.06) + 0.012,
-        faceRing(-0.24) + 0.012,
-        0.3,
-        arc(a, 0.55),
-        mats.helmet,
-        0.024
-      )
-      cheek.position.y = -0.09
-      mask.add(cheek)
-    })
-
-    // Nose ridge
-    const nose = mesh(new THREE.ConeGeometry(0.075, 0.2, 24), mats.helmetRound)
-    nose.position.set(0, -0.02, 0.42)
-    nose.rotation.x = -0.42
-    nose.scale.x = 0.85
-    mask.add(nose)
-
-    // Mouth guard: tapers in toward the chin, with three breathing slots
-    const GUARD_TOP = faceRing(-0.05) + 0.012
-    const GUARD_BOT = faceRing(-0.35) + 0.012
-    const guard = plate(GUARD_TOP, GUARD_BOT, 0.3, arc(FRONT, Math.PI * 0.72), mats.helmet, 0.03)
-    guard.position.y = -0.2
-    mask.add(guard)
-
-    ;[-0.115, -0.165, -0.215].forEach((yy) => {
-      const t = (-0.05 - yy) / 0.3
-      const r = GUARD_TOP + (GUARD_BOT - GUARD_TOP) * t + 0.016
-      const vent = plate(r - 0.004, r + 0.004, 0.02, arc(FRONT, 0.62), mats.helmet, 0.012, 12)
-      vent.position.y = yy
-      mask.add(vent)
-    })
-
-    // Gold sunbursts lacquered onto the cheeks, either side of the nose.
-    // They lie over the eye band and the mouth guard, which stand proud of
-    // the skull there, so the whole burst shows.
-    const burst = track(sunburstGeometry())
-    ;[-1, 1].forEach((side) => {
-      const a = side * 0.53
-      const yy = -0.022
-      const r = Math.max(faceRing(0.02) + 0.02, GUARD_TOP + 0.012)
-      const sun = new THREE.Mesh(burst, mats.gold)
-      sun.castShadow = sun.receiveShadow = true
-      sun.position.set(Math.sin(a) * r, yy, Math.cos(a) * r)
-      sun.rotation.order = 'YXZ'
-      sun.rotation.set(0.02, a, side * 0.35)
-      sun.scale.setScalar(1.15)
-      mask.add(sun)
-    })
-
-    // Chin
-    const chin = mesh(new THREE.SphereGeometry(0.065, 32, 20), mats.helmetRound)
-    chin.position.set(0, -0.355, 0.235)
-    chin.scale.set(1.3, 0.75, 0.8)
-    mask.add(chin)
-
-    // Yodare-kake: two laced lames guarding the throat beneath the mask
-    lamellar(mask, {
-      rows: 2,
-      rowH: 0.06,
-      gap: 0.014,
-      rTop: 0.285,
-      flare: 0.6,
-      span: arc(FRONT, Math.PI * 0.9),
-      y: -0.37,
-      material: mats.helmetLame,
-      lacing: mats.helmetLacing,
-      cordsPer: 4,
-      thickness: 0.02,
-    })
-
-    // A cloth collar draped round the neck, flattened so it hangs rather
-    // than inflates.
-    const scarf = mesh(new THREE.TorusGeometry(0.34, 0.075, 14, 56), mats.cloth)
-    scarf.position.y = -0.5
-    scarf.rotation.x = Math.PI / 2
-    scarf.scale.set(1, 1, 0.6)
-    headRig.add(scarf)
-
-    const tails = [0.1, -0.06].map((x, i) => {
-      const tail = mesh(new RoundedBoxGeometry(0.13, 0.36, 0.06, 4, 0.03), mats.cloth)
-      tail.position.set(x, -0.76 - i * 0.05, 0.27 - i * 0.05)
-      tail.rotation.z = 0.2 - i * 0.35
-      headRig.add(tail)
-      return tail
-    })
-
-    /* ================================================================
-       Kabuto — black lacquer flecked with gold, a broad engraved crest
-       ================================================================ */
-    const helmet = new THREE.Group()
-    helmet.position.y = 0.14
-    headRig.add(helmet)
-
-    const bowlRig = new THREE.Group()
-    bowlRig.position.y = 0.16
-    bowlRig.scale.y = 1.12
-    helmet.add(bowlRig)
-
-    const bowl = mesh(
-      new THREE.SphereGeometry(0.6, 72, 36, 0, Math.PI * 2, 0, Math.PI * 0.5),
-      mats.helmetRound
-    )
-    bowlRig.add(bowl)
-
-    // A few low seams where the bowl's plates meet, one running up the front
-    const seamCurve = new THREE.CatmullRomCurve3(
-      Array.from({ length: 9 }, (_, i) => {
-        const phi = 0.12 + (i / 8) * (Math.PI / 2 - 0.14)
-        return new THREE.Vector3(Math.sin(phi) * 0.598, Math.cos(phi) * 0.598, 0)
-      })
-    )
-    const seam = taperTube(new THREE.TubeGeometry(seamCurve, 24, 0.009, 6), seamCurve, 24, 6, (t) =>
-      0.6 + t * 0.4
-    )
-    const SEAMS = 8
-    bowlRig.add(
-      mesh(
-        mergeCopies(
-          seam,
-          Array.from({ length: SEAMS }, (_, i) => new THREE.Matrix4().makeRotationY((i / SEAMS) * Math.PI * 2))
-        ),
+      const bowl = mesh(
+        new THREE.SphereGeometry(0.6, 96, 48, 0, Math.PI * 2, 0, Math.PI * 0.5),
         mats.helmetRound
       )
-    )
-    seam.dispose()
+      bowlRig.add(bowl)
+      // Ukebari: the cloth lining inside the bowl. A hemisphere turned inside
+      // out (faces and normals reversed), so looking up under the peak meets
+      // dark cloth rather than the culled back of the bowl.
+      const ukebari = new THREE.SphereGeometry(0.578, 48, 24, 0, Math.PI * 2, 0, Math.PI * 0.5)
+      ukebari.scale(-1, 1, 1)
+      const inward = ukebari.attributes.normal
+      for (let i = 0; i < inward.count; i++) inward.setXYZ(i, -inward.getX(i), -inward.getY(i), -inward.getZ(i))
+      bowlRig.add(mesh(ukebari, mats.fabric))
 
-    // Koshimaki: a raised band round the base of the bowl
-    const band = plate(0.615, 0.615, 0.06, [0, Math.PI * 2], mats.helmet, 0.03, 96)
-    band.position.y = 0.19
-    helmet.add(band)
-
-    // Mabisashi: the peak, sweeping forward and down, with a rolled lip
-    const visor = plate(0.6, 0.76, 0.1, arc(FRONT, Math.PI * 0.82), mats.helmet, 0.022, 36)
-    visor.position.y = 0.23
-    helmet.add(visor)
-    const visorLip = plate(0.76, 0.772, 0.022, arc(FRONT, Math.PI * 0.82), mats.helmet, 0.03, 36)
-    visorLip.position.y = 0.183
-    helmet.add(visorLip)
-
-    // Shikoro: black lames guarding the back of the neck, closely laced
-    const shikoro = lamellar(helmet, {
-      rows: 4,
-      rowH: 0.08,
-      gap: 0.026,
-      rTop: 0.625,
-      flare: 0.34,
-      span: arc(BACK, Math.PI * 1.44),
-      y: 0.13,
-      material: mats.helmetLame,
-      lacing: mats.helmetLacing,
-      cordsPer: 12,
-    })
-    shikoro.position.z = -0.08
-    shikoro.rotation.x = 0.22
-
-    // Fukigaeshi: the lames turned back beside the face into broad wings
-    ;[-1, 1].forEach((side) => {
-      const span = arc(side > 0 ? RIGHT : LEFT, Math.PI * 0.72)
-      const wingRig = new THREE.Group()
-      wingRig.position.set(side * 0.6, 0.06, 0.18)
-      wingRig.rotation.set(0.08, 0, side * 0.42)
-      helmet.add(wingRig)
-      wingRig.add(plate(0.17, 0.27, 0.36, span, mats.helmet, 0.026))
-      const lip = plate(0.27, 0.272, 0.024, span, mats.helmet, 0.034)
-      lip.position.y = -0.168
-      wingRig.add(lip)
-    })
-
-    // Maedate: a broad gilt crest, two swept blades rising from a
-    // chrysanthemum boss, engraved all over with scrolling clouds. It stands
-    // on the front of the bowl just above the peak, leaning back a little.
-    const crest = new THREE.Group()
-    crest.position.set(0, 0.37, 0.6)
-    crest.rotation.x = -0.28
-    helmet.add(crest)
-    crest.add(mesh(crestGeometry(), mats.crest))
-
-    // Kiku boss: sixteen petals round a domed centre
-    const boss = new THREE.Group()
-    boss.position.z = 0.02
-    crest.add(boss)
-    const bossDisc = mesh(new THREE.CylinderGeometry(0.086, 0.092, 0.028, 40), mats.gold)
-    bossDisc.rotation.x = Math.PI / 2
-    boss.add(bossDisc)
-    const petal = new THREE.SphereGeometry(1, 10, 6)
-    boss.add(
-      mesh(
-        mergeCopies(
-          petal,
-          Array.from({ length: 16 }, (_, i) => {
-            const a = (i / 16) * Math.PI * 2
-            return new THREE.Matrix4().compose(
-              new THREE.Vector3(Math.sin(a) * 0.058, Math.cos(a) * 0.058, 0.016),
-              new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -a),
-              new THREE.Vector3(0.013, 0.03, 0.009)
-            )
-          })
-        ),
-        mats.gold
+      // A few low seams where the bowl's plates meet, one running up the front
+      const seamCurve = new THREE.CatmullRomCurve3(
+        Array.from({ length: 9 }, (_, i) => {
+          const phi = 0.12 + (i / 8) * (Math.PI / 2 - 0.14)
+          return new THREE.Vector3(Math.sin(phi) * 0.598, Math.cos(phi) * 0.598, 0)
+        })
       )
-    )
-    petal.dispose()
-    const bossDome = mesh(new THREE.SphereGeometry(0.03, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), mats.gold)
-    bossDome.rotation.x = Math.PI / 2
-    bossDome.position.z = 0.016
-    boss.add(bossDome)
+      const seam = taperTube(new THREE.TubeGeometry(seamCurve, 24, 0.009, 6), seamCurve, 24, 6, (t) =>
+        0.6 + t * 0.4
+      )
+      const SEAMS = 8
+      bowlRig.add(
+        mesh(
+          mergeCopies(
+            seam,
+            Array.from({ length: SEAMS }, (_, i) => new THREE.Matrix4().makeRotationY((i / SEAMS) * Math.PI * 2))
+          ),
+          mats.helmetRound
+        )
+      )
+      seam.dispose()
 
-    /* ================================================================
-       Katana — held low in the right hand
-       ================================================================ */
-    const katana = new THREE.Group()
-    arms[1].elbow.add(katana)
-    katana.position.set(0.02, -0.4, 0.04)
-
-    // Tsuka: white ray skin under a crossed black silk wrap
-    const core = mesh(new RoundedBoxGeometry(0.086, 0.5, 0.072, 4, 0.03), mats.bowl)
-    core.position.y = -0.12
-    katana.add(core)
-
-    const wrap = new RoundedBoxGeometry(0.108, 0.022, 0.02, 3, 0.009)
-    const wrapMatrices = []
-    for (let i = 0; i < 8; i++) {
-      for (const z of [0.038, -0.038]) {
-        for (const tilt of [0.6, -0.6]) {
-          wrapMatrices.push(
+      // Hoshi: rows of gilt dome rivets riding each seam
+      const hoshi = new THREE.SphereGeometry(0.013, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2)
+      const hoshiAt = []
+      const up = new THREE.Vector3(0, 1, 0)
+      for (let i = 0; i < SEAMS; i++) {
+        for (const phi of [0.36, 0.6, 0.84, 1.08, 1.32]) {
+          const n = new THREE.Vector3(Math.sin(phi), Math.cos(phi), 0).applyAxisAngle(up, (i / SEAMS) * Math.PI * 2)
+          hoshiAt.push(
             new THREE.Matrix4().compose(
-              new THREE.Vector3(0, 0.1 - i * 0.056, z),
-              new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, tilt)),
+              n.clone().multiplyScalar(0.604),
+              new THREE.Quaternion().setFromUnitVectors(up, n),
               new THREE.Vector3(1, 1, 1)
             )
           )
         }
       }
+      bowlRig.add(mesh(mergeCopies(hoshi, hoshiAt), mats.gold))
+      hoshi.dispose()
+
+      // Shinodare: gilt strips running down from the crown over the front,
+      // back and side seams, broad at the top and narrowing toward the rim
+      for (const i of [0, 2, 4, 6]) {
+        const strip = mesh(meridianStrip(0.607, 0.17, 1.28, 0.05, 0.022), mats.gold)
+        strip.rotation.y = (i / SEAMS) * Math.PI * 2
+        bowlRig.add(strip)
+      }
+
+      // Tehen-no-kanamono: the tiered gilt fitting round the vent at the crown
+      const tehen = new THREE.Group()
+      tehen.position.y = 0.596
+      bowlRig.add(tehen)
+      let tehenY = 0
+      for (const [r, h] of [
+        [0.082, 0.02],
+        [0.064, 0.018],
+        [0.048, 0.016],
+      ]) {
+        const tier = mesh(new THREE.CylinderGeometry(r * 0.9, r, h, 40), mats.gold)
+        tier.position.y = tehenY + h / 2
+        tehen.add(tier)
+        tehenY += h
+      }
+      const vent = mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.008, 24), mats.metalDark)
+      vent.position.y = tehenY
+      tehen.add(vent)
+
+      // Koshimaki: a raised band round the base of the bowl
+      const band = plate(0.615, 0.615, 0.06, [0, Math.PI * 2], mats.helmet, 0.03, 96)
+      band.position.y = 0.19
+      helmet.add(band)
+
+      // Mabisashi: the peak, sweeping forward and down, with a rolled lip
+      const visor = plate(0.6, 0.76, 0.1, arc(FRONT, Math.PI * 0.82), mats.helmet, 0.022, 36)
+      visor.position.y = 0.23
+      helmet.add(visor)
+      const visorLip = plate(0.76, 0.772, 0.022, arc(FRONT, Math.PI * 0.82), mats.helmet, 0.03, 36)
+      visorLip.position.y = 0.183
+      helmet.add(visorLip)
+
+      // Shikoro: black lames guarding the back of the neck, closely laced
+      const shikoro = await lamellar(helmet, {
+        rows: 4,
+        rowH: 0.08,
+        gap: 0.026,
+        rTop: 0.625,
+        flare: 0.34,
+        span: arc(BACK, Math.PI * 1.44),
+        y: 0.13,
+        material: mats.helmetLame,
+        lacing: mats.helmetLacing,
+        cordsPer: 12,
+      })
+      shikoro.position.z = -0.08
+      shikoro.rotation.x = 0.22
+
+      // Fukigaeshi: the lames turned back beside the face into broad wings
+      ;[-1, 1].forEach((side) => {
+        const span = arc(side > 0 ? RIGHT : LEFT, Math.PI * 0.72)
+        const wingRig = new THREE.Group()
+        wingRig.position.set(side * 0.6, 0.06, 0.18)
+        wingRig.rotation.set(0.08, 0, side * 0.42)
+        helmet.add(wingRig)
+        wingRig.add(plate(0.17, 0.27, 0.36, span, mats.helmet, 0.026))
+        const lip = plate(0.27, 0.272, 0.024, span, mats.helmet, 0.034)
+        lip.position.y = -0.168
+        wingRig.add(lip)
+      })
+
+      // Maedate: a broad gilt crest, two swept blades rising from a
+      // chrysanthemum boss, engraved all over with scrolling clouds. It stands
+      // on the front of the bowl just above the peak, leaning back a little,
+      // and nods a touch on its mount when the head moves fast.
+      crest = new THREE.Group()
+      crest.position.set(0, 0.37, 0.6)
+      crest.rotation.x = -0.28
+      helmet.add(crest)
+      crest.add(mesh(crestGeometry(), mats.crest))
+
+      // Kiku boss: sixteen petals round a domed centre
+      const boss = new THREE.Group()
+      boss.position.z = 0.02
+      crest.add(boss)
+      const bossDisc = mesh(new THREE.CylinderGeometry(0.086, 0.092, 0.028, 40), mats.gold)
+      bossDisc.rotation.x = Math.PI / 2
+      boss.add(bossDisc)
+      const petal = new THREE.SphereGeometry(1, 10, 6)
+      boss.add(
+        mesh(
+          mergeCopies(
+            petal,
+            Array.from({ length: 16 }, (_, i) => {
+              const a = (i / 16) * Math.PI * 2
+              return new THREE.Matrix4().compose(
+                new THREE.Vector3(Math.sin(a) * 0.058, Math.cos(a) * 0.058, 0.016),
+                new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -a),
+                new THREE.Vector3(0.013, 0.03, 0.009)
+              )
+            })
+          ),
+          mats.gold
+        )
+      )
+      petal.dispose()
+      const bossDome = mesh(new THREE.SphereGeometry(0.03, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), mats.gold)
+      bossDome.rotation.x = Math.PI / 2
+      bossDome.position.z = 0.016
+      boss.add(bossDome)
+
+      await breathe()
+
+      /* ================================================================
+         Katana — held low in the right hand
+         ================================================================ */
+      katana = new THREE.Group()
+      arms[1].elbow.add(katana)
+      katana.position.set(0.02, -0.4, 0.04)
+
+      // The sword hand, closed round the tsuka just below the collar
+      const swordHand = fist(1)
+      swordHand.position.y = -0.02
+      swordHand.quaternion.copy(GRIP_Q)
+      katana.add(swordHand)
+
+      // Tsuka: white ray skin under a crossed black silk wrap
+      const core = mesh(new RoundedBoxGeometry(0.086, 0.5, 0.072, 4, 0.03), mats.bowl)
+      core.position.y = -0.12
+      katana.add(core)
+
+      const wrap = new RoundedBoxGeometry(0.108, 0.022, 0.02, 3, 0.009)
+      const wrapMatrices = []
+      for (let i = 0; i < 8; i++) {
+        for (const z of [0.038, -0.038]) {
+          for (const tilt of [0.6, -0.6]) {
+            wrapMatrices.push(
+              new THREE.Matrix4().compose(
+                new THREE.Vector3(0, 0.1 - i * 0.056, z),
+                new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, tilt)),
+                new THREE.Vector3(1, 1, 1)
+              )
+            )
+          }
+        }
+      }
+      katana.add(mesh(mergeCopies(wrap, wrapMatrices), mats.fabric))
+      wrap.dispose()
+
+      const menuki = mesh(new THREE.OctahedronGeometry(0.035, 2), mats.gold)
+      menuki.position.set(0, -0.13, 0.046)
+      menuki.scale.set(1, 1.4, 0.4)
+      katana.add(menuki)
+
+      const kashira = mesh(new RoundedBoxGeometry(0.1, 0.06, 0.086, 4, 0.025), mats.metalDark)
+      kashira.position.y = -0.39
+      katana.add(kashira)
+
+      const fuchi = mesh(new RoundedBoxGeometry(0.098, 0.04, 0.084, 4, 0.015), mats.gold)
+      fuchi.position.y = 0.13
+      katana.add(fuchi)
+
+      const tsuba = mesh(tsubaGeometry(0.17, 0.024), mats.metalDark)
+      tsuba.position.y = 0.165
+      katana.add(tsuba)
+
+      const tsubaRim = mesh(new THREE.TorusGeometry(0.17, 0.012, 12, 64), mats.gold)
+      tsubaRim.position.y = 0.165
+      tsubaRim.rotation.x = Math.PI / 2
+      katana.add(tsubaRim)
+
+      // Seppa: thin washers either side of the guard; mekugi: the bamboo peg
+      // pinning the blade's tang into the handle
+      ;[0.146, 0.184].forEach((yy) => {
+        const seppa = mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.006, 24), mats.gold)
+        seppa.position.y = yy
+        seppa.scale.z = 0.8
+        katana.add(seppa)
+      })
+      const mekugi = mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.1, 8), mats.rope)
+      mekugi.rotation.x = Math.PI / 2
+      mekugi.position.y = 0.06
+      katana.add(mekugi)
+
+      const habaki = mesh(new RoundedBoxGeometry(0.09, 0.07, 0.04, 4, 0.015), mats.gold)
+      habaki.position.y = 0.215
+      katana.add(habaki)
+
+      const blade = mesh(bladeGeometry(1.26), mats.steel)
+      blade.position.y = 0.19
+      katana.add(blade)
+
+      /* ---- Bake every rigid part down to a few meshes ---- */
+      await breathe()
+      await bake(crest)
+      await bake(helmet, [crest])
+      await bake(mask, [...eyes, ...glows])
+      await bake(cuirass)
+      for (const { flap } of panels) await bake(flap)
+      await bake(saya)
+      await bake(agemaki)
+      await bake(body, [torso, cuirass, skirt, headRig, saya, agemaki, ...arms.map((a) => a.shoulder)])
+      await bake(katana)
+      for (const { shoulder, elbow, sode, hand } of arms) {
+        await bake(sode)
+        if (hand) await bake(hand)
+        await bake(elbow, hand ? [katana, hand] : [katana])
+        await bake(shoulder, [elbow, sode])
+      }
+      for (const { hip, knee, ankle } of legs) {
+        await bake(ankle)
+        await bake(knee, [ankle])
+        await bake(hip, [knee])
+      }
+      // Meshes that stay live (eyes, cranium) still need a colour attribute,
+      // since their materials read one.
+      samurai.traverse((o) => {
+        if (!o.isMesh || !o.material.vertexColors || o.geometry.attributes.color) return
+        const n = o.geometry.attributes.position.count
+        o.geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3).fill(1), 3))
+      })
     }
-    katana.add(mesh(mergeCopies(wrap, wrapMatrices), mats.fabric))
-    wrap.dispose()
-
-    const menuki = mesh(new THREE.OctahedronGeometry(0.035, 2), mats.gold)
-    menuki.position.set(0, -0.13, 0.046)
-    menuki.scale.set(1, 1.4, 0.4)
-    katana.add(menuki)
-
-    const kashira = mesh(new RoundedBoxGeometry(0.1, 0.06, 0.086, 4, 0.025), mats.metalDark)
-    kashira.position.y = -0.39
-    katana.add(kashira)
-
-    const fuchi = mesh(new RoundedBoxGeometry(0.098, 0.04, 0.084, 4, 0.015), mats.gold)
-    fuchi.position.y = 0.13
-    katana.add(fuchi)
-
-    const tsuba = mesh(tsubaGeometry(0.17, 0.024), mats.metalDark)
-    tsuba.position.y = 0.165
-    katana.add(tsuba)
-
-    const tsubaRim = mesh(new THREE.TorusGeometry(0.17, 0.012, 12, 64), mats.gold)
-    tsubaRim.position.y = 0.165
-    tsubaRim.rotation.x = Math.PI / 2
-    katana.add(tsubaRim)
-
-    // Seppa: thin washers either side of the guard; mekugi: the bamboo peg
-    // pinning the blade's tang into the handle
-    ;[0.146, 0.184].forEach((yy) => {
-      const seppa = mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.006, 24), mats.gold)
-      seppa.position.y = yy
-      seppa.scale.z = 0.8
-      katana.add(seppa)
-    })
-    const mekugi = mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.1, 8), mats.rope)
-    mekugi.rotation.x = Math.PI / 2
-    mekugi.position.y = 0.06
-    katana.add(mekugi)
-
-    const habaki = mesh(new RoundedBoxGeometry(0.09, 0.07, 0.04, 4, 0.015), mats.gold)
-    habaki.position.y = 0.215
-    katana.add(habaki)
-
-    const blade = mesh(bladeGeometry(1.26), mats.steel)
-    blade.position.y = 0.19
-    katana.add(blade)
-
-    /* ---- Bake every rigid part down to a few meshes ---- */
-    bake(helmet)
-    bake(mask, [...eyes, ...glows])
-    bake(cuirass)
-    panels.forEach(({ flap }) => bake(flap))
-    bake(saya)
-    bake(body, [torso, cuirass, skirt, headRig, saya, ...arms.map((a) => a.shoulder)])
-    bake(katana)
-    arms.forEach(({ shoulder, elbow, sode }) => {
-      bake(sode)
-      bake(elbow, [katana])
-      bake(shoulder, [elbow, sode])
-    })
-    legs.forEach(({ hip, knee, ankle }) => {
-      bake(ankle)
-      bake(knee, [ankle])
-      bake(hip, [knee])
-    })
-    // Meshes that stay live (eyes, cranium) still need a colour attribute,
-    // since their materials read one.
-    samurai.traverse((o) => {
-      if (!o.isMesh || !o.material.vertexColors || o.geometry.attributes.color) return
-      const n = o.geometry.attributes.position.count
-      o.geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3).fill(1), 3))
-    })
 
     /* ================================================================
        Ground — shadow map plus a painted contact pool
@@ -2794,6 +3312,75 @@ export default function Samurai3D() {
     pool.rotation.x = -Math.PI / 2
     pool.position.y = 0.012
     scene.add(pool)
+
+    /* ================================================================
+       Blade trail — the sweep of the edge through a fast cut
+       ================================================================ */
+    // A ribbon between where the blade was, sample by sample, from just past
+    // the guard to the tip: brightest at the tip and newest, fading over its
+    // short life. Additive, so it reads as light off polished steel.
+    const TRAIL_N = 28
+    const TRAIL_LIFE = 0.16
+    const trailGeo = track(new THREE.BufferGeometry())
+    trailGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAIL_N * 6), 3))
+    trailGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(TRAIL_N * 6), 3))
+    const trailIndex = []
+    for (let i = 0; i < TRAIL_N - 1; i++) trailIndex.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2)
+    trailGeo.setIndex(trailIndex)
+    const trailMat = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    })
+    allMats.push(trailMat)
+    const trail = new THREE.Mesh(trailGeo, trailMat)
+    trail.frustumCulled = false
+    trail.visible = false
+    scene.add(trail)
+    const trailRing = Array.from({ length: TRAIL_N }, () => ({
+      base: new THREE.Vector3(),
+      tip: new THREE.Vector3(),
+      t: -1,
+    }))
+    let trailHead = 0
+    let trailCount = 0
+    const trailTip = new THREE.Vector3()
+    const trailBase = new THREE.Vector3()
+    const trailPrevTip = new THREE.Vector3()
+    const trailPush = (t) => {
+      const s = trailRing[trailHead]
+      s.base.copy(trailBase)
+      s.tip.copy(trailTip)
+      s.t = t
+      trailHead = (trailHead + 1) % TRAIL_N
+      trailCount = Math.min(trailCount + 1, TRAIL_N)
+    }
+    const trailWrite = (t) => {
+      while (trailCount > 0 && t - trailRing[(trailHead - trailCount + TRAIL_N) % TRAIL_N].t > TRAIL_LIFE) {
+        trailCount--
+      }
+      if (trailCount < 2) {
+        trail.visible = false
+        return
+      }
+      const pos = trailGeo.attributes.position
+      const col = trailGeo.attributes.color
+      for (let i = 0; i < trailCount; i++) {
+        const s = trailRing[(trailHead - trailCount + i + TRAIL_N) % TRAIL_N]
+        const k = Math.max(0, 1 - (t - s.t) / TRAIL_LIFE)
+        const g = k * k * 0.6
+        pos.setXYZ(i * 2, s.base.x, s.base.y, s.base.z)
+        pos.setXYZ(i * 2 + 1, s.tip.x, s.tip.y, s.tip.z)
+        col.setXYZ(i * 2, g * 0.5, g * 0.56, g * 0.66)
+        col.setXYZ(i * 2 + 1, g * 0.86, g * 0.92, g)
+      }
+      pos.needsUpdate = true
+      col.needsUpdate = true
+      trailGeo.setDrawRange(0, (trailCount - 1) * 6)
+      trail.visible = true
+    }
 
     /* ================================================================
        Behaviour — meditation, moods, actions, idle life, the cursor
@@ -2875,7 +3462,7 @@ export default function Samurai3D() {
       standUp()
       // Start from wherever he is now, even mid-way through another action.
       copyPose(actionFrom, out)
-      action = { def, start: now }
+      action = { def, name, start: now }
       micro.glance = micro.shift = null
       wake()
     }
@@ -2966,10 +3553,17 @@ export default function Samurai3D() {
     document.documentElement.addEventListener('mouseleave', onCursorGone)
     window.addEventListener('blur', onCursorGone)
 
+    // The canvas rectangle is measured a few times a second at most: reading
+    // it every frame would force a layout while the page is animating.
+    let rect = null
+    let rectAt = -1
     const updateLook = (dt) => {
       lookGoal.yaw = lookGoal.pitch = 0
       if (cursor.active && !interacting && !calmMotion) {
-        const rect = renderer.domElement.getBoundingClientRect()
+        if (now - rectAt > 0.25) {
+          rect = renderer.domElement.getBoundingClientRect()
+          rectAt = now
+        }
         if (rect.width && rect.height) {
           ndc.set(
             clamp(((cursor.x - rect.left) / rect.width) * 2 - 1, -4, 4),
@@ -3137,9 +3731,10 @@ export default function Samurai3D() {
     let composer = null
     let aoParts = null
     const enableAO = async () => {
+      // 4× MSAA: with the frame already supersampled, more only costs bandwidth.
       const aoTarget = new THREE.WebGLRenderTarget(1, 1, {
         type: THREE.HalfFloatType,
-        samples: Math.min(8, renderer.capabilities.maxSamples),
+        samples: Math.min(4, renderer.capabilities.maxSamples),
       })
       const c = new EffectComposer(renderer, aoTarget)
       c.setPixelRatio(dpr)
@@ -3154,13 +3749,16 @@ export default function Samurai3D() {
         samples: 20,
       })
       gtao.updatePdMaterial({ radius: 6, rings: 2, samples: 16 })
-      // The eye halos are additive sprites: keep them out of the normal /
-      // depth pass, or the AO would treat them as solid plates.
+      // The eye halos and the blade trail are additive sprites: keep them out
+      // of the normal / depth pass, or the AO would treat them as solid plates.
       const gtaoRender = gtao.render.bind(gtao)
       gtao.render = (...args) => {
+        const trailWas = trail.visible
         glows.forEach((g) => (g.visible = false))
+        trail.visible = false
         gtaoRender(...args)
         glows.forEach((g) => (g.visible = true))
+        trail.visible = trailWas
       }
       c.addPass(gtao)
       const output = new OutputPass()
@@ -3169,6 +3767,7 @@ export default function Samurai3D() {
       sharpen.material.toneMapped = false
       c.addPass(sharpen)
       aoParts = { composer: c, gtao, output, sharpen }
+      applyQuality()
 
       // Rendering into an off-screen target needs different variants of every
       // shader (no tone mapping, linear output), plus the pass shaders. Compile
@@ -3212,11 +3811,37 @@ export default function Samurai3D() {
     /* ---- Per-frame scratch ---- */
     const X_AXIS = new THREE.Vector3(1, 0, 0)
     const Y_AXIS = new THREE.Vector3(0, 1, 0)
+    const Z_AXIS = new THREE.Vector3(0, 0, 1)
     const IDENTITY = new THREE.Quaternion()
+    // Secondary motion: what the body did last frame (smoothed rates), and
+    // a damped spring per hanging part that lags behind it.
+    const dyn = {
+      prevY: 0,
+      vy: 0,
+      ay: 0,
+      prevLean: 0,
+      leanRate: 0,
+      prevHead: 0,
+      headRate: 0,
+      prevYaw: 0,
+      yawRate: 0,
+      flare: { x: 0, v: 0 },
+      flapLean: { x: 0, v: 0 },
+      sode: { x: 0, v: 0 },
+      tail: { x: 0, v: 0 },
+      crest: { x: 0, v: 0 },
+      bow: { x: 0, v: 0 },
+    }
+    const lag = (s, goal, omega, dt) => {
+      const r = spring(s.x, s.v, goal, omega, dt)
+      s.x = r.x
+      s.v = r.v
+      return s.x
+    }
     const restShoulderQ = [-1, 1].map((side) =>
       new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, side * 0.16))
     )
-    const sodeBaseQ = arms.map(({ sode }) => sode.quaternion.clone())
+    let sodeBaseQ = []
     const ik = { q: new THREE.Quaternion(), bend: 0 }
     const armState = [{ swivel: 0 }, { swivel: 0 }]
     const seatedShoulderQ = [-1, 1].map((side) =>
@@ -3228,6 +3853,11 @@ export default function Samurai3D() {
     const bladeQ = new THREE.Quaternion()
     const handQ = new THREE.Quaternion()
     const tmpQ = new THREE.Quaternion()
+    const gripWorldQ = new THREE.Quaternion()
+    const forearmWorldQ = new THREE.Quaternion()
+    // The free fist at rest: back of the hand outward, fingers curled.
+    const FIST_REST_Q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2)
+    const KNUCKLES_TO_EDGE = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2)
     const eyeBase = cssColor('--samurai-eye', '#ffb347')
     const eyeHot = new THREE.Color('#ff4a2a')
     const eyeWarm = new THREE.Color('#fff1cf')
@@ -3266,6 +3896,33 @@ export default function Samurai3D() {
       else copyPose(out, cur)
       const P = out.s
       const sway = P.sway * stand * still
+
+      /* Secondary motion, from how the body moved last frame */
+      if (dt > 0) {
+        const settle = Math.min(1, dt * 25)
+        const vy = (samurai.position.y - dyn.prevY) / dt
+        dyn.ay += ((vy - dyn.vy) / dt - dyn.ay) * settle
+        dyn.vy = vy
+        dyn.leanRate += ((body.rotation.x - dyn.prevLean) / dt - dyn.leanRate) * settle
+        dyn.headRate += ((headRig.rotation.x - dyn.prevHead) / dt - dyn.headRate) * settle
+        let turned = samurai.rotation.y + body.rotation.y - dyn.prevYaw
+        turned = Math.atan2(Math.sin(turned), Math.cos(turned))
+        dyn.yawRate += (turned / dt - dyn.yawRate) * settle
+      }
+      dyn.prevY = samurai.position.y
+      dyn.prevLean = body.rotation.x
+      dyn.prevHead = headRig.rotation.x
+      dyn.prevYaw = samurai.rotation.y + body.rotation.y
+      // Falling (or the top of a leap) lets hanging cloth float outward; a
+      // quick lean or turn leaves it behind for a moment.
+      const flare = lag(dyn.flare, clamp(0.02 * Math.max(0, -dyn.ay), 0, 0.45) * still, 9, dt)
+      const flapLean = lag(dyn.flapLean, clamp(0.3 * dyn.leanRate, -0.3, 0.3) * still, 9, dt)
+      const sodeSwing = lag(dyn.sode, (0.5 * flare + clamp(0.06 * Math.abs(dyn.yawRate), 0, 0.5)) * still, 8, dt)
+      const tailSwing = lag(dyn.tail, clamp(-0.4 * (dyn.leanRate + dyn.headRate), -0.25, 0.25) * still - 0.5 * flare, 10, dt)
+      const crestNod = lag(dyn.crest, clamp(-0.15 * dyn.headRate, -0.1, 0.1) * still, 12, dt)
+      const bowSwing = lag(dyn.bow, clamp(0.35 * dyn.leanRate, -0.3, 0.3) * still - 0.6 * flare, 9, dt)
+      crest.rotation.x = -0.28 + crestNod
+      agemaki.rotation.x = bowSwing
 
       /* Idle life */
       let blink = 1
@@ -3355,11 +4012,12 @@ export default function Samurai3D() {
       torso.scale.set(1, 1 + breathe + deep * 0.028 * w, 1)
       cuirass.scale.set(1 + breathe * 0.4, 1, 0.74 * (1 + breathe * 0.4))
       skirt.rotation.set(-P.lean * stand * 0.75, Math.sin(t * 0.42) * 0.03 * sway, 0)
-      panels.forEach(({ flap, spread }, i) => {
-        flap.rotation.x = -spread * w - stand * alpha * 0.45 - Math.sin(t * 1.3 + i * 1.7) * 0.012 * sway
+      panels.forEach(({ flap, spread, facing }, i) => {
+        flap.rotation.x =
+          -spread * w - stand * alpha * 0.45 - Math.sin(t * 1.3 + i * 1.7) * 0.012 * sway - flare + flapLean * facing
       })
       tails.forEach((tail, i) => {
-        tail.rotation.x = Math.sin(t * 1.2 + i * 0.8) * 0.1 * sway + 0.35 * w
+        tail.rotation.x = Math.sin(t * 1.2 + i * 0.8) * 0.1 * sway + 0.35 * w + tailSwing
       })
 
       /* Head: the head is on the body now, so it steadies against the body's turn */
@@ -3391,9 +4049,11 @@ export default function Samurai3D() {
         solveArm(side > 0 ? rHand : lHand, side, armState[i], dt, ik)
         shoulder.quaternion.slerpQuaternions(ik.q, seatedShoulderQ[i], w)
         elbow.rotation.set(lerp(-ik.bend, -1.35, w), 0, side * -0.3 * w)
-        // The sode hang from the shoulder: they follow the arm only a little.
+        // The sode hang from the shoulder: they follow the arm only a little,
+        // and fly outward through a spin or a leap.
         tmpQ.copy(shoulder.quaternion).invert().multiply(restShoulderQ[i])
         sode.quaternion.slerpQuaternions(IDENTITY, tmpQ, 0.8).multiply(sodeBaseQ[i])
+        sode.quaternion.multiply(tmpQ.setFromAxisAngle(Z_AXIS, side * sodeSwing))
       })
 
       /* Katana: the pose's blade in body space, carried into the hand's frame */
@@ -3403,6 +4063,27 @@ export default function Samurai3D() {
       katana.quaternion.copy(handQ.invert()).multiply(bladeQ)
       mats.steel.envMapIntensity = 2.4 + P.glint * 1.6
 
+      /* Blade trail: sampled whenever the tip is moving fast */
+      katana.updateWorldMatrix(true, false)
+      trailTip.set(0, 1.48, 0).applyMatrix4(katana.matrixWorld)
+      trailBase.set(0, 0.32, 0).applyMatrix4(katana.matrixWorld)
+      const tipSpeed = dt > 0 ? trailTip.distanceTo(trailPrevTip) / dt : 0
+      trailPrevTip.copy(trailTip)
+      if (tipSpeed > 4.5 && still) trailPush(t)
+      trailWrite(t)
+
+      /* The free hand: closes on the grip as the other joins it, else rests */
+      const freeHand = arms[0].hand
+      if (freeHand) {
+        const hold = clamp(P.twoHand, 0, 1)
+        if (hold > 0) {
+          katana.getWorldQuaternion(gripWorldQ)
+          arms[0].elbow.getWorldQuaternion(forearmWorldQ)
+          forearmWorldQ.invert().multiply(gripWorldQ).multiply(KNUCKLES_TO_EDGE)
+          freeHand.quaternion.slerpQuaternions(FIST_REST_Q, forearmWorldQ, hold)
+        } else freeHand.quaternion.copy(FIST_REST_Q)
+      }
+
       /* Eyes: open, tilt, glow and colour carry most of the emotion */
       const glowLevel = lerp(P.eyeGlow + Math.sin(t * 0.85) * 0.1 * still, 0.45 + deep * 0.3, w)
       mats.eye.emissiveIntensity = glowLevel
@@ -3411,6 +4092,8 @@ export default function Samurai3D() {
       mats.eye.color.copy(eyeTint)
       mats.eye.emissive.copy(eyeTint)
       glowMat.color.copy(eyeTint)
+      eyeLight.color.copy(eyeTint)
+      eyeLight.intensity = glowLevel * 0.06
       const open = P.eyeOpen * blink
       eyes.forEach((eye, i) => {
         const side = i === 0 ? -1 : 1
@@ -3436,30 +4119,168 @@ export default function Samurai3D() {
       controls.update(dt)
     }
 
-    /* ---- Resolution: supersampled on desktop, eased back if the GPU lags ----
-       Over each run of 90 frames, if most took longer than 1/40 s, drop the
-       pixel ratio a quarter step — never below the screen's own. It never
-       steps back up, so the quality can't oscillate. */
-    const perf = { warmup: 45, frames: 0, slow: 0 }
-    const applyDpr = (next) => {
-      dpr = next
-      renderer.setPixelRatio(dpr)
-      aoParts?.composer.setPixelRatio(dpr)
+    /* ---- Quality: measured, not guessed ----
+       The GPU's own time per frame (a timer query, where the browser offers
+       one) and the frame interval decide the rung. Over each window of
+       frames: too slow, and the rung steps down at once; comfortably fast,
+       and it steps up — but only while it has never had to step down, so the
+       level settles instead of oscillating. */
+    const timerExt = gl.getExtension('EXT_disjoint_timer_query_webgl2')
+    let gpuQuery = null
+    const gpuQueries = []
+    const gpuBegin = () => {
+      if (!timerExt || gpuQuery || gpuQueries.length > 3) return
+      gpuQuery = gl.createQuery()
+      gl.beginQuery(timerExt.TIME_ELAPSED_EXT, gpuQuery)
     }
-    const governResolution = (dt) => {
-      if (dock.on || dt === 0 || dpr <= nativeDpr + 0.01) return
-      if (perf.warmup > 0) {
-        perf.warmup--
+    const gpuEnd = () => {
+      if (!gpuQuery) return
+      gl.endQuery(timerExt.TIME_ELAPSED_EXT)
+      gpuQueries.push(gpuQuery)
+      gpuQuery = null
+    }
+    /** Milliseconds the GPU spent on the oldest finished frame, or null. */
+    const gpuPoll = () => {
+      if (!gpuQueries.length) return null
+      if (gl.getParameter(timerExt.GPU_DISJOINT_EXT)) {
+        gpuQueries.splice(0).forEach((q) => gl.deleteQuery(q))
+        return null
+      }
+      const q = gpuQueries[0]
+      if (!gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) return null
+      gpuQueries.shift()
+      const ns = gl.getQueryParameter(q, gl.QUERY_RESULT)
+      gl.deleteQuery(q)
+      return ns / 1e6
+    }
+
+    /** Puts the current rung into effect: pixel ratio and AO resolution. */
+    const applyQuality = () => {
+      const { ao } = ladder[rung]
+      dpr = rungDpr(rung)
+      const w = mount.clientWidth
+      const h = mount.clientHeight
+      if (!w || !h) return
+      renderer.setPixelRatio(dpr)
+      renderer.setSize(w, h)
+      if (aoParts && ao > 0) {
+        aoParts.composer.setPixelRatio(dpr)
+        aoParts.composer.setSize(w, h)
+        // The occlusion (normals, AO and its denoise) can run below the
+        // frame's resolution; the blend samples it back up bilinearly.
+        if (ao < 1) aoParts.gtao.setSize(Math.round(w * dpr * ao), Math.round(h * dpr * ao))
+      }
+      // A new size or rung allocates fresh render targets: let that settle
+      // before the next window is judged.
+      perf.warmUntil = now + 0.35
+      perf.windowStart = now
+      perf.frames = perf.slow = perf.gpu = perf.gpuN = 0
+      perf.dts.length = 0
+      if (import.meta.env.DEV) {
+        window.__samuraiQuality = { rung, dpr, ao, gpuName, integrated, timer: !!timerExt, history }
+      }
+    }
+    const history = []
+    // Smoothed GPU time per frame, in ms (null until a timer result lands).
+    let gpuEma = null
+    if (import.meta.env.DEV) {
+      // For the probe scripts: poke the scene and read the GPU clock.
+      window.__samurai = {
+        renderer,
+        scene,
+        key,
+        ladder,
+        get rung() {
+          return rung
+        },
+        setRung(i) {
+          rung = clamp(i, 0, ladder.length - 1)
+          perf.frozen = true
+          applyQuality()
+        },
+        get gpuMs() {
+          return gpuEma
+        },
+        get aoOn() {
+          return !!composer
+        },
+        get action() {
+          return action ? { name: action.name, u: +((now - action.start) / action.def.duration).toFixed(2) } : null
+        },
+        get trail() {
+          return { samples: trailCount, visible: trail.visible }
+        },
+      }
+    }
+    // Windows are measured in seconds, so a struggling GPU is judged (and
+    // relieved) as promptly as a fast one: a third of a second to settle
+    // after a change, then three quarters of a second per window (a second
+    // and a half once the level is locked), never fewer than a dozen frames.
+    const perf = {
+      warmUntil: 0.35,
+      windowStart: 0,
+      frames: 0,
+      slow: 0,
+      gpu: 0,
+      gpuN: 0,
+      dts: [],
+      period: 1 / 60,
+      locked: false,
+      frozen: false,
+    }
+    const govern = (dt, gpuMs) => {
+      if (dock.on || dt === 0 || perf.frozen) return
+      if (now < perf.warmUntil) {
+        perf.windowStart = now
         return
       }
       perf.frames++
-      if (dt > 1 / 40) perf.slow++
-      if (perf.frames < 90) return
-      if (perf.slow > perf.frames / 2) {
-        applyDpr(Math.max(nativeDpr, dpr - 0.25))
-        perf.warmup = 30
+      perf.dts.push(dt)
+      // A frame is slow when it clearly missed the next refresh, judged
+      // against the typical frame of the last window.
+      if (dt > Math.max(perf.period * 1.5, 1 / 48)) perf.slow++
+      if (gpuMs !== null) {
+        perf.gpu += gpuMs
+        perf.gpuN++
+        gpuEma = gpuEma === null ? gpuMs : gpuEma + (gpuMs - gpuEma) * 0.1
       }
-      perf.frames = perf.slow = 0
+      if (perf.frames < 12 || now - perf.windowStart < (perf.locked ? 1.5 : 0.75)) return
+      // The median interval is the cadence actually achieved: the display's
+      // period when frames keep up, a multiple of it when they don't.
+      perf.dts.sort((a, b) => a - b)
+      perf.period = clamp(perf.dts[perf.dts.length >> 1], 1 / 240, 1 / 50)
+      const slowShare = perf.slow / perf.frames
+      const load = perf.gpuN ? perf.gpu / perf.gpuN / (perf.period * 1000) : null
+      let next = rung
+      if (slowShare > 0.2 || (load !== null && load > 0.92)) {
+        // The further over budget, the more rungs at once.
+        const over = Math.max(slowShare / 0.2, load === null ? 0 : load)
+        next = Math.min(ladder.length - 1, rung + (over > 1.8 ? 3 : over > 1.3 ? 2 : 1))
+        perf.locked = true
+      } else if (!perf.locked && rung > 0 && load !== null && slowShare < 0.03) {
+        // Step up only when the rung above is predicted to leave a quarter
+        // of the frame free for the rest of the page.
+        if ((load * ladder[rung - 1].cost) / ladder[rung].cost < 0.75) next = rung - 1
+      }
+      if (import.meta.env.DEV) {
+        history.push({
+          t: +now.toFixed(1),
+          rung,
+          next,
+          slow: +slowShare.toFixed(2),
+          load: load === null ? null : +load.toFixed(2),
+          gpuMs: perf.gpuN ? +(perf.gpu / perf.gpuN).toFixed(1) : null,
+          period: +(perf.period * 1000).toFixed(1),
+          ao: !!composer,
+        })
+      }
+      perf.frames = perf.slow = perf.gpu = perf.gpuN = 0
+      perf.dts.length = 0
+      perf.windowStart = now
+      if (next !== rung) {
+        rung = next
+        applyQuality()
+      }
     }
 
     /* ---- The loop: runs only while he is on screen and the tab is shown ---- */
@@ -3476,9 +4297,14 @@ export default function Samurai3D() {
       last = t
       now = t
       update(dt, t)
-      if (composer && !dock.on) composer.render()
+      const gpuMs = gpuPoll()
+      gpuBegin()
+      // Rungs without AO draw straight to the canvas: the off-screen target,
+      // its copies and the output pass are a fixed cost worth skipping.
+      if (composer && !dock.on && ladder[rung].ao > 0) composer.render()
       else renderer.render(scene, camera)
-      governResolution(dt)
+      gpuEnd()
+      govern(dt, gpuMs)
     }
     function wake() {
       if (frame !== null || !started || !gate?.visible || document.hidden) return
@@ -3492,7 +4318,19 @@ export default function Samurai3D() {
     // Compile every shader in parallel (without blocking the page), then
     // start drawing and fade the canvas in. AO follows once the page is idle.
     const start = async () => {
-      envTexture = await bakedEnv
+      performance.mark('samurai:build-start')
+      try {
+        await buildModel()
+      } catch (e) {
+        if (e !== ABORT) console.error(e)
+        return
+      }
+      performance.measure('samurai:build', 'samurai:build-start')
+      sodeBaseQ = arms.map(({ sode }) => sode.quaternion.clone())
+
+      const pixels = await envPixels
+      if (disposed) return
+      if (pixels) envTexture = decodeBakedEnvironment(pixels)
       fillTextureSlots(maps, await texturesReady)
       extraMaps.forEach((t) => (t.needsUpdate = true))
       if (disposed) return
@@ -3501,12 +4339,19 @@ export default function Samurai3D() {
         envTexture = envFallback.texture
       }
       scene.environment = envTexture
+      performance.mark('samurai:compile-start')
       try {
         await renderer.compileAsync(scene, camera)
       } catch {
         // Fall back to compiling on first render.
       }
       if (disposed) return
+      performance.measure('samurai:compile', 'samurai:compile-start')
+      // One warm frame while the canvas is still invisible uploads every
+      // geometry and texture, so the fade-in begins on a frame that is ready.
+      update(0, 0)
+      renderer.render(scene, camera)
+      performance.measure('samurai:ready', 'samurai:build-start')
       started = true
       mount.classList.add('is-ready')
       setDock()
@@ -3555,8 +4400,7 @@ export default function Samurai3D() {
       if (!w || !h) return
       camera.aspect = w / h
       camera.updateProjectionMatrix()
-      renderer.setSize(w, h)
-      aoParts?.composer.setSize(w, h)
+      applyQuality()
     }
     const resizeWatcher = new ResizeObserver(onResize)
     resizeWatcher.observe(mount)
@@ -3593,6 +4437,7 @@ export default function Samurai3D() {
       frameEl?.classList.remove('is-docked', 'is-undocking')
       mount.classList.remove('is-ready')
       controls.dispose()
+      gpuQueries.forEach((q) => gl.deleteQuery(q))
 
       geos.forEach((g) => g.dispose())
       geos.clear()

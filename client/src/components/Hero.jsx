@@ -7,6 +7,7 @@ import CodePanel from './CodePanel.jsx'
 import SamuraiMoves from './SamuraiMoves.jsx'
 import { profile } from '../data/content.js'
 import { supports3D } from '../lib/capabilities.js'
+import { preloadSamurai } from '../lib/samurai-preload.js'
 
 // Three.js is a large dependency — only fetch it when the scene can run.
 // Swap this for './Robot3D.jsx' to put the robot character back instead.
@@ -15,16 +16,16 @@ const Samurai3D = lazy(loadSamurai)
 
 /**
  * True once the hero has painted and the browser has a moment to spare.
- * Building the samurai's geometry takes a few seconds of main thread on a
- * phone; doing it after the intro is on screen keeps the first paint fast.
+ * The samurai builds his geometry in small slices, so he can start soon
+ * after the intro is on screen without stalling its animation.
  */
-function useAfterFirstPaint(minDelay = 1000) {
+function useAfterFirstPaint(minDelay = 400) {
   const [ready, setReady] = useState(false)
   useEffect(() => {
     let idle = 0
     const timer = setTimeout(() => {
       if (window.requestIdleCallback) {
-        idle = window.requestIdleCallback(() => setReady(true), { timeout: 1500 })
+        idle = window.requestIdleCallback(() => setReady(true), { timeout: 800 })
       } else setReady(true)
     }, minDelay)
     return () => {
@@ -73,10 +74,12 @@ export default function Hero() {
   const [can3D] = useState(supports3D)
   const buildSamurai = useAfterFirstPaint()
 
-  // Fetch the samurai's code straight away — that also starts his texture
-  // worker and reflection map — and only hold back building him.
+  // Start the samurai's texture worker and reflection map at once, fetch his
+  // code alongside them, and only hold back building him.
   useEffect(() => {
-    if (can3D) loadSamurai()
+    if (!can3D) return
+    preloadSamurai()
+    loadSamurai()
   }, [can3D])
 
   return (
