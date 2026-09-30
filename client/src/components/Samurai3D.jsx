@@ -12,7 +12,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
-import { createVisibilityGate, cssColor } from '../lib/three-utils.js'
+import { createVisibilityGate, cssColor, cssNumber } from '../lib/three-utils.js'
 import { decodeBakedEnvironment, renderStudioPMREM } from '../lib/studio-env.js'
 import { preloadSamurai } from '../lib/samurai-preload.js'
 import { MOVES, getState, subscribe } from '../lib/companion.js'
@@ -1523,10 +1523,13 @@ export default function Samurai3D() {
     key.shadow.normalBias = 0.018
     key.shadow.radius = bigShadows ? 7 : 4
 
-    const rimL = new THREE.DirectionalLight(0xa8c8ff, 2.3)
-    rimL.position.set(-4.5, 3.5, -5)
-    const rimR = new THREE.DirectionalLight(0xbcd4ff, 1.5)
-    rimR.position.set(4.5, 2.5, -4.5)
+    // The rims sit well out to the sides, so from the usual three-quarter view
+    // they trace his silhouette (helmet, sode, arms, shins) in cool light and
+    // lift the black lacquer off a dark page.
+    const rimL = new THREE.DirectionalLight(0xa8c8ff, 5)
+    rimL.position.set(-6, 4, -2.5)
+    const rimR = new THREE.DirectionalLight(0xbcd4ff, 3.3)
+    rimR.position.set(6, 3, -2.5)
     const fill = new THREE.DirectionalLight(0xdfe7f5, 0.3)
     fill.position.set(-3.5, 1.2, 4)
     scene.add(key, rimL, rimR, fill)
@@ -3691,9 +3694,10 @@ export default function Samurai3D() {
     }
 
     /* ================================================================
-       Ground — shadow map plus a painted contact pool
+       Ground — shadow map, a painted contact pool, and (dark theme) the
+       pool of light he stands in
        ================================================================ */
-    const shadowMat = new THREE.ShadowMaterial({ opacity: 0.4 })
+    const shadowMat = new THREE.ShadowMaterial({ opacity: cssNumber('--samurai-shadow', 0.4) })
     const floor = new THREE.Mesh(track(new THREE.PlaneGeometry(22, 22)), shadowMat)
     floor.rotation.x = -Math.PI / 2
     floor.receiveShadow = true
@@ -3719,6 +3723,41 @@ export default function Samurai3D() {
     pool.rotation.x = -Math.PI / 2
     pool.position.y = 0.012
     scene.add(pool)
+
+    // On a dark page a shadow has nothing to fall on, and he floats. So the
+    // key light lands on the floor as a soft pool, drawn beneath the shadow
+    // so the shadow darkens it. It fades out well inside the frame at every
+    // orbit angle, so the canvas edge never cuts it. Same program as the
+    // contact pool.
+    const glowCanvas = document.createElement('canvas')
+    glowCanvas.width = glowCanvas.height = 256
+    const gctx = glowCanvas.getContext('2d')
+    const glowGrad = gctx.createRadialGradient(128, 128, 0, 128, 128, 128)
+    glowGrad.addColorStop(0, 'rgba(255,255,255,1)')
+    glowGrad.addColorStop(0.35, 'rgba(255,255,255,0.6)')
+    glowGrad.addColorStop(0.7, 'rgba(255,255,255,0.18)')
+    glowGrad.addColorStop(1, 'rgba(255,255,255,0)')
+    gctx.fillStyle = glowGrad
+    gctx.fillRect(0, 0, 256, 256)
+    const floorGlowTex = new THREE.CanvasTexture(glowCanvas)
+    floorGlowTex.colorSpace = THREE.SRGBColorSpace
+    const floorGlowMat = new THREE.MeshBasicMaterial({
+      map: floorGlowTex,
+      color: key.color,
+      transparent: true,
+      depthWrite: false,
+    })
+    const floorGlow = new THREE.Mesh(track(new THREE.PlaneGeometry(3.4, 3.4)), floorGlowMat)
+    floorGlow.rotation.x = -Math.PI / 2
+    floorGlow.position.y = 0.001
+    floorGlow.renderOrder = -1
+    scene.add(floorGlow)
+    const applyFloorTheme = () => {
+      shadowMat.opacity = cssNumber('--samurai-shadow', 0.4)
+      floorGlowMat.opacity = cssNumber('--samurai-floor-light', 0)
+      floorGlow.visible = floorGlowMat.opacity > 0
+    }
+    applyFloorTheme()
 
     /* ================================================================
        Blade trail — the sweep of the edge through a fast cut
@@ -4084,6 +4123,8 @@ export default function Samurai3D() {
       const want = started && !slotVisible && !dismissed && dockQuery.matches
       if (want === dock.on || !frameEl) return
       dock.on = want
+      // Docked, he floats over page content: no floor to light.
+      floorGlow.visible = !want && floorGlowMat.opacity > 0
       frameEl.classList.toggle('is-docked', want)
       frameEl.classList.toggle('is-undocking', !want)
       clearTimeout(undockTimer)
@@ -4795,6 +4836,8 @@ export default function Samurai3D() {
       mats.helmetLacing.color.copy(cssColor('--samurai-helmet-lacing', '#232a3d'))
       // The eyes are tinted by mood every frame, starting from this colour.
       eyeBase.copy(cssColor('--samurai-eye', '#ffb347'))
+      applyFloorTheme()
+      if (dock.on) floorGlow.visible = false
       wake()
     }
     const themeWatcher = new MutationObserver(applyTheme)
@@ -4857,6 +4900,8 @@ export default function Samurai3D() {
       shadowMat.dispose()
       poolMat.dispose()
       poolTex.dispose()
+      floorGlowMat.dispose()
+      floorGlowTex.dispose()
       if (aoParts) {
         aoParts.gtao.dispose()
         aoParts.output.dispose()

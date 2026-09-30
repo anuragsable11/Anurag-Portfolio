@@ -34,6 +34,8 @@
   --samurai-leather: #4a3b33;
   --samurai-helmet-lacing: #232a3d; /* the helmet's dark silk lacing */
   --samurai-eye: #ffb347; /* the glow behind the visor */
+  --samurai-shadow: 0.4; /* his shadow on the floor */
+  --samurai-floor-light: 0; /* the white page is floor enough */
 
   --brand: #2584f5; /* fills, rules, focus rings */
   --brand-text: #1069d2; /* text — darker so it clears AA on white */
@@ -83,6 +85,8 @@
   --samurai-leather: #4a3b33;
   --samurai-helmet-lacing: #232a3d; /* the helmet's dark silk lacing */
   --samurai-eye: #ffb347; /* the glow behind the visor */
+  --samurai-shadow: 0.7; /* his shadow, inside the pool of light below */
+  --samurai-floor-light: 0.3; /* the key light's pool on the floor */
 
   --brand: #569fff;
   --brand-text: #569fff;
@@ -2800,6 +2804,17 @@ a.contact-link:hover {
     56% 52% at 50% 40%,
     rgba(18, 22, 29, 0.5) 0%,
     rgba(18, 22, 29, 0.22) 45%,
+    rgba(18, 22, 29, 0) 72%
+  );
+}
+
+/* On the dark page the pool is a cool backlight instead, so his black
+   lacquer reads against it rather than sinking into it. */
+:root[data-theme='dark'] .samurai3d {
+  background: radial-gradient(
+    56% 52% at 50% 40%,
+    rgba(78, 98, 135, 0.34) 0%,
+    rgba(44, 56, 78, 0.18) 42%,
     rgba(18, 22, 29, 0) 72%
   );
 }

@@ -12,6 +12,13 @@ export function cssColor(name, fallback, el) {
   }
 }
 
+/** Reads a unitless CSS custom property as a number. */
+export function cssNumber(name, fallback, el) {
+  if (typeof document === 'undefined') return fallback
+  const v = parseFloat(getComputedStyle(el || document.documentElement).getPropertyValue(name))
+  return Number.isFinite(v) ? v : fallback
+}
+
 /**
  * Pauses a render loop while its canvas is off screen.
  *
