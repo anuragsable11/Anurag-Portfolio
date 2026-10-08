@@ -80,7 +80,7 @@ OrbitControls.prototype.update = function (...args) {
   }
   return origUpdate.apply(this, args)
 }
-const { default: Samurai3D } = await import('/src/components/Samurai3D.jsx')
+const { default: Samurai3D } = await import('/src/components/Samurai3D/Samurai3D.jsx')
 
 // ?mood=<name> puts him in a mood; ?act=<name>&actAt=<ms> plays an action
 // that long after he first appears.

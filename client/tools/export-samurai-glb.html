@@ -1,0 +1,178 @@
+<!doctype html>
+<!--
+  Exports the built-in samurai as a rigged, animated GLB: a starting point
+  for re-modelling him in Blender (or any DCC tool) on the same skeleton,
+  and a test file for the GLB path. See src/components/Samurai3D/rig.js for
+  the contract a GLB must follow, and SamuraiLoader.js for how it is loaded.
+
+  Run `npm run dev` in client/, open
+    http://localhost:5173/tools/export-samurai-glb.html
+  and save the download. It contains:
+    - every joint of the samurai rig, by name (rig.js JOINTS), with the
+      blade sockets; the root carries extras.rig = "samurai-rig-v1", so the
+      site drives a model built on it with the full procedural performance;
+    - his materials, named, with the CSS token each takes its colour from
+      (extras.token), so the theme still recolours him;
+    - clips recorded from his own animation: IDLE (one breath, looping),
+      ATTENTION, DRAW_KATANA, STANCE, RETURN_IDLE, and the moves (DRAW,
+      SPIN, LEAP, THRUST, SALUTE, BOW, NOD, SLASH, HOP) — so even a player
+      that only plays clips can perform him.
+
+  It is uncompressed (textures as PNG). For the web, compress it, e.g.
+    npx @gltf-transform/cli optimize samurai.glb samurai.opt.glb \
+      --compress meshopt --texture-compress webp
+  (or --texture-compress ktx2 with KTX-Software's toktx installed).
+-->
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Export samurai GLB</title>
+    <style>
+      body { background: #111; color: #ddd; font: 14px system-ui; padding: 24px; }
+      a { color: #9cf; }
+    </style>
+  </head>
+  <body>
+    <p id="status">Building…</p>
+    <a id="save" download="samurai.glb" hidden>Download samurai.glb</a>
+    <script type="module">
+      import * as THREE from 'three'
+      import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
+      import { TEXTURE_QUALITY, requestTextures } from '/src/lib/samurai-preload.js'
+      import { createSamuraiModel } from '/src/components/Samurai3D/SamuraiModel.js'
+      import { createAnimationController } from '/src/components/Samurai3D/SamuraiAnimationController.js'
+      import { JOINTS, SOCKETS } from '/src/components/Samurai3D/rig.js'
+
+      const status = document.getElementById('status')
+      const say = (text) => (status.textContent = text)
+      const FPS = 30
+
+      const model = createSamuraiModel({ maxAnisotropy: 8, integrated: false, breathe: async () => {} })
+      const rig = await model.build()
+      say('Generating textures…')
+      model.fillTextures(await requestTextures(TEXTURE_QUALITY))
+
+      // Everything the animation moves, and its rest transform.
+      const joints = [...JOINTS, ...Object.values(SOCKETS)]
+        .map((name) => rig.root.getObjectByName(name) || (name === 'samurai' ? rig.root : null))
+        .filter(Boolean)
+      const rest = joints.map((j) => ({ p: j.position.clone(), q: j.quaternion.clone(), s: j.scale.clone() }))
+      const resetRest = () =>
+        joints.forEach((j, i) => {
+          j.position.copy(rest[i].p)
+          j.quaternion.copy(rest[i].q)
+          j.scale.copy(rest[i].s)
+        })
+
+      // A controller with nothing to look at: no cursor, a still camera.
+      const makeController = () => {
+        const clock = { now: 0 }
+        const camera = new THREE.PerspectiveCamera(31, 1.3, 0.1, 100)
+        camera.position.set(-1.4, 2.6, 8.8)
+        const controller = createAnimationController({
+          model,
+          camera,
+          controls: { target: new THREE.Vector3(0, 1.95, 0) },
+          canvas: document.body,
+          cursor: { x: 0, y: 0, active: false, at: -10 },
+          orbit: { interacting: false },
+          clock,
+          wake: () => {},
+        })
+        controller.attach(rig)
+        controller.markStarted()
+        return { controller, clock }
+      }
+
+      /** Records every joint while `step(t)` runs, into a clip `seconds` long. */
+      const record = (name, seconds, start) => {
+        resetRest()
+        const { controller, clock } = makeController()
+        const frames = Math.round(seconds * FPS)
+        const times = []
+        const samples = joints.map(() => ({ p: [], q: [], s: [] }))
+        for (let f = 0; f <= frames; f++) {
+          const t = f / FPS
+          clock.now = t
+          if (f === 0) start?.(controller)
+          controller.update(f === 0 ? 0 : 1 / FPS, t)
+          times.push(t)
+          joints.forEach((j, i) => {
+            samples[i].p.push(...j.position.toArray())
+            samples[i].q.push(...j.quaternion.toArray())
+            samples[i].s.push(...j.scale.toArray())
+          })
+        }
+        const tracks = []
+        const varies = (values, size) => values.some((v, k) => Math.abs(v - values[k % size]) > 1e-5)
+        joints.forEach((j, i) => {
+          const { p, q, s } = samples[i]
+          if (varies(p, 3)) tracks.push(new THREE.VectorKeyframeTrack(`${j.name}.position`, times, p))
+          if (varies(q, 4)) tracks.push(new THREE.QuaternionKeyframeTrack(`${j.name}.quaternion`, times, q))
+          if (varies(s, 3)) tracks.push(new THREE.VectorKeyframeTrack(`${j.name}.scale`, times, s))
+        })
+        return new THREE.AnimationClip(name, seconds, tracks)
+      }
+
+      /** Cuts a clip at the given seconds into named pieces. */
+      const split = (clip, cuts) =>
+        cuts.map(([name, from, to]) => {
+          const piece = THREE.AnimationUtils.subclip(clip, name, Math.round(from * FPS), Math.round(to * FPS), FPS)
+          piece.name = name
+          return piece
+        })
+
+      say('Recording clips…')
+      const clips = []
+      // One breath at his calm rate, which loops cleanly.
+      clips.push(record('IDLE', (Math.PI * 2) / 1.45))
+      // The click cinematic, cut into its named states.
+      const D = 2.5
+      const cinematic = record('CINEMATIC', D, (c) => c.play('cinematic'))
+      clips.push(
+        ...split(cinematic, [
+          ['ATTENTION', 0, 0.12 * D],
+          ['DRAW_KATANA', 0.12 * D, 0.42 * D],
+          ['STANCE', 0.42 * D, 0.74 * D],
+          ['RETURN_IDLE', 0.74 * D, D],
+        ])
+      )
+      const MOVES = { draw: 1.6, spin: 1.6, leap: 1.4, thrust: 1.3, salute: 2.6, bow: 1.9, nod: 0.7, slash: 0.95, hop: 0.6 }
+      for (const [move, seconds] of Object.entries(MOVES)) {
+        clips.push(record(move.toUpperCase(), seconds, (c) => c.playAction(move)))
+      }
+      resetRest()
+
+      // The surface maps are raw pixel buffers (DataTextures); the exporter
+      // draws images onto canvases, so hand it canvases instead.
+      const textures = new Set()
+      rig.root.traverse((o) => {
+        if (!o.isMesh) return
+        for (const value of Object.values(o.material)) if (value?.isDataTexture) textures.add(value)
+      })
+      for (const t of textures) {
+        const { data, width, height } = t.image
+        if (!data || data.length !== width * height * 4) continue
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        canvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(data), width, height), 0, 0)
+        t.image = canvas
+      }
+
+      say(`Exporting ${clips.length} clips…`)
+      const glb = await new GLTFExporter().parseAsync(rig.root, {
+        binary: true,
+        animations: clips,
+        maxTextureSize: 1024,
+      })
+      const blob = new Blob([glb], { type: 'model/gltf-binary' })
+      const save = document.getElementById('save')
+      save.href = URL.createObjectURL(blob)
+      save.hidden = false
+      say(`Exported ${(blob.size / 1048576).toFixed(1)} MB: ${joints.length} joints, ${clips.length} clips.`)
+      // For scripted runs.
+      window.__glb = blob
+    </script>
+  </body>
+</html>

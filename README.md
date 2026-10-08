@@ -121,6 +121,40 @@ The site ships light and dark themes. An inline script in `index.html` resolves 
 before first paint (saved choice, else the OS preference) so there is no flash of the
 wrong one; `src/hooks/useTheme.js` handles toggling and persistence.
 
+### The hero samurai
+
+The samurai lives in `client/src/components/Samurai3D/` (`SamuraiEngine.js` ties it
+together; each file opens with what it does). Out of the box he is modelled in code, so
+there is no model file to download. Two settings in `Samurai3D/config.js`:
+
+- `renderer` — `'auto'` (default): WebGPU on discrete GPUs, WebGL 2 elsewhere, because
+  integrated GPUs draw this scene faster with WebGL 2. `'webgpu'` or `'webgl'` force one.
+- `model` — `null` (default): the built-in samurai. Or the URL of a `.glb` to load instead.
+
+Whichever renderer is chosen falls back to WebGL 2, and from there to a still picture of him.
+
+**Swapping in a GLB model**
+
+1. With `npm run dev` running, open `http://localhost:5173/tools/export-samurai-glb.html`
+   and save `samurai.glb`: the current samurai with his skeleton, named materials and
+   animation clips — a starting point for re-modelling him in Blender.
+2. Keep the joint names and the `extras.rig` marker on the root node (listed in
+   `Samurai3D/rig.js`) and he keeps his full live performance. Any other rigged character
+   works too, played from clips named `IDLE`, `ATTENTION`, `DRAW_KATANA`, `STANCE` and
+   `RETURN_IDLE`. Materials named `eye`, `steel` (the blade) and `glow` (the eye halos)
+   are the ones his effects light up.
+3. Compress it — Meshopt, Draco and KTX2 files all load:
+   `npx @gltf-transform/cli optimize samurai.glb samurai.opt.glb --compress meshopt --texture-compress webp`
+4. Put it in `client/public/models/` and set `model: '/models/samurai.opt.glb'`. In
+   development, `?samurai-model=/models/samurai.opt.glb` on the page URL tries a file
+   without editing the config. If the file fails to load, the built-in samurai is used.
+5. Re-render his poster (below) so the still picture matches the new model.
+
+**The poster** — the picture shown while he loads, and wherever 3D can't run — lives in
+`client/src/assets/samurai/`. With `npm run dev` running, open
+`/tools/render-samurai-poster.html?theme=light` and `?theme=dark`, and save the downloads
+over the files there.
+
 ---
 
 ## API
@@ -296,9 +330,10 @@ Portfolio/
 │   └── contact.js            # POST /api/contact on Vercel
 ├── client/                   # React + Vite frontend
 │   ├── public/               # favicon.svg — put your resume PDF here
+│   ├── tools/                # dev pages: samurai poster renderer, GLB exporter
 │   └── src/
 │       ├── components/       # Navbar, Hero, About, Skills, Projects, Journey, Contact, Footer
-│       │                     #   Robot3D · ToolsCloud3D · AgentGraph3D (three.js)
+│       │                     #   Samurai3D/ · ToolsCloud3D · AgentGraph3D (three.js)
 │       ├── data/content.js   # ← all site content
 │       ├── data/tech.js      # skills-cloud logos
 │       ├── hooks/            # scroll-position + theme hooks
@@ -319,10 +354,13 @@ Portfolio/
 ## Features
 
 - Light and dark themes with a toggle, no flash on load
-- Animated hero with a rotating role typewriter and a syntax-highlighted code panel
+- Animated hero with a rotating role typewriter
 - Three original Three.js scenes, all built from primitives and driven by the theme tokens:
-  - **Hero** — a hovering robot: boxy head and visor, lamp eyes that track the cursor and
-    blink on an irregular schedule, signal antenna, chest indicator, swaying arms
+  - **Hero** — a samurai companion in lacquered armour. He breathes, blinks and follows the
+    cursor with his head; hovering warms his glow, and a click (or Enter) has him draw his
+    katana in a short move with a blade glint and sparks. Drag to turn him. Drawn with
+    WebGL 2, or WebGPU on discrete GPUs, at a quality level picked for the device and
+    adjusted to its measured frame rate
   - **Skills** — the tech stack as solid 3D tiles orbiting a sphere. Drag to spin, hover a
     tile to lift and name it. Each logo is rasterised from its SVG onto a canvas texture.
   - **About** — the agent runtime as a node graph: client, API, queue, model and memory
@@ -331,9 +369,10 @@ Portfolio/
 - three.js is code-split into one shared chunk: first paint ships ~118kB gzipped
 - Scroll progress bar, section-aware navbar with a sliding pill
 - Scroll-reveal animations throughout (Framer Motion), fully disabled under
-  `prefers-reduced-motion`. Without WebGL (or with reduced motion) the hero falls back to a
-  syntax-highlighted code panel, the skills cloud to a flat logo grid, and the About graph
-  is simply omitted — none of which downloads three.js at all
+  `prefers-reduced-motion`, which also keeps the samurai calm (breathing and blinking, no
+  effects, gentler moves). Without WebGL (or with reduced motion) the skills cloud falls back
+  to a flat logo grid and the About graph is simply omitted; without WebGL the hero shows a
+  still picture of the samurai — none of which downloads three.js at all
 - Filterable project cards with expandable detail and a pipeline diagram for featured work
 - Working contact form with client-side and server-side validation
 - Responsive down to 360px; keyboard-accessible with visible focus rings

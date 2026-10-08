@@ -17,7 +17,9 @@ export default defineConfig(({ isSsrBuild }) => ({
     sourcemap: false,
     // three.js alone is ~530kB. It sits in its own lazily-loaded chunk, so
     // it never blocks first paint — raise the warning past it deliberately.
-    chunkSizeWarningLimit: 600,
+    // The samurai's WebGPU renderer (~710kB) is lazier still: only browsers
+    // that draw him with WebGPU ever fetch it.
+    chunkSizeWarningLimit: 750,
     rollupOptions: {
       output: {
         // Keep the heavy vendor libraries in their own long-lived chunks.

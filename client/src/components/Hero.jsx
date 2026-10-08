@@ -3,16 +3,28 @@ import { motion } from 'framer-motion'
 import { FiArrowDown, FiMail, FiMapPin } from 'react-icons/fi'
 import { FaLinkedinIn, FaGithub } from 'react-icons/fa'
 import { HiOutlineDocumentArrowDown } from 'react-icons/hi2'
-import CodePanel from './CodePanel.jsx'
 import SamuraiMoves from './SamuraiMoves.jsx'
+import SamuraiFallback from './Samurai3D/SamuraiFallback.jsx'
 import { profile } from '../data/content.js'
-import { supports3D } from '../lib/capabilities.js'
+import { canRenderSamurai } from '../lib/capabilities.js'
 import { preloadSamurai } from '../lib/samurai-preload.js'
 
 // Three.js is a large dependency — only fetch it when the scene can run.
 // Swap this for './Robot3D.jsx' to put the robot character back instead.
-const loadSamurai = () => import('./Samurai3D.jsx')
+const loadSamurai = () => import('./Samurai3D/Samurai3D.jsx')
 const Samurai3D = lazy(loadSamurai)
+
+/**
+ * The samurai's poster in his stage: what shows while his code loads, and
+ * all that shows where 3D cannot run (`still`).
+ */
+function SamuraiStill({ still = false }) {
+  return (
+    <div className={`robot3d samurai3d has-poster${still ? ' is-fallback' : ''}`} aria-hidden="true">
+      <SamuraiFallback />
+    </div>
+  )
+}
 
 /**
  * True once the hero has painted and the browser has a moment to spare.
@@ -71,7 +83,7 @@ function useTypewriter(words, typeMs = 75, eraseMs = 40, holdMs = 1700) {
 
 export default function Hero() {
   const typed = useTypewriter(profile.roles)
-  const [can3D] = useState(supports3D)
+  const [can3D] = useState(canRenderSamurai)
   const buildSamurai = useAfterFirstPaint()
 
   // Start the samurai's texture worker and reflection map at once, fetch his
@@ -167,14 +179,14 @@ export default function Hero() {
           >
             {can3D ? (
               buildSamurai ? (
-                <Suspense fallback={<div className="robot3d samurai3d" aria-hidden="true" />}>
+                <Suspense fallback={<SamuraiStill />}>
                   <Samurai3D />
                 </Suspense>
               ) : (
-                <div className="robot3d samurai3d" aria-hidden="true" />
+                <SamuraiStill />
               )
             ) : (
-              <CodePanel />
+              <SamuraiStill still />
             )}
 
             {/* The samurai's moves: a keycap per key, tappable on touch screens */}

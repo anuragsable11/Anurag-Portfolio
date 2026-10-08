@@ -15,14 +15,18 @@ import { useSyncExternalStore } from 'react'
  *   action   a one-shot performance ({ id, name }); ids only ever grow
  */
 
-export const MOODS = Object.freeze(['calm', 'thinking', 'focused', 'battle', 'victory'])
+export const MOODS = Object.freeze(['calm', 'attentive', 'thinking', 'focused', 'battle', 'victory'])
 
-/** Which mood each section puts him in. Unlisted sections fall back to calm. */
+/**
+ * Which mood each section puts him in. Unlisted sections fall back to calm.
+ * Scrolling should only ever nudge him: the bigger poses (battle, victory)
+ * are kept for things the visitor does, not for where they are.
+ */
 export const SECTION_MOODS = Object.freeze({
   home: 'calm',
   about: 'thinking',
   skills: 'focused',
-  projects: 'battle',
+  projects: 'attentive',
   journey: 'thinking',
   contact: 'calm',
 })
@@ -92,7 +96,7 @@ export function clearMood() {
 
 /**
  * A one-shot performance: 'slash', 'draw', 'spin', 'leap', 'thrust',
- * 'salute', 'bow', 'hop' or 'nod'.
+ * 'salute', 'bow', 'hop', 'nod', or 'cinematic' (his answer to a click).
  */
 export function act(name) {
   state.action = { id: ++actionId, name }
@@ -115,8 +119,8 @@ export function setSection(id) {
   // A temporary mood in progress finishes first, then falls back to the new base.
   if (!holdTimer) state.mood = state.base
   emit()
-  // Arriving at the contact section earns a bow.
-  if (id === 'contact' && previous !== 'contact') act('bow')
+  // Arriving at the contact section earns a small nod.
+  if (id === 'contact' && previous !== 'contact') act('nod')
 }
 
 /**

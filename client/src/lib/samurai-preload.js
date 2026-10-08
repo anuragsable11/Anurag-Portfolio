@@ -7,6 +7,7 @@
  * promises, so calling it twice costs nothing.
  */
 import envUrl from '../assets/samurai-env.png'
+import { modelSource } from '../components/Samurai3D/config.js'
 
 // Phones get half-resolution maps: a quarter of the memory and the work.
 export const TEXTURE_QUALITY =
@@ -64,14 +65,27 @@ export async function fetchBakedEnvironment(url = envUrl) {
   return { px, width, height }
 }
 
+/** A GLB's bytes, or null if it cannot be fetched (the loader then reports it). */
+async function fetchModel(url) {
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(`${url}: ${response.status}`)
+  return response.arrayBuffer()
+}
+
 let assets = null
 
-/** The samurai's assets, started on first call and shared by every caller. */
+/**
+ * The samurai's assets, started on first call and shared by every caller:
+ * the reflection map always; the surface maps for the built-in model, or
+ * the GLB's bytes when one is configured (see Samurai3D/config.js).
+ */
 export function preloadSamurai() {
   if (!assets) {
+    const glb = modelSource()
     assets = {
-      textures: requestTextures(TEXTURE_QUALITY).catch(() => null),
+      textures: glb ? Promise.resolve(null) : requestTextures(TEXTURE_QUALITY).catch(() => null),
       env: fetchBakedEnvironment().catch(() => null),
+      model: glb ? fetchModel(glb).catch(() => null) : Promise.resolve(null),
     }
   }
   return assets

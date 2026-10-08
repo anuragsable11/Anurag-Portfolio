@@ -1,0 +1,94 @@
+<!doctype html>
+<!--
+  Renders the samurai's static poster: the picture shown while the 3D
+  samurai loads, and in place of him where 3D cannot run (no WebGL, or the
+  model failed to load). See src/components/Samurai3D/SamuraiFallback.jsx.
+
+  Run `npm run dev` in client/, then open, once per theme:
+    http://localhost:5173/tools/render-samurai-poster.html?theme=light
+    http://localhost:5173/tools/render-samurai-poster.html?theme=dark
+  and save both downloads (two sizes each) into src/assets/samurai/, over
+  the files of the same names. Re-run after changing how he looks.
+
+  The poster is 3:1 and held at his first frame, so a stage of any narrower
+  shape shows exactly a centred crop of it (the camera's vertical field of
+  view is fixed): object-fit: cover lines it up with the live canvas.
+-->
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Render samurai poster</title>
+    <style>
+      body { margin: 0; background: #555; color: #eee; font: 14px system-ui; }
+      #stage { position: relative; width: 1500px; height: 500px; }
+      #stage canvas { display: block; width: 100% !important; height: 100% !important; }
+      #out { padding: 16px; }
+      #out a { margin-right: 16px; color: #9cf; }
+      #out img { display: block; max-width: 100%; margin-top: 12px; background: repeating-conic-gradient(#666 0 25%, #777 0 50%) 0 0 / 24px 24px; }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <div id="out">Rendering…</div>
+    <script type="module">
+      import '/src/index.css'
+      import { createSamuraiEngine } from '/src/components/Samurai3D/SamuraiEngine.js'
+
+      const params = new URLSearchParams(location.search)
+      const theme = params.get('theme') === 'dark' ? 'dark' : 'light'
+      document.documentElement.dataset.theme = theme
+      // Two sizes: 2000 × 667 for 1× screens and laptops scaled to 125% or
+      // 150% (the stage is at most 600 px tall), 3000 × 1000 for denser ones.
+      const sizes = [
+        { width: 2000, suffix: '2000' },
+        { width: 3000, suffix: '3000' },
+      ]
+
+      const stage = document.getElementById('stage')
+      const engine = createSamuraiEngine({ mount: stage, still: true })
+      const out = document.getElementById('out')
+
+      const scaleTo = (src, width) =>
+        new Promise((resolve) => {
+          const img = new Image()
+          img.onload = () => {
+            const c = document.createElement('canvas')
+            c.width = width
+            c.height = Math.round((img.height * width) / img.width)
+            const ctx = c.getContext('2d')
+            ctx.imageSmoothingQuality = 'high'
+            ctx.drawImage(img, 0, 0, c.width, c.height)
+            resolve(c.toDataURL('image/webp', 0.9))
+          }
+          img.src = src
+        })
+
+      engine.on('ready', async () => {
+        engine.setQualityLevel('HIGH')
+        // Let ambient occlusion come on (it waits for an idle moment), and
+        // the shadow and every texture settle.
+        const t0 = performance.now()
+        while (!engine.quality.post && performance.now() - t0 < 8000) await new Promise((r) => setTimeout(r, 100))
+        if (window.__samurai) window.__samurai.setRung(0)
+        await new Promise((r) => setTimeout(r, 600))
+        const full = engine.snapshot('image/png')
+        const files = {}
+        out.textContent = ''
+        for (const { width, suffix } of sizes) {
+          const name = `poster-${theme}-${suffix}.webp`
+          files[name] = await scaleTo(full, width)
+          const a = document.createElement('a')
+          a.href = files[name]
+          a.download = name
+          a.textContent = `Download ${name}`
+          out.append(a)
+        }
+        const img = document.createElement('img')
+        img.src = files[`poster-${theme}-2000.webp`]
+        out.append(img)
+        // For scripted runs.
+        window.__posters = files
+      })
+    </script>
+  </body>
+</html>

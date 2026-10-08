@@ -36,6 +36,8 @@
   --samurai-eye: #ffb347; /* the glow behind the visor */
   --samurai-shadow: 0.4; /* his shadow on the floor */
   --samurai-floor-light: 0; /* the white page is floor enough */
+  --samurai-rim: 0.04; /* fresnel edge light: the dark armour already stands out */
+  --samurai-rim-color: #9fc0ff;
 
   --brand: #2584f5; /* fills, rules, focus rings */
   --brand-text: #1069d2; /* text — darker so it clears AA on white */
@@ -87,6 +89,8 @@
   --samurai-eye: #ffb347; /* the glow behind the visor */
   --samurai-shadow: 0.7; /* his shadow, inside the pool of light below */
   --samurai-floor-light: 0.3; /* the key light's pool on the floor */
+  --samurai-rim: 0.3; /* fresnel edge light, to lift him off the dark page */
+  --samurai-rim-color: #9fc0ff;
 
   --brand: #569fff;
   --brand-text: #569fff;
@@ -2840,6 +2844,48 @@ a.contact-link:hover {
   opacity: 1;
 }
 
+/* His poster (SamuraiFallback): rendered from the 3D model, shown at once,
+   and crossfaded out as the live canvas fades in over it. Where 3D cannot
+   run, or the GPU context is lost, it stays. 3:1 and height-filled, it
+   frames him exactly as the live camera does at any stage shape. */
+.samurai-poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  pointer-events: none;
+  user-select: none;
+  transition: opacity 0.7s ease;
+}
+
+.samurai3d canvas {
+  position: relative;
+}
+
+.samurai3d.is-ready > .samurai-poster,
+.samurai-frame.is-docked .samurai-poster {
+  opacity: 0;
+}
+
+.samurai3d.is-lost > .samurai-poster {
+  opacity: 1;
+}
+
+.samurai3d.is-lost canvas {
+  opacity: 0;
+}
+
+/* The poster stands in for the loading glow. */
+.samurai3d.has-poster::after {
+  display: none;
+}
+
+.samurai3d.is-fallback {
+  cursor: default;
+}
+
 .samurai3d::after {
   content: '';
   position: absolute;
@@ -2953,6 +2999,20 @@ a.contact-link:hover {
 
 .samurai-frame.is-docked > .samurai3d {
   background: none;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+}
+
+/* Page content under his corner: he steps out of sight until it is clear. */
+.samurai-frame.is-dock-hidden > .samurai3d {
+  opacity: 0;
+  transition-duration: 0.2s;
+}
+
+.samurai-frame.is-dock-hidden .samurai-hit,
+.samurai-frame.is-dock-hidden .samurai-dismiss,
+.samurai-frame.is-dock-hidden .samurai-tip {
+  visibility: hidden;
   pointer-events: none;
 }
 
