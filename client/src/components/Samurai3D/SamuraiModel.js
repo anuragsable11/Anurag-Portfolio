@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { cssColor } from '../../lib/three-utils.js'
-import { HEAD_Y, HIP_Y } from './constants.js'
+import { HEAD_FORWARD, HEAD_Y, HIP_Y, NECK_Y } from './constants.js'
 import {
   BACK,
   FRONT,
@@ -675,7 +675,9 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
   let glows = []
   let tails = []
   let body, torso, cuirass, skirt, headRig, helmet, katana, saya, sayaStand, sayaSeated
-  let crest, agemaki, eyeLight
+  let crest, agemaki, eyeLight, throat
+  // The yodare-kake's radius at its top, round the skull's axis.
+  const THROAT_R = 0.285
   // The wakizashi's hilt, from guard to pommel, in the scabbard's frame.
   let wakizashiHilt = null
 
@@ -874,9 +876,55 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
     pelvis.position.y = -0.09
     body.add(pelvis)
 
-    const neck = mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.2, 40), mats.silk)
-    neck.position.y = 0.93
+    const neck = mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.36, 40), mats.silk)
+    neck.position.y = 0.97
     body.add(neck)
+
+    // Eri-mawashi: the dō's standing collar. It rises from the top of the
+    // back plate and the inner edges of the shoulder straps, round the back
+    // and sides of the neck, open at the front where the menpō's throat
+    // guard hangs; padded, faced with small hexagonal iron plates (kikkō)
+    // sewn on in staggered rows, bound in leather at the foot and edged
+    // with a gilt rim at the top, where the helmet's neck guard meets it.
+    {
+      const C_BOT = 0.78
+      const C_H = 0.085
+      const span = arc(BACK, Math.PI * 2 - 1.4)
+      const collarR = (t) => 0.21 + 0.024 * t
+      const collar = plate(collarR(1), collarR(0), C_H, span, mats.fabric, 0.022, 32, 'world', collarR)
+      collar.position.y = C_BOT + C_H / 2
+      body.add(collar)
+      const hex = new THREE.CylinderGeometry(0.013, 0.013, 0.005, 6)
+      hex.rotateX(Math.PI / 2)
+      const hexes = []
+      const ROWS = 2
+      for (let row = 0; row < ROWS; row++) {
+        const t = (row + 0.6) / (ROWS + 0.2)
+        const y = C_BOT + C_H * t
+        const r = collarR(t) + 0.006
+        const step = 0.03 / r
+        const count = Math.floor((span[1] - 0.12) / step)
+        const first = span[0] + 0.06 + (row % 2 ? step / 2 : 0)
+        for (let i = 0; i < count - (row % 2); i++) {
+          const a = first + i * step
+          hexes.push(
+            new THREE.Matrix4().compose(
+              new THREE.Vector3(Math.sin(a) * r, y, Math.cos(a) * r),
+              new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), a),
+              new THREE.Vector3(1, 1, 1)
+            )
+          )
+        }
+      }
+      body.add(mesh(mergeCopies(hex, hexes), mats.metal))
+      hex.dispose()
+      const rim = plate(collarR(1) + 0.004, collarR(1) + 0.004, 0.018, span, mats.gold, 0.03, 32)
+      rim.position.y = C_BOT + C_H - 0.004
+      body.add(rim)
+      const foot = plate(collarR(0) + 0.006, collarR(0.08) + 0.006, 0.026, span, mats.leather, 0.03, 32)
+      foot.position.y = C_BOT + 0.013
+      body.add(foot)
+    }
 
     // Dō: a two-piece (ni-mai) dō, hinged under the left arm and tied under
     // the right. Each half is built the tōsei-gusoku way — the muna-ita on
@@ -1087,26 +1135,26 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
     ;[-1, 1].forEach((side) => {
       for (const front of [1, -1]) {
         const strapRig = new THREE.Group()
-        strapRig.position.set(side * 0.24, 0.82, front * 0.19)
-        strapRig.rotation.z = side * 0.25
+        strapRig.position.set(side * 0.27, 0.735, front * 0.2)
+        strapRig.rotation.set(-front * 0.35, 0, side * 0.12)
         body.add(strapRig)
-        strapRig.add(mesh(new RoundedBoxGeometry(0.075, 0.34, 0.026, 3, 0.01), mats.leather))
-        strapRig.add(mesh(mergeCopies(stitch, stitchRows(12, 0.027, front * 0.013)), mats.rope))
+        strapRig.add(mesh(new RoundedBoxGeometry(0.075, 0.2, 0.026, 3, 0.01), mats.leather))
+        strapRig.add(mesh(mergeCopies(stitch, stitchRows(7, 0.027, front * 0.013)), mats.rope))
         if (front < 0) continue
 
         const buckle = mesh(new THREE.TorusGeometry(0.03, 0.006, 6, 4), mats.gold)
         buckle.rotation.z = Math.PI / 4
         buckle.scale.set(1.3, 1, 1)
-        buckle.position.set(0, -0.05, 0.017)
+        buckle.position.set(0, 0.03, 0.017)
         strapRig.add(buckle)
         const tongue = mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.05, 6), mats.gold)
-        tongue.position.set(0, -0.05, 0.021)
+        tongue.position.set(0, 0.03, 0.021)
         strapRig.add(tongue)
       }
       // Over the shoulder, lying on the torso's rounded corner
       const over = new THREE.Group()
-      over.position.set(side * 0.245, 0.868, 0)
-      over.rotation.z = -side * 0.47
+      over.position.set(side * 0.282, 0.848, 0)
+      over.rotation.z = -side * 0.66
       body.add(over)
       over.add(mesh(new RoundedBoxGeometry(0.075, 0.026, 0.4, 3, 0.01), mats.leather))
       const lengthwise = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2)
@@ -1658,10 +1706,16 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
     /* ================================================================
        Head — a black lacquered menpō with lit eye slits
        ================================================================ */
+    // The head joint sits at the base of the neck, as a neck bends: a nod
+    // carries the face forward and down, never back into the dō. Everything
+    // of the head hangs from the skull group above it.
     headRig = new THREE.Group()
-    headRig.position.y = HEAD_Y - HIP_Y
+    headRig.position.y = NECK_Y - HIP_Y
     headRig.rotation.order = 'YXZ'
     body.add(headRig)
+    const skull = new THREE.Group()
+    skull.position.set(0, HEAD_Y - NECK_Y, HEAD_FORWARD)
+    headRig.add(skull)
 
     // The cranium is an ellipsoid; the mask plates below are built in a
     // group with the same depth scale, so curved plates sit on its surface.
@@ -1670,13 +1724,33 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
     const FACE_SZ = 0.94
     const faceRing = (y) => Math.sqrt(Math.max(FACE_R * FACE_R - (y / FACE_SY) ** 2, 0.02))
 
-    const face = mesh(new THREE.SphereGeometry(FACE_R, 64, 40), mats.helmetRound)
+    // The back of the skull narrows into the nape, inside the dō's collar;
+    // the front, under the mask, keeps the curve its plates hug.
+    const faceGeo = new THREE.SphereGeometry(FACE_R, 64, 40)
+    {
+      const pos = faceGeo.attributes.position
+      const v = new THREE.Vector3()
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i)
+        const yy = v.y * FACE_SY
+        const around = Math.atan2(Math.abs(v.x), v.z)
+        const k = THREE.MathUtils.smoothstep(around, 1.3, 1.95) * THREE.MathUtils.smoothstep(-yy, 0.03, 0.26)
+        if (k <= 0) continue
+        const d = Math.hypot(v.x, v.z * FACE_SZ)
+        const nape = 0.16 + 0.28 * Math.max(0, yy + 0.42)
+        if (d <= nape) continue
+        const s = 1 + (nape / d - 1) * k
+        pos.setXYZ(i, v.x * s, v.y, v.z * s)
+      }
+      faceGeo.computeVertexNormals()
+    }
+    const face = mesh(faceGeo, mats.helmetRound)
     face.scale.set(1, FACE_SY, FACE_SZ)
-    headRig.add(face)
+    skull.add(face)
 
     const mask = new THREE.Group()
     mask.scale.z = FACE_SZ
-    headRig.add(mask)
+    skull.add(mask)
 
     // Every mask plate hugs the skull: its outer radius follows the face's
     // curve from its bottom edge to its top, a set distance proud of it.
@@ -1746,7 +1820,7 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
     // to the face; its colour and strength follow the mood each frame.
     eyeLight = new THREE.PointLight(0xffb347, 0, 1.3, 2)
     eyeLight.position.set(0, 0.11, (EYE_R + 0.12) * FACE_SZ)
-    headRig.add(eyeLight)
+    skull.add(eyeLight)
 
     /* ---- The sculpted face of the menpō ---- */
     // A point on the mask's surface at angle `a` round the face, height
@@ -1938,23 +2012,34 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
       mask.add(knot)
     })
 
-    // Yodare-kake: two laced lames guarding the throat beneath the mask
-    await lamellar(mask, {
+    // Yodare-kake: two laced lames guarding the throat, hung from the
+    // lower edge of the menpō on a hinge along their top. Hanging free they
+    // close the gap between the chin and the dō; as he lowers his chin they
+    // come to rest on the dō's rim and swing out over it, as real ones do
+    // (the controller finds the swing each frame).
+    throat = new THREE.Group()
+    throat.position.set(0, -0.355, THROAT_R * FACE_SZ)
+    skull.add(throat)
+    const throatRing = new THREE.Group()
+    throatRing.position.z = -THROAT_R * FACE_SZ
+    throatRing.scale.z = FACE_SZ
+    throat.add(throatRing)
+    await lamellar(throatRing, {
       rows: 2,
-      rowH: 0.06,
-      gap: 0.014,
-      rTop: 0.285,
-      flare: 0.6,
-      span: arc(FRONT, Math.PI * 0.9),
-      y: -0.37,
+      rowH: 0.05,
+      gap: 0.01,
+      rTop: THROAT_R,
+      flare: 0.55,
+      span: arc(FRONT, 1.25),
+      y: 0,
       material: mats.helmetLame,
       lacing: mats.helmetLacing,
-      cordsPer: 4,
-      thickness: 0.02,
+      cordsPer: 3,
+      thickness: 0.018,
     })
 
-    // (No cloth collar: the yodare-kake above closes the throat, as on real
-    // armour, and the dō's own collar sits beneath it.)
+    // (The throat is closed by the yodare-kake, and the back and sides of
+    // the neck by the dō's collar, the eri-mawashi.)
     tails = []
     await breathe()
 
@@ -1963,7 +2048,7 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
        ================================================================ */
     helmet = new THREE.Group()
     helmet.position.y = 0.14
-    headRig.add(helmet)
+    skull.add(helmet)
 
     const bowlRig = new THREE.Group()
     bowlRig.position.y = 0.16
@@ -2082,9 +2167,10 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
     visorLip.position.y = 0.183
     helmet.add(visorLip)
 
-    // Shikoro: black lames guarding the back of the neck, closely laced
+    // Shikoro: black lames guarding the back of the neck, closely laced,
+    // coming down to the dō's collar
     const shikoro = await lamellar(helmet, {
-      rows: 4,
+      rows: 6,
       rowH: 0.08,
       gap: 0.026,
       rTop: 0.625,
@@ -2245,6 +2331,7 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
     await bake(crest)
     await bake(helmet, [crest])
     await bake(mask, [...eyes, ...glows])
+    await bake(throat)
     await bake(cuirass)
     for (const { flap } of panels) await bake(flap)
     await bake(saya)
@@ -2313,6 +2400,8 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
         agemaki,
         eyeLight,
         wakizashiHilt,
+        skull: headRig.children[0],
+        throat,
         // The sode's resting turn, which the arms' swing is applied on top of.
         sodeBaseQ: arms.map(({ sode }) => sode.quaternion.clone()),
       })
@@ -2386,6 +2475,7 @@ function nameRig(rig) {
   rig.saya.userData.stand = rig.sayaStand.toArray()
   rig.saya.userData.seated = rig.sayaSeated.toArray()
   rig.agemaki.name = 'agemaki'
+  if (rig.throat) rig.throat.name = 'yodarekake'
   rig.headRig.name = 'head'
   rig.helmet.name = 'helmet'
   rig.crest.name = 'crest'

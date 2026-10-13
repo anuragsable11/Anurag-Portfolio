@@ -5,12 +5,18 @@
  * Layout, standing, bottom to top (world units, floor at y = 0):
  *   0.04  sandals        1.15  hips / sash (HIP_Y)
  *   0.65  knees          1.87  shoulders
- *   2.32  eye line       2.95  helmet crown
- *   3.78  crest tips
+ *   1.94  top of the dō  2.07  base of the neck (NECK_Y)
+ *   2.50  eye line       3.13  helmet crown
+ *   3.96  crest tips
  */
 
 export const HIP_Y = 1.15
-export const HEAD_Y = 2.22
+// The head turns on the neck, at NECK_Y; the skull's centre sits HEAD_Y
+// high and a little forward of it, so the menpō's chin clears the dō's
+// rim and its throat guard hangs over the outside of it.
+export const NECK_Y = 2.07
+export const HEAD_Y = 2.4
+export const HEAD_FORWARD = 0.03
 // The resting grip: how the blade sits in the hand with the wrist at ease
 // (tilted forward, swept out to his side). Every other blade angle is a
 // turn of the wrist away from this one.
@@ -62,5 +68,5 @@ export const PRONATE_MAX = 1.3
 export const FLOOR_CLEAR = 0.1
 
 // Where the camera looks, standing and seated.
-export const STAND_TARGET_Y = 1.95
-export const SIT_TARGET_Y = 1.62
+export const STAND_TARGET_Y = 2.04
+export const SIT_TARGET_Y = 1.71

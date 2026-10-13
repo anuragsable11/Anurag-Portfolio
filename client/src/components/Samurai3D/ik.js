@@ -136,7 +136,7 @@ const CREST = [
 ]
 // The head turns on the neck: points up there are tested in the head's own
 // frame, where the hull was measured.
-const HEAD_PIVOT = new THREE.Vector3(0, 1.07, 0)
+const HEAD_PIVOT = new THREE.Vector3(0, 0.92, 0)
 const headInv = new THREE.Quaternion()
 const inHead = new THREE.Vector3()
 /** The head's turn relative to the body this frame (call before inArmour). */
@@ -163,7 +163,7 @@ export function setObstacles(list, forArms = []) {
  */
 export function inArmour(p, r) {
   let q = p
-  if (p.y > 0.72) q = inHead.subVectors(p, HEAD_PIVOT).applyQuaternion(headInv).add(HEAD_PIVOT)
+  if (p.y > 0.8) q = inHead.subVectors(p, HEAD_PIVOT).applyQuaternion(headInv).add(HEAD_PIVOT)
   if (q.y > HULL_Y0 && q.y < HULL_Y0 + HULL_STEP * (HULL.length - 1) && hullDistance(q, r) < 1) return true
   for (const [a, b] of CREST) if (segmentDistance(q, a, b) < 0.07 + r) return true
   for (const [a, b, radius] of extra) if (segmentDistance(p, a, b) < radius + r) return true

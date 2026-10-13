@@ -103,7 +103,7 @@ export function createAnimationController({
   onState,
 }) {
   // The joints, once attach()ed.
-  let samurai, legs, arms, panels, eyes, glows, tails, body, torso, cuirass, skirt, headRig
+  let samurai, legs, arms, panels, eyes, glows, tails, body, torso, cuirass, skirt, headRig, skull, throat
   let katana, saya, sayaStand, sayaSeated, crest, agemaki, eyeLight, sodeBaseQ
   const { mats, glowMat, eyeBase } = model
 
@@ -299,7 +299,7 @@ export function createAnimationController({
         hit.copy(camera.position).addScaledVector(camDir, camera.position.distanceTo(controls.target) * 0.5)
         lookPlane.setFromNormalAndCoplanarPoint(camDir, hit)
         if (raycaster.ray.intersectPlane(lookPlane, hit)) {
-          headRig.getWorldPosition(headW)
+          skull.getWorldPosition(headW)
           samurai.worldToLocal(hit)
           samurai.worldToLocal(headW)
           toCursor.subVectors(hit, headW)
@@ -815,6 +815,20 @@ export function createAnimationController({
     return true
   }
 
+  // The yodare-kake: how far its hem hangs below its hinge, and the height
+  // of the dō's rim in body space, which it rests on when the chin drops.
+  const THROAT_DROP = 0.112
+  const DO_RIM_Y = 0.79
+  const hemW = new THREE.Vector3()
+  const throatLag = { x: 0, v: 0 }
+  let throatSwing = 0
+
+  /** x, eased into the range lo..hi (the same as x well inside it). */
+  const softRange = (x, lo, hi, k = 0.06) => {
+    const y = hi - k * Math.log(1 + Math.exp((hi - x) / k))
+    return lo + k * Math.log(1 + Math.exp((y - lo) / k))
+  }
+
   /* ---- Per-frame scratch ---- */
   const X_AXIS = new THREE.Vector3(1, 0, 0)
   const Y_AXIS = new THREE.Vector3(0, 1, 0)
@@ -1021,12 +1035,34 @@ export function createAnimationController({
     const wander = P.wander * still
     const headYaw =
       lookYaw + P.headYaw + glanceYaw + Math.sin(t * 0.37) * 0.14 * wander + Math.sin(t * 0.33) * 0.03 * still
+    // Within what the armour lets a head do: the throat guard rides down
+    // over the dō only so far, the back of the skull and the neck guard
+    // come back only so far toward the collar. The limits are soft, so a
+    // turn slows into them rather than stopping.
     headRig.rotation.set(
-      (P.headPitch + lookPitch + glancePitch + Math.sin(t * 0.23 + 1) * 0.05 * wander - P.lean * 0.55) * stand +
-        (0.13 + deep * 0.025) * w,
-      (headYaw - bodyYaw * 0.7) * stand,
-      P.headTilt * stand + Math.sin(t * 0.47) * 0.016 * sway
+      softRange(
+        (P.headPitch + lookPitch + glancePitch + Math.sin(t * 0.23 + 1) * 0.05 * wander - P.lean * 0.55) * stand +
+          (0.13 + deep * 0.025) * w,
+        -0.16,
+        0.32
+      ),
+      softRange((headYaw - bodyYaw * 0.7) * stand, -0.75, 0.75),
+      softRange(P.headTilt * stand + Math.sin(t * 0.47) * 0.016 * sway, -0.1, 0.1)
     )
+
+    /* The throat guard: hangs free, or rides up over the dō as the chin drops */
+    if (throat) {
+      // Its hem in body space, hanging straight: if it is below the dō's rim,
+      // it swings out by the angle that brings the hem back to the rim.
+      throat.rotation.x = 0
+      skull.updateMatrixWorld(true)
+      hemW.set(0, -THROAT_DROP, 0).applyMatrix4(throat.matrixWorld)
+      body.worldToLocal(hemW)
+      const sink = DO_RIM_Y - hemW.y
+      const swing = sink > 0 ? Math.min(Math.asin(Math.min(1, sink / THROAT_DROP)) + 0.05, 1.2) : 0
+      throatSwing = lag(throatLag, swing, 18, dt)
+      throat.rotation.x = -throatSwing
+    }
 
     /* The blade, in body space: where the pose points it, swaying a little */
     // Where the edge is meant to face can run nearly along the blade as it
@@ -1184,6 +1220,9 @@ export function createAnimationController({
         sodeBaseQ,
       } = rig)
       wakiHilt = rig.wakizashiHilt || null
+      // The gaze is measured from the skull (the head joint is at the neck).
+      skull = rig.skull || headRig
+      throat = rig.throat || null
       // Which side of him each kusazuri panel hangs on (+1 the katana side).
       for (const p of panels) {
         const hinge = p.flap.parent
