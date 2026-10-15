@@ -31,16 +31,18 @@ import { createSamuraiEngine } from './SamuraiEngine.js'
  *    shoulder straps hang the sendan-no-ita (three laced lames, right) and
  *    kyūbi-no-ita (one solid plate, left). Kohire cap the points of the
  *    shoulders; the back has the gattari and machi-uke for a banner pole and
- *    the agemaki bow on its ring.
+ *    the agemaki bow on its ring, its tails ending in silk tassels.
  *  - Sode, kusazuri and the neck guards. Every plate is a solid, bevelled
  *    shell with real thickness, so its edges catch the light instead of
  *    reading as paper. Sode, kusazuri, the lower dō, the shikoro and the
  *    throat guard are lamellar: rows of lames over a dark lining, joined by
  *    flat silk braid (sugake odoshi), finished with cross-knots (hishinui)
- *    along the bottom lame. Each sode has its mizunomi-no-kan ring.
+ *    along the bottom lame. Each sode has its mizunomi-no-kan ring, and a
+ *    gilt kiku on its top plate.
  *  - The kabuto and menpō are black urushi flecked with gold leaf: a sixteen-
- *    plate bowl with riveted seams, a rolled peak, broad turned-back wings
- *    with gilt kanamono, closely laced black lames at the neck, a flag ring
+ *    plate bowl with riveted seams, a rolled peak bound in a gilt fukurin,
+ *    broad turned-back wings edged in gilt and set with gilt kanamono,
+ *    closely laced black lames at the neck with a gilt hem, a flag ring
  *    at the back, and a broad engraved gilt crest of two swept blades on a
  *    chrysanthemum boss. The mask is a sculpted menpō: a
  *    curved brow with heavy folds over each eye, lit slits in gilt rims, a
@@ -55,14 +57,24 @@ import { createSamuraiEngine } from './SamuraiEngine.js'
  *  - Materials are physical: clear-coated urushi lacquer, hammered iron,
  *    polished gold, mail, stencilled leather, the textiles above, and a blade
  *    with a real hamon (temper line) — mirror-polished ji, cloudy matte ha.
- *  - On desktop, ambient occlusion darkens the gaps between plates, shadows
- *    are 4k, and the frame is supersampled (up to 3× the screen's pixels)
- *    with MSAA, then given a light contrast-adaptive sharpen. A quality
- *    ladder (see qualityLadder) is climbed or descended from the GPU's real
- *    frame times, so a strong GPU gets every pixel and a weak one stays
- *    smooth. Its rungs fall into HIGH / MEDIUM / LOW tiers (SamuraiQuality).
- *  - A soft fresnel rim on every lit surface lifts his silhouette off a
- *    dark page.
+ *  - Ambient occlusion is baked into his vertices once, on the GPU, while he
+ *    is built (ao-bake.js): the gap under every lame, the shade beneath the
+ *    helmet's peak, the dark where lacing crosses a plate — on any device,
+ *    at no cost per frame. On fast desktops a screen-space pass adds the
+ *    contact between parts as they move, shadows are 4k, and the frame is
+ *    supersampled (up to 3× the screen's pixels) with MSAA, then given a
+ *    light contrast-adaptive sharpen. A quality ladder (see qualityLadder)
+ *    is climbed or descended from the GPU's real frame times, so a strong
+ *    GPU gets every pixel and a weak one stays smooth. Its rungs fall into
+ *    HIGH / MEDIUM / LOW tiers (SamuraiQuality).
+ *  - He is lit as a lacquered piece is photographed: a warm key, near-white
+ *    strip rims behind him to either side that only graze his edges, the
+ *    studio itself as fill, and Khronos PBR Neutral tone mapping so the
+ *    lacquer stays vermilion and black stays black. The studio turns with
+ *    the view, so dragged round he is lit from every side as from the
+ *    front. A hairline fresnel rim lifts his silhouette off a dark page.
+ *  - His eyes burn past white at the core, inside a glow and a faint halo
+ *    that spills over the mask, as a camera sees a bright light.
  *
  * He idles standing, facing the visitor: he breathes, blinks, glances about,
  * shifts his weight, and his head (and a little of his upper body) follows
@@ -118,7 +130,8 @@ import { createSamuraiEngine } from './SamuraiEngine.js'
  *                                   static fallback where 3D cannot run
  *   SamuraiDock.js                  the corner dock
  *   SamuraiQuality.js               the quality governor (ladder in quality.js)
- *   post-webgl.js                   ambient occlusion + sharpening
+ *   ao-bake.js                      ambient occlusion, baked into the vertices
+ *   post-webgl.js                   screen-space ambient occlusion + sharpening
  *   geometry.js, ik.js, poses.js, textures.js, constants.js, util.js
  */
 

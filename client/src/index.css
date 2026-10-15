@@ -89,7 +89,7 @@
   --samurai-eye: #ffb347; /* the glow behind the visor */
   --samurai-shadow: 0.7; /* his shadow, inside the pool of light below */
   --samurai-floor-light: 0.3; /* the key light's pool on the floor */
-  --samurai-rim: 0.3; /* fresnel edge light, to lift him off the dark page */
+  --samurai-rim: 0.1; /* fresnel edge light, a hairline to lift him off the dark page (the rim lights do the rest) */
   --samurai-rim-color: #9fc0ff;
 
   --brand: #569fff;

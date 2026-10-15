@@ -22,8 +22,10 @@ import {
   indexedCopy,
   tsubaGeometry,
 } from './geometry.js'
+import { bakeAmbientOcclusion } from './ao-bake.js'
 import { RIG_VERSION } from './rig.js'
 import { fillTextureSlots, makeTextureSlots } from './textures.js'
+import { ABORT, blendGlowLinear } from './util.js'
 
 /**
  * The built-in samurai: an original stylised mascot modelled from
@@ -37,8 +39,11 @@ import { fillTextureSlots, makeTextureSlots } from './textures.js'
  *   maxAnisotropy  the renderer's texture anisotropy limit
  *   integrated     true on integrated GPUs: slightly coarser curves
  *   breathe        an async slicer (util.createSlicer) awaited between steps
+ *   renderer       the renderer he will be drawn with, for baking his
+ *                  ambient occlusion (ao-bake.js); without one (tools) the
+ *                  occlusion is left open
  */
-export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
+export function createSamuraiModel({ maxAnisotropy, integrated, breathe, renderer = null }) {
   /* ================================================================
      Materials — four shader programs between them
      ================================================================ */
@@ -71,26 +76,35 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
   // uniform objects is shared by every material — a single write moves them
   // all — and every material carries the same onBeforeCompile, so the three
   // families still share their programs. The effects layer drives it.
-  const rim = { color: { value: new THREE.Color(0, 0, 0) }, power: { value: 3 } }
+  const rim = { color: { value: new THREE.Color(0, 0, 0) }, power: { value: 6 } }
+  // The baked ambient occlusion (see ao-bake.js and addSurface): how much
+  // of it shows, and how much also shades the direct light in crevices the
+  // shadow map is too coarse to see.
+  const occlusion = { strength: { value: 1 }, direct: { value: 0.7 } }
   // Each material also keeps the CSS token its colour comes from, so the
   // theme can recolour it — and so can a GLB exported from this model.
   const withRim = (m, token, fallback) => {
     m.userData.rim = rim
+    m.userData.occlusion = occlusion
     m.userData.token = token
     m.userData.fallback = fallback
-    m.onBeforeCompile = addRim
+    m.onBeforeCompile = addSurface
     return m
   }
 
   // Urushi lacquer (and waxed leather, and the lacquered wooden saya):
   // pigment over a finely textured base, under a smooth hard clear coat.
+  // The coat is what shines: the pigment beneath reflects only a little
+  // (specularIntensity), so black stays deep and red stays rich instead of
+  // going milky like plastic, and the coat's reflections stay crisp.
   const lacquered = (token, fallback, extra = {}) => {
     const m = new THREE.MeshPhysicalMaterial({
       color: cssColor(token, fallback),
       metalness: 0,
       roughness: 0.36,
+      specularIntensity: 0.32,
       clearcoat: 1,
-      clearcoatRoughness: 0.09,
+      clearcoatRoughness: 0.05,
       ior: 1.55,
       envMapIntensity: 0.6,
       map: maps.mottle,
@@ -210,21 +224,30 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
     }),
     red: lacquered('--samurai-accent', '#c0392b'),
     redDark: lacquered('--samurai-accent-dark', '#8e2a1e'),
-    // Laced lames: the same lacquer over rows of individual scales.
-    redLame: lacquered('--samurai-accent', '#c0392b', { normalMap: maps.kozaneN, normalScale: flat(0.72) }),
-    redDarkLame: lacquered('--samurai-accent-dark', '#8e2a1e', {
+    // Laced lames: the same lacquer over rows of individual scales. The
+    // scales' pigment is a little rougher, so each catches a soft sheen
+    // under the coat rather than a hard white spot.
+    redLame: lacquered('--samurai-accent', '#c0392b', {
+      roughness: 0.5,
       normalMap: maps.kozaneN,
-      normalScale: flat(0.72),
+      normalScale: flat(0.5),
+    }),
+    redDarkLame: lacquered('--samurai-accent-dark', '#8e2a1e', {
+      roughness: 0.5,
+      normalMap: maps.kozaneN,
+      normalScale: flat(0.5),
     }),
     bowl: lacquered('--samurai-bowl', '#e8e1d4', {
       roughness: 0.4,
       normalMap: scaled(maps.lacquerN, 6),
       normalScale: flat(0.3),
     }),
+    // Waxed leather: a soft, low gloss over dark hide, not a grey sheen.
     leather: lacquered('--samurai-leather', '#4a3b33', {
-      roughness: 0.64,
-      clearcoat: 0.25,
-      clearcoatRoughness: 0.5,
+      roughness: 0.7,
+      specularIntensity: 0.5,
+      clearcoat: 0.3,
+      clearcoatRoughness: 0.32,
       envMapIntensity: 1,
       normalMap: maps.leatherN,
       normalScale: flat(0.8),
@@ -274,7 +297,7 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
   const helmetFinish = (extra) => {
     const m = lacquered('--samurai-helmet-tint', '#ffffff', {
       roughness: 0.34,
-      clearcoatRoughness: 0.05,
+      clearcoatRoughness: 0.04,
       envMapIntensity: 0.75,
       map: maps.flakeC,
       roughnessMap: maps.flakeR,
@@ -291,7 +314,7 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
     roughnessMap: scaled(maps.flakeR, 8),
     normalMap: scaled(maps.lacquerN, 6),
   })
-  mats.helmetLame = helmetFinish({ normalMap: maps.kozaneN, normalScale: flat(0.72) })
+  mats.helmetLame = helmetFinish({ roughness: 0.5, normalMap: maps.kozaneN, normalScale: flat(0.42) })
   // The crest: gilt plate, engraved all over.
   mats.crest = metallic('--samurai-gold', '#e0a63a', {
     metalness: 1,
@@ -307,6 +330,7 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
   // colour is all in the map, so the material itself is white.
   mats.stencil = lacquered('--samurai-stencil-tint', '#ffffff', {
     roughness: 0.66,
+    specularIntensity: 1,
     clearcoat: 0.2,
     clearcoatRoughness: 0.55,
     envMapIntensity: 0.8,
@@ -335,9 +359,26 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
     depthWrite: false,
     opacity: 0.5,
   })
-  const allMats = [...Object.values(mats), glowMat]
+  // The light of the eyes is drawn as a camera would see a bright light:
+  // a white-hot core along each slit, the glow round it (glowMat) and a
+  // wide, faint halo spilling over the mask — the bloom a lens adds. All
+  // three share glowMat's shader; the animation sets their strength and
+  // colour each frame (see eyeLayers).
+  const coreMat = glowMat.clone()
+  coreMat.color.set(0xfff4e0)
+  const haloMat = glowMat.clone()
+  // Blended in linear light whichever path draws them (see blendGlowLinear).
+  if (renderer?.isWebGLRenderer) [glowMat, coreMat, haloMat].forEach(blendGlowLinear)
+  const eyeLayers = [
+    { material: glowMat, gain: 0.26, white: 0 },
+    { material: coreMat, gain: 0.6, white: 0.55 },
+    { material: haloMat, gain: 0.07, white: 0 },
+  ]
+  const allMats = [...Object.values(mats), glowMat, coreMat, haloMat]
   for (const [name, m] of Object.entries(mats)) m.name = name
   glowMat.name = 'glow'
+  coreMat.name = 'glowCore'
+  haloMat.name = 'glowHalo'
 
   const samurai = new THREE.Group()
   // Every part below is placed as it is worn — the katana in the right
@@ -673,6 +714,7 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
   let panels = []
   let eyes = []
   let glows = []
+  let eyeCores = []
   let tails = []
   let body, torso, cuirass, skirt, headRig, helmet, katana, saya, sayaStand, sayaSeated
   let crest, agemaki, eyeLight, throat
@@ -1242,6 +1284,25 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
     agemaki.position.set(0, 0.66, -0.36)
     body.add(agemaki)
     const loopGeo = track(new THREE.TorusGeometry(0.075, 0.021, 14, 48))
+    // Each tail ends in a fusa: a knotted head and a fringe of silk threads,
+    // splaying a little as they fall.
+    const thread = new THREE.CylinderGeometry(0.0034, 0.0024, 0.1, 5, 1)
+    const fringe = []
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2 + (i % 2) * 0.17
+      const r = i % 2 ? 0.008 : 0.014
+      const splay = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(Math.cos(a), 0, -Math.sin(a)),
+        -0.12 - 0.08 * (i % 3) / 2
+      )
+      fringe.push(
+        new THREE.Matrix4()
+          .compose(new THREE.Vector3(Math.sin(a) * r, -0.026, Math.cos(a) * r), splay, new THREE.Vector3(1, 0.85 + 0.15 * ((i * 7) % 5) / 4, 1))
+          .multiply(new THREE.Matrix4().makeTranslation(0, -0.05, 0))
+      )
+    }
+    const fringeGeo = track(mergeCopies(thread, fringe))
+    thread.dispose()
     ;[-1, 1].forEach((s) => {
       const loop = new THREE.Mesh(loopGeo, mats.silkCord)
       loop.castShadow = loop.receiveShadow = true
@@ -1253,6 +1314,18 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
       tail.position.set(s * 0.045, -0.18, 0.004)
       tail.rotation.z = s * 0.1
       agemaki.add(tail)
+
+      const head = mesh(new THREE.SphereGeometry(0.022, 16, 12), mats.silkCord)
+      head.position.y = -0.168
+      head.scale.set(1, 1.15, 0.8)
+      tail.add(head)
+      const binding = mesh(new THREE.CylinderGeometry(0.0175, 0.0175, 0.012, 20), mats.gold)
+      binding.position.y = -0.19
+      tail.add(binding)
+      const tassel = new THREE.Mesh(fringeGeo, mats.silkCord)
+      tassel.castShadow = tassel.receiveShadow = true
+      tassel.position.y = -0.17
+      tail.add(tassel)
     })
     const agemakiKnot = mesh(new THREE.SphereGeometry(0.048, 24, 16), mats.silkCord)
     agemakiKnot.scale.set(1.3, 0.9, 0.8)
@@ -1570,12 +1643,25 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
         cordsPer: 3,
       })
       sode.rotation.z = side * -0.12
-      // Rivets fixing the top plate (kanmuri-ita) of the sode
-      ;[-0.55, 0, 0.55].forEach((o) => {
+      // Rivets fixing the top plate (kanmuri-ita) of the sode, and between
+      // them, above the lacing, a gilt kiku kanamono: the house's flower on
+      // each shoulder, as on the dō
+      ;[-0.55, 0.55].forEach((o) => {
         const rv = mesh(new THREE.SphereGeometry(0.009, 8, 6), mats.metalDark)
         rv.position.set(Math.sin(outward + o) * 0.253, -0.009, Math.cos(outward + o) * 0.253)
         sode.add(rv)
       })
+      {
+        const y = -0.029
+        const r = 0.24 + 0.16 * -y + 0.004
+        const mon = kikuMon(0.019)
+        mon.position.set(Math.sin(outward) * r, y, Math.cos(outward) * r)
+        mon.quaternion.setFromUnitVectors(
+          new THREE.Vector3(0, 0, 1),
+          new THREE.Vector3(Math.sin(outward), 0.16, Math.cos(outward)).normalize()
+        )
+        sode.add(mon)
+      }
 
       // The kosode sleeve: asanoha silk, bunched above the elbow
       const upper = mesh(
@@ -1793,9 +1879,14 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
     eyeGeo.rotateZ(Math.PI / 2)
     eyeGeo.scale(1, 1, 0.45)
     const glowGeo = track(new THREE.PlaneGeometry(0.42, 0.24))
+    // The core runs the slit's length, inside its rim; the halo spreads
+    // well past the brow and cheek, faint.
+    const coreGeo = track(new THREE.PlaneGeometry(0.27, 0.05))
+    const haloGeo = track(new THREE.PlaneGeometry(1.05, 0.62))
     const EYE_R = faceRing(0.11) + 0.024
     eyes = []
     glows = []
+    eyeCores = []
     ;[-1, 1].forEach((side) => {
       const a = side * 0.4
       const eye = new THREE.Mesh(eyeGeo, mats.eye)
@@ -1803,12 +1894,20 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
       eye.rotation.set(0, a, side * 0.06)
       mask.add(eye)
       eyes.push(eye)
+      // On the eye itself, so it narrows and closes with every blink.
+      const core = new THREE.Mesh(coreGeo, coreMat)
+      core.position.z = 0.016
+      eye.add(core)
+      eyeCores.push(core)
 
       const glow = new THREE.Mesh(glowGeo, glowMat)
       glow.position.set(Math.sin(a) * (EYE_R + 0.025), 0.11, Math.cos(a) * (EYE_R + 0.025))
       glow.rotation.set(0, a, side * 0.06)
       mask.add(glow)
       glows.push(glow)
+      const halo = new THREE.Mesh(haloGeo, haloMat)
+      halo.position.z = 0.01
+      glow.add(halo)
 
       const rim = mesh(new THREE.TorusGeometry(0.04, 0.006, 8, 40), mats.gold)
       rim.position.set(Math.sin(a) * (EYE_R + 0.006), 0.11, Math.cos(a) * (EYE_R + 0.006))
@@ -2159,11 +2258,12 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
     band.position.y = 0.19
     helmet.add(band)
 
-    // Mabisashi: the peak, sweeping forward and down, with a rolled lip
+    // Mabisashi: the peak, sweeping forward and down, its rolled lip bound
+    // in a gilt fukurin, as the edges of a fine kabuto are
     const visor = plate(0.6, 0.76, 0.1, arc(FRONT, Math.PI * 0.82), mats.helmet, 0.022, 36)
     visor.position.y = 0.23
     helmet.add(visor)
-    const visorLip = plate(0.76, 0.772, 0.022, arc(FRONT, Math.PI * 0.82), mats.helmet, 0.03, 36)
+    const visorLip = plate(0.76, 0.772, 0.022, arc(FRONT, Math.PI * 0.82), mats.gold, 0.03, 36)
     visorLip.position.y = 0.183
     helmet.add(visorLip)
 
@@ -2180,6 +2280,10 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
       material: mats.helmetLame,
       lacing: mats.helmetLacing,
       cordsPer: 12,
+      trim: mats.gold,
+      // Lacquered inside as out: turning his head shows the inner face
+      // beside his cheek, which in cloth read as a flat grey sheet.
+      lining: mats.helmet,
     })
     shikoro.position.z = -0.08
     shikoro.rotation.x = 0.22
@@ -2192,9 +2296,14 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
       wingRig.rotation.set(0.08, 0, side * 0.42)
       helmet.add(wingRig)
       wingRig.add(plate(0.17, 0.27, 0.36, span, mats.helmet, 0.026))
-      const lip = plate(0.27, 0.272, 0.024, span, mats.helmet, 0.034)
+      // Gilt-bound along the hem and the turned-back front edge
+      const lip = plate(0.27, 0.272, 0.024, span, mats.gold, 0.034)
       lip.position.y = -0.168
       wingRig.add(lip)
+      const edgeA = side > 0 ? span[0] + 0.012 : span[0] + span[1] - 0.012
+      const edge = plate(0.173, 0.273, 0.336, arc(edgeA, 0.024), mats.gold, 0.032, 2)
+      edge.position.y = 0.006
+      wingRig.add(edge)
       // A gilt kiku kanamono on the turned-back face, where it shows from
       // the front
       const a = side * (Math.PI / 2 - 0.62)
@@ -2358,6 +2467,74 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
     })
   }
 
+  /**
+   * Bakes the ambient occlusion into every part (see ao-bake.js), cluster
+   * by cluster: parts that keep their places relative to each other shade
+   * each other; parts that move apart (an arm and the dō) do not, since the
+   * shade would be left behind when they did. Every lit mesh ends up with an
+   * `ao` attribute, open (1) wherever nothing was baked.
+   */
+  const bakeOcclusion = async () => {
+    const users = new Map()
+    samurai.traverse((o) => o.isMesh && users.set(o.geometry, (users.get(o.geometry) || 0) + 1))
+    const lit = (o) => o.isMesh && o.material.userData?.occlusion && users.get(o.geometry) === 1
+    // A subtree's meshes, not descending into the nodes in `skip`.
+    const collect = (root, skip = []) => {
+      const out = []
+      const walk = (o) => {
+        if (skip.includes(o)) return
+        if (lit(o)) out.push(o)
+        o.children.forEach(walk)
+      }
+      walk(root)
+      return out
+    }
+    const clusters = [
+      collect(headRig, [...eyes, ...glows]),
+      collect(body, [headRig, ...arms.map((a) => a.shoulder)]),
+      ...arms.map((a) => collect(a.shoulder, [katana])),
+      ...legs.map((l) => collect(l.hip)),
+      collect(katana),
+    ].filter((c) => c.length)
+    const gl = renderer?.isWebGLRenderer ? renderer : null
+    // WebGPU draws him, but the bake is written for WebGL 2: a small
+    // throwaway WebGL renderer does it instead.
+    let own = null
+    if (!gl && typeof document !== 'undefined') {
+      try {
+        own = new THREE.WebGLRenderer({ canvas: document.createElement('canvas'), antialias: false })
+      } catch {
+        own = null
+      }
+    }
+    const baker = gl || own
+    try {
+      if (baker && baker.capabilities.isWebGL2 !== false && baker.extensions.has('EXT_color_buffer_float')) {
+        samurai.updateMatrixWorld(true)
+        performance.mark('samurai:ao-start')
+        await bakeAmbientOcclusion(baker, clusters, {
+          directions: integrated ? 64 : 96,
+          resolution: integrated ? 512 : 768,
+          breathe,
+        })
+        performance.measure('samurai:ao', 'samurai:ao-start')
+      }
+    } catch (e) {
+      if (e === ABORT) throw e
+      console.warn('Samurai: ambient occlusion bake failed; drawing without it.', e)
+    } finally {
+      if (own) {
+        own.dispose()
+        own.forceContextLoss()
+      }
+    }
+    samurai.traverse((o) => {
+      if (!o.isMesh || !o.material.userData?.occlusion || o.geometry.attributes.ao) return
+      const n = o.geometry.attributes.position.count
+      o.geometry.setAttribute('ao', new THREE.BufferAttribute(new Float32Array(n).fill(1), 1))
+    })
+  }
+
   /* ---- Theme: every colour comes from a --samurai-* CSS token ---- */
   // The eyes are tinted by mood every frame, starting from this colour.
   const eyeBase = cssColor('--samurai-eye', '#ffb347')
@@ -2370,6 +2547,8 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
     root: samurai,
     mats,
     glowMat,
+    /** The eyes' light, layer by layer: { material, gain, white } (see coreMat). */
+    eyeLayers,
     eyeBase,
     /** The shared rim uniforms: { color, power } (see withRim). */
     rim,
@@ -2378,6 +2557,7 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
     /** Builds the samurai in slices; resolves with his rig. */
     async build() {
       await buildModel()
+      await bakeOcclusion()
       return nameRig({
         root: samurai,
         legs,
@@ -2385,6 +2565,7 @@ export function createSamuraiModel({ maxAnisotropy, integrated, breathe }) {
         panels,
         eyes,
         glows,
+        eyeCores,
         tails,
         body,
         torso,
@@ -2431,6 +2612,9 @@ export function themeMaterials(materials) {
 /**
  * The rim term, added to each lit material's emitted light: strongest
  * where the surface turns away from the viewer. `this` is the material.
+ * It follows the surface's true shape, not its normal map, so it traces
+ * the silhouette as one clean line rather than catching on every scale,
+ * weave and hammer mark.
  */
 export function addRim(shader) {
   const { rim } = this.userData
@@ -2440,7 +2624,47 @@ export function addRim(shader) {
     .replace('#include <common>', '#include <common>\nuniform vec3 rimColor;\nuniform float rimPower;')
     .replace(
       '#include <emissivemap_fragment>',
-      '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += rimColor * pow( 1.0 - saturate( dot( normal, normalize( vViewPosition ) ) ), rimPower );'
+      '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += rimColor * pow( 1.0 - saturate( dot( nonPerturbedNormal, normalize( vViewPosition ) ) ), rimPower );'
+    )
+}
+
+/**
+ * The built-in samurai's surface: the rim (addRim), and the ambient
+ * occlusion baked into his vertices (ao-bake.js). The occlusion takes what
+ * three.js's aoMap would — the light from the surroundings, diffuse and
+ * reflected, clear coat and sheen alike — and, more lightly, the direct
+ * light in crevices too small for the shadow map. `this` is the material;
+ * its geometry must carry an `ao` attribute (the model gives every mesh
+ * one).
+ */
+export function addSurface(shader) {
+  addRim.call(this, shader)
+  const { occlusion } = this.userData
+  shader.uniforms.occlusionStrength = occlusion.strength
+  shader.uniforms.occlusionDirect = occlusion.direct
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <common>', '#include <common>\nattribute float ao;\nvarying float vOcclusion;')
+    .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvOcclusion = ao;')
+  shader.fragmentShader = shader.fragmentShader
+    .replace(
+      '#include <common>',
+      '#include <common>\nvarying float vOcclusion;\nuniform float occlusionStrength;\nuniform float occlusionDirect;'
+    )
+    .replace(
+      '#include <aomap_fragment>',
+      /* glsl */ `#include <aomap_fragment>
+	float bakedOcclusion = mix( 1.0, vOcclusion, occlusionStrength );
+	reflectedLight.indirectDiffuse *= bakedOcclusion;
+	reflectedLight.directDiffuse *= mix( 1.0, bakedOcclusion, occlusionDirect );
+	#if defined( USE_CLEARCOAT )
+		clearcoatSpecularIndirect *= bakedOcclusion;
+	#endif
+	#if defined( USE_SHEEN )
+		sheenSpecularIndirect *= bakedOcclusion;
+	#endif
+	#if defined( USE_ENVMAP ) && defined( STANDARD )
+		reflectedLight.indirectSpecular *= computeSpecularOcclusion( saturate( dot( geometryNormal, geometryViewDir ) ), bakedOcclusion, material.roughness );
+	#endif`
     )
 }
 

@@ -6,9 +6,14 @@ import { MAX_PIXELS, START_DISCRETE, START_INTEGRATED, qualityLadder, rungOf } f
  *
  * The GPU's own time per frame (a timer query, where the browser offers
  * one) and the frame interval decide the rung of the quality ladder (see
- * quality.js). Over each window of frames: too slow, and the rung steps
- * down at once; comfortably fast, and it steps up — but only while it has
- * never had to step down, so the level settles instead of oscillating.
+ * quality.js). Over each window of frames: frames being dropped, and the
+ * rung steps down at once; the GPU merely close to its budget, and it steps
+ * down only if the next window says so too (an integrated GPU's clock
+ * wanders with its temperature, and one warm window is not a trend);
+ * comfortably fast, and it steps up. Once it has had to step down it climbs
+ * again only rarely — after twenty seconds, then forty, eighty… and only
+ * with plenty to spare — so the level settles instead of oscillating, yet
+ * a passing slowdown never leaves him blurred for the rest of the visit.
  *
  * Rungs fall into three tiers, and each tier sets more than resolution:
  *   HIGH    ambient occlusion and sharpening; 4k shadows on discrete GPUs
@@ -98,6 +103,14 @@ export function createQuality({
     held: false,
     // Windows in a row spent at the bottom rung and still under ~12 fps.
     struggling: 0,
+    // Windows in a row with the GPU over budget (frames still on time).
+    warm: 0,
+    // Windows in a row with no GPU time reported.
+    blind: 0,
+    // Once locked: when it last stepped, and how long to wait before
+    // trying the rung above again (doubled after every try).
+    steppedAt: 0,
+    retryAfter: 20,
   }
   const history = []
   // Smoothed GPU time per frame, in ms (null until a timer result lands).
@@ -180,16 +193,35 @@ export function createQuality({
     const load = perf.gpuN ? perf.gpu / perf.gpuN / (perf.period * 1000) : null
     let next = rung
     const pos = allowed.indexOf(rung)
-    if (slowShare > 0.2 || (load !== null && load > 0.92)) {
+    // Slow frames are the GPU's doing only when the GPU is busy. With time
+    // to spare on its clock, the page's own work held the frames (as it
+    // does while the rest of the page starts up), and fewer pixels would
+    // only blur him for nothing. Without a GPU clock — or with one that has
+    // stopped answering — slow frames are all there is to go on.
+    perf.blind = load === null ? perf.blind + 1 : 0
+    const gpuBound = load !== null ? load > 0.85 : !timer || perf.blind > 2
+    const dropping = (slowShare > 0.2 && gpuBound) || (load !== null && load > 1.15)
+    const warm = load !== null && load > 0.92
+    perf.warm = warm ? perf.warm + 1 : 0
+    if (dropping || perf.warm >= 2) {
       // The further over budget, the more rungs at once.
       const over = Math.max(slowShare / 0.2, load === null ? 0 : load)
       next = allowed[Math.min(allowed.length - 1, pos + (over > 1.8 ? 3 : over > 1.3 ? 2 : 1))]
       perf.locked = true
-    } else if (!perf.locked && pos > 0 && load !== null && slowShare < 0.03) {
+      perf.warm = 0
+      perf.steppedAt = now
+    } else if (!warm && pos > 0 && load !== null && slowShare < 0.03) {
       // Step up only when the rung above is predicted to leave a quarter
-      // of the frame free for the rest of the page.
+      // of the frame free for the rest of the page — and, once locked,
+      // a third of it, and only when the wait is up.
       const up = allowed[pos - 1]
-      if ((load * ladder[up].cost) / ladder[rung].cost < 0.75) next = up
+      const predicted = (load * ladder[up].cost) / ladder[rung].cost
+      if (!perf.locked && predicted < 0.75) next = up
+      else if (perf.locked && predicted < 0.68 && now - perf.steppedAt > perf.retryAfter) {
+        next = up
+        perf.steppedAt = now
+        perf.retryAfter = Math.min(perf.retryAfter * 2, 320)
+      }
     }
     if (import.meta.env.DEV) {
       history.push({

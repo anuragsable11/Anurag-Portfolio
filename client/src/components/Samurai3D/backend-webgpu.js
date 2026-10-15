@@ -1,11 +1,14 @@
 import { PMREMGenerator, RenderPipeline, WebGPURenderer } from 'three/webgpu'
 import {
+  attribute,
   builtinAOContext,
   dot,
   float,
   materialEmissive,
+  mix,
   mrt,
   normalView,
+  normalViewGeometry,
   pass,
   positionViewDirection,
   pow,
@@ -69,17 +72,22 @@ export async function createWebGPUBackend(adapter) {
 
 /**
  * The rim (see SamuraiModel's addRim): the same fresnel edge light, as a
- * node added to each lit material's emission. Its colour uniform holds the
- * model's shared Color object, so the effects layer drives both renderers
- * the same way.
+ * node added to each lit material's emission, taken from the surface's
+ * true shape (its normal map ignored). Its colour uniform holds the model's
+ * shared Color object, so the effects layer drives both renderers the same
+ * way. And the ambient occlusion baked into the built-in samurai's
+ * vertices (SamuraiModel's addSurface), as the material's AO, where it
+ * shades the light from the surroundings as three.js's aoMap would.
  */
 function prepareMaterials(materials, rim) {
   const color = uniform(rim.color.value)
   const power = uniform(rim.power.value)
-  const edge = pow(float(1).sub(dot(normalView, positionViewDirection).saturate()), power)
+  const edge = pow(float(1).sub(dot(normalViewGeometry, positionViewDirection).saturate()), power)
   const term = color.mul(edge)
   for (const material of materials) {
     if (material.userData.rim) material.emissiveNode = materialEmissive.add(term)
+    const occlusion = material.userData.occlusion
+    if (occlusion) material.aoNode = mix(float(1), attribute('ao', 'float'), float(occlusion.strength.value))
   }
 }
 

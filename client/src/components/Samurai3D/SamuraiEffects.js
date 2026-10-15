@@ -117,11 +117,13 @@ export function createEffects({ scene, camera, rig, rim = null, rimTint = new TH
     for (let i = 0; i < trailCount; i++) {
       const s = trailRing[(trailHead - trailCount + i + TRAIL_N) % TRAIL_N]
       const k = Math.max(0, 1 - (t - s.t) / TRAIL_LIFE)
-      const g = k * k * 0.6
+      // A streak of light where the point and the last of the edge passed,
+      // dying away toward the guard — never a sheet across the whole sweep.
+      const g = k * k * k * 0.75
       pos.setXYZ(i * 2, s.base.x, s.base.y, s.base.z)
       pos.setXYZ(i * 2 + 1, s.tip.x, s.tip.y, s.tip.z)
-      col.setXYZ(i * 2, g * 0.5, g * 0.56, g * 0.66)
-      col.setXYZ(i * 2 + 1, g * 0.86, g * 0.92, g)
+      col.setXYZ(i * 2, 0, 0, 0)
+      col.setXYZ(i * 2 + 1, g * 0.9, g * 0.95, g)
     }
     pos.needsUpdate = true
     col.needsUpdate = true

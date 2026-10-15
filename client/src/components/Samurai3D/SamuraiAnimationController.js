@@ -106,6 +106,9 @@ export function createAnimationController({
   let samurai, legs, arms, panels, eyes, glows, tails, body, torso, cuirass, skirt, headRig, skull, throat
   let katana, saya, sayaStand, sayaSeated, crest, agemaki, eyeLight, sodeBaseQ
   const { mats, glowMat, eyeBase } = model
+  // The eyes' light in layers (core, glow, halo); a model with only the
+  // glow gets that.
+  const eyeLayers = model.eyeLayers || [{ material: glowMat, gain: 0.55, white: 0 }]
 
   let calmMotion = false
   let started = false
@@ -618,6 +621,9 @@ export function createAnimationController({
   const eyeHot = new THREE.Color('#ff4a2a')
   const eyeWarm = new THREE.Color('#fff1cf')
   const eyeTint = new THREE.Color()
+  const WHITE = new THREE.Color(1, 1, 1)
+  // How far past white the slits glow (see the eyes in update()).
+  const EYE_HDR = 1.9
   let breathPhase = 0
 
   /**
@@ -1152,14 +1158,19 @@ export function createAnimationController({
 
     /* Eyes: open, tilt, glow and colour carry most of the emotion */
     const glowLevel = lerp(P.eyeGlow + Math.sin(t * 0.85) * 0.1 * still, 0.45 + deep * 0.3, w)
-    mats.eye.emissiveIntensity = glowLevel
-    glowMat.opacity = glowLevel * 0.55
+    // The slits burn brighter than white (the tone mapping rolls them off
+    // to a hot core), and their light dims as the lids meet in a blink.
+    mats.eye.emissiveIntensity = glowLevel * EYE_HDR
     eyeTint.copy(eyeBase).lerp(P.heat >= 0 ? eyeHot : eyeWarm, Math.min(Math.abs(P.heat), 1))
     mats.eye.color.copy(eyeTint)
     mats.eye.emissive.copy(eyeTint)
-    glowMat.color.copy(eyeTint)
+    const lidLight = 0.35 + 0.65 * blink
+    for (const { material, gain, white } of eyeLayers) {
+      material.opacity = glowLevel * gain * lidLight
+      material.color.copy(eyeTint).lerp(WHITE, white)
+    }
     eyeLight.color.copy(eyeTint)
-    eyeLight.intensity = glowLevel * 0.06
+    eyeLight.intensity = glowLevel * 0.2 * lidLight
     const open = P.eyeOpen * blink
     eyes.forEach((eye, i) => {
       const side = i === 0 ? -1 : 1

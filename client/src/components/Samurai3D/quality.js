@@ -8,9 +8,10 @@
  * screen pixel (on a 1× display) and drop as far as 1× with no AO; phones
  * only ever trade resolution.
  *
- * On a high-density display, AO rungs below the display's own ratio are
- * left out: occlusion is not worth a blurred picture, though a plain lower
- * ratio remains as the last resort.
+ * Screen-space AO only ever comes with at least 1.5× the display's pixels:
+ * the model carries its own occlusion baked in (ao-bake.js), so what the
+ * screen-space pass adds — contact between parts as they move — is never
+ * worth a blurred picture. A plain lower ratio remains as the last resort.
  *
  * `cost` is a relative GPU cost (1 = 1× without AO), used to predict whether
  * the rung above still fits. It was fitted to timings on an integrated GPU:
@@ -27,12 +28,10 @@ export function qualityLadder(finePointer, nativeDpr) {
         [2, 0.5],
         [1.5, 0.5],
         [2, 0],
-        [1.25, 0.5],
-        [1, 0.5],
         [1.5, 0],
         [1.25, 0],
         [1, 0],
-      ].filter(([dpr, ao]) => ao === 0 || dpr >= nativeDpr - 0.01)
+      ].filter(([dpr, ao]) => ao === 0 || dpr >= Math.max(1.5, nativeDpr) - 0.01)
     : [nativeDpr, 1.5, 1.25, 1]
         .filter((d, i, all) => d <= nativeDpr && all.indexOf(d) === i)
         .map((d) => [d, 0])

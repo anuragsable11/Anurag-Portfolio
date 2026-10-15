@@ -35,15 +35,15 @@ const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserv
 renderer.setPixelRatio(1)
 renderer.setSize(W, H)
 renderer.outputColorSpace = THREE.SRGBColorSpace
-renderer.toneMapping = THREE.ACESFilmicToneMapping
-renderer.toneMappingExposure = 0.92
+renderer.toneMapping = THREE.NeutralToneMapping
+renderer.toneMappingExposure = 1
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFShadowMap
 mount.appendChild(renderer.domElement)
 
 const stage = createStage({ renderer, mount, bigShadows: false })
 const { scene, camera, controls } = stage
-const model = createSamuraiModel({ maxAnisotropy: renderer.capabilities.getMaxAnisotropy(), integrated: false, breathe: async () => {} })
+const model = createSamuraiModel({ maxAnisotropy: renderer.capabilities.getMaxAnisotropy(), integrated: false, breathe: async () => {}, renderer })
 const rig = await model.build()
 scene.add(rig.root)
 model.fillTextures(await requestTextures(TEXTURE_QUALITY))

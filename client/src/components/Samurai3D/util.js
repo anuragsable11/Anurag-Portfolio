@@ -64,6 +64,32 @@ export function keyframeCurve(n, times, value, u) {
   )
 }
 
+/**
+ * A soft additive glow, drawn straight to a WebGL canvas, blended as it
+ * would be in linear light — as WebGPU and the post-processed frames blend
+ * it. WebGL drawing to the canvas blends after the colour is encoded for
+ * the display, which darkens a glow's faint outskirts to a fraction of
+ * what they should be; so the glow is tone-mapped at its blended strength
+ * and written premultiplied instead, and every path shows the same glow.
+ * WebGL only: WebGPU ignores the patch and blends correctly already.
+ */
+export function blendGlowLinear(material) {
+  material.premultipliedAlpha = true
+  material.onBeforeCompile = glowLinearPatch
+  return material
+}
+function glowLinearPatch(shader) {
+  shader.fragmentShader = shader.fragmentShader
+    .replace(
+      '#include <tonemapping_fragment>',
+      '#ifdef TONE_MAPPING\n\tgl_FragColor.rgb = toneMapping( gl_FragColor.rgb * gl_FragColor.a );\n#endif'
+    )
+    .replace(
+      '#include <premultiplied_alpha_fragment>',
+      '#ifndef TONE_MAPPING\n\tgl_FragColor.rgb *= gl_FragColor.a;\n#endif'
+    )
+}
+
 /** Lets the browser paint a frame between slices of a long job. */
 export const yieldToBrowser = () =>
   typeof scheduler !== 'undefined' && scheduler.yield

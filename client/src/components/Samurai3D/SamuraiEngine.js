@@ -206,10 +206,11 @@ async function boot(
   renderer.setPixelRatio(quality.dpr)
   renderer.setSize(mount.clientWidth, mount.clientHeight)
   renderer.outputColorSpace = THREE.SRGBColorSpace
-  renderer.toneMapping = THREE.ACESFilmicToneMapping
-  // Kept under 1: ACES desaturates saturated reds toward coral as they
-  // approach clipping. A darker exposure keeps the lacquer red.
-  renderer.toneMappingExposure = 0.92
+  // Khronos PBR Neutral: colours stay the colours the materials are given
+  // (ACES turned the vermilion lacquer coral and the gold brassy), and only
+  // the brightest highlights roll off toward white, as on a photograph.
+  renderer.toneMapping = THREE.NeutralToneMapping
+  renderer.toneMappingExposure = 1
   renderer.shadowMap.enabled = true
   // Not PCFSoftShadowMap: three.js r18x silently swaps that for PCF at
   // render time, which changes every shader's cache key and throws away the
@@ -292,11 +293,15 @@ async function boot(
     stage.updateCamera(dt, { seated: controller.seated, rise: interaction.rise, calm: !controller.still })
   }
 
-  function loop() {
+  // The frame's own timestamp, not the moment this callback happens to run:
+  // the browser stamps every frame at its vsync, so each pose is computed
+  // for the instant it is shown and the motion advances by the same step
+  // every frame, however late other work on the page makes the callback.
+  function loop(stamp) {
     frame = null
     if (nothingToDraw()) return
     frame = requestAnimationFrame(loop)
-    const t = still ? 0 : (performance.now() - t0) / 1000
+    const t = still ? 0 : ((stamp ?? performance.now()) - t0) / 1000
     // Docked, he is small: 30 fps is plenty, and halves the GPU cost.
     if (dock.on && t - last < 1 / 31) return
     const dt = last ? Math.min(t - last, 0.1) : 0
@@ -447,7 +452,7 @@ async function boot(
           scene,
           camera,
           mount,
-          transient: () => [...rig.glows, ...effects.transient],
+          transient: () => [...rig.glows, ...(rig.eyeCores || []), ...effects.transient],
           onReady: (chain) => {
             post.current = chain
             quality.apply()

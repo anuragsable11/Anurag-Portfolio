@@ -509,12 +509,14 @@ function goldFlake(S) {
     const t = r()
     return lo.map((l, ch) => l + (hi[ch] - l) * t)
   }
-  for (let n = 0; n < Math.round(2600 * k * k); n++) {
+  // Fine work: the leaf is mostly dust and small flakes, sprinkled densely
+  // where the drift gathers it; only a rare torn piece is large.
+  for (let n = 0; n < Math.round(3400 * k * k); n++) {
     const x = r() * S
     const y = r() * S
     if (r() > drift[wrap(Math.floor(y), S) * S + wrap(Math.floor(x), S)] ** 2 * 1.7) continue
-    const big = r() < 0.05
-    const rx = Math.max(0.7, (big ? 5 + r() * 8 : 0.8 + r() * 2.6) * k)
+    const big = r() < 0.018
+    const rx = Math.max(0.7, (big ? 3.5 + r() * 4.5 : 0.7 + r() * 1.9) * k)
     flake(x, y, rx, rx * (0.35 + r() * 0.65), r() * Math.PI, big ? 0.25 : 0.08, tone())
   }
   // Kirigane: thin slivers of cut leaf

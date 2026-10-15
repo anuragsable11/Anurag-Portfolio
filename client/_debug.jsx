@@ -14,11 +14,16 @@ Object.defineProperty(OrbitControls.prototype, 'autoRotate', {
 })
 const params = new URLSearchParams(location.search)
 // ?slow=<k> runs the samurai's clock k times slower, to catch actions mid-motion.
+// (His loop reads the frame timestamps requestAnimationFrame hands it, so
+// those are slowed too.)
 if (params.get('slow')) {
   const k = +params.get('slow')
   const real = performance.now.bind(performance)
   const start = real()
-  performance.now = () => start + (real() - start) / k
+  const slowed = (t) => start + (t - start) / k
+  performance.now = () => slowed(real())
+  const raf = window.requestAnimationFrame.bind(window)
+  window.requestAnimationFrame = (callback) => raf((t) => callback(slowed(t)))
 }
 if (params.get('theme')) document.documentElement.dataset.theme = params.get('theme')
 

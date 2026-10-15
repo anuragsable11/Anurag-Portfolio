@@ -2,7 +2,9 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { cssNumber } from '../../lib/three-utils.js'
 import { SIT_TARGET_Y, STAND_TARGET_Y } from './constants.js'
-import { dampAngle, dampTo, lerp } from './util.js'
+import { blendGlowLinear, dampAngle, dampTo, lerp } from './util.js'
+
+const UP = new THREE.Vector3(0, 1, 0)
 
 /**
  * The stage the samurai stands on: camera, orbit controls, studio lights and
@@ -21,7 +23,7 @@ export function createStage({ renderer, mount, bigShadows }) {
   camera.position.set(-1.4, 2.6, 8.8)
 
   /* ================================================================
-     Studio lighting: warm key, two cool rims, dim fill
+     Studio lighting: warm key, two near-white rims, the studio as fill
      ================================================================ */
   // The reflection map arrives asynchronously (see the engine's start()).
   // Metals are lit mostly by what they reflect, so it carries more weight
@@ -43,16 +45,33 @@ export function createStage({ renderer, mount, bigShadows }) {
   key.shadow.normalBias = 0.018
   key.shadow.radius = bigShadows ? 7 : 4
 
-  // The rims sit well out to the sides, so from the usual three-quarter view
-  // they trace his silhouette (helmet, sode, arms, shins) in cool light and
-  // lift the black lacquer off a dark page.
-  const rimL = new THREE.DirectionalLight(0xa8c8ff, 5)
-  rimL.position.set(6, 4, -2.5)
-  const rimR = new THREE.DirectionalLight(0xbcd4ff, 3.3)
-  rimR.position.set(-6, 3, -2.5)
-  const fill = new THREE.DirectionalLight(0xdfe7f5, 0.3)
-  fill.position.set(3.5, 1.2, 4)
-  scene.add(key, rimL, rimR, fill)
+  // The rims stand behind him to either side, as a photographer's strip
+  // lights do: from the usual three-quarter view they only graze his edges
+  // (helmet, sode, arms, shins), tracing the silhouette in a thin line that
+  // lifts the black lacquer off a dark page, while the faces turned to the
+  // viewer stay black. Near-white, one a touch warm and one a touch cool:
+  // coloured rims would tint the lacquer, and black lacquer tinted blue
+  // reads as plastic.
+  const rimL = new THREE.DirectionalLight(0xfff2e6, 7)
+  rimL.position.set(5, 4.5, -7)
+  const rimR = new THREE.DirectionalLight(0xe6eeff, 5.5)
+  rimR.position.set(-5, 3.5, -7)
+  // The fill is the studio itself (the reflection map lights every side):
+  // a fill light as well cost a tenth of the frame on an integrated GPU for
+  // light no one could see.
+  scene.add(key, rimL, rimR)
+  // The studio turns with the view, as if he stood on a turntable: dragged
+  // round, he is lit from every side as he is from the front — the key on
+  // his face, the rims behind — and his reflections and shadow turn with it,
+  // rather than the rims blazing at the viewer once his back is turned.
+  const studio = [key, rimL, rimR].map((light) => ({ light, home: light.position.clone() }))
+  let studioTurn = 0
+  const turnStudio = (angle) => {
+    if (Math.abs(angle - studioTurn) < 1e-5) return
+    studioTurn = angle
+    for (const { light, home } of studio) light.position.copy(home).applyAxisAngle(UP, angle)
+    scene.environmentRotation.y = angle
+  }
 
   /* ---- Controls ---- */
   const controls = new OrbitControls(camera, renderer.domElement)
@@ -150,25 +169,9 @@ export function createStage({ renderer, mount, bigShadows }) {
     transparent: true,
     depthWrite: false,
   })
-  // The post-processed frames (and WebGPU's) blend the pool in linear light
-  // and tone-map the result; WebGL drawing straight to the canvas blends
-  // after encoding, which darkens the soft falloff to a third. So on that
-  // path the pool is tone-mapped at its blended strength and written
-  // premultiplied, and every quality level shows the same pool.
-  if (renderer.isWebGLRenderer) {
-    floorGlowMat.premultipliedAlpha = true
-    floorGlowMat.onBeforeCompile = (shader) => {
-      shader.fragmentShader = shader.fragmentShader
-        .replace(
-          '#include <tonemapping_fragment>',
-          '#ifdef TONE_MAPPING\n\tgl_FragColor.rgb = toneMapping( gl_FragColor.rgb * gl_FragColor.a );\n#endif'
-        )
-        .replace(
-          '#include <premultiplied_alpha_fragment>',
-          '#ifndef TONE_MAPPING\n\tgl_FragColor.rgb *= gl_FragColor.a;\n#endif'
-        )
-    }
-  }
+  // Blended in linear light on every path (see blendGlowLinear), so every
+  // quality level shows the same pool.
+  if (renderer.isWebGLRenderer) blendGlowLinear(floorGlowMat)
   const floorGlowGeo = new THREE.PlaneGeometry(3.4, 3.4)
   geos.push(floorGlowGeo)
   const floorGlow = new THREE.Mesh(floorGlowGeo, floorGlowMat)
@@ -222,6 +225,8 @@ export function createStage({ renderer, mount, bigShadows }) {
     camera.position.copy(controls.target).add(offset.setFromSpherical(spherical))
     controls.update(dt)
     if (!HOME) HOME = new THREE.Spherical().setFromVector3(offset.copy(camera.position).sub(controls.target))
+    // Wherever the view has swung round him, the studio has swung too.
+    turnStudio(Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z) - HOME.theta)
   }
 
   return {
@@ -229,7 +234,7 @@ export function createStage({ renderer, mount, bigShadows }) {
     camera,
     controls,
     orbit,
-    lights: { key, rimL, rimR, fill },
+    lights: { key, rimL, rimR },
     ground: { floor, pool, floorGlow },
     applyTheme,
     updateCamera,
