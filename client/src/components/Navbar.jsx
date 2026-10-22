@@ -82,6 +82,19 @@ export default function Navbar() {
       <AnimatePresence>
         {open && (
           <motion.div
+            key="scrim"
+            className="nav-scrim"
+            aria-hidden="true"
+            onClick={() => setOpen(false)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+          />
+        )}
+        {open && (
+          <motion.div
+            key="sheet"
             className="nav-mobile"
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}

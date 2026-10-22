@@ -1,5 +1,8 @@
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+
+const page = (file) => fileURLToPath(new URL(file, import.meta.url))
 
 export default defineConfig(({ isSsrBuild }) => ({
   plugins: [react()],
@@ -21,6 +24,10 @@ export default defineConfig(({ isSsrBuild }) => ({
     // that draw him with WebGPU ever fetch it.
     chunkSizeWarningLimit: 750,
     rollupOptions: {
+      // Two pages: the portfolio, and every project on one sphere.
+      input: isSsrBuild
+        ? undefined
+        : { main: page('./index.html'), projects: page('./projects.html') },
       output: {
         // Keep the heavy vendor libraries in their own long-lived chunks.
         // An SSR build externalises react, which cannot then be chunked.

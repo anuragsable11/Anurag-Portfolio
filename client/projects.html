@@ -1,0 +1,1298 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Projects — Anurag Sable</title>
+    <meta
+      name="description"
+      content="Two LLM systems built end to end, plus the web applications where I learned the fundamentals."
+    />
+    <meta name="theme-color" content="#000000" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400&family=Inter:wght@300;400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* ============================================================
+         Every project as a cover on a sphere you can turn. The sphere
+         and its title share one centre point; scrolling dollies in.
+         ============================================================ */
+      :root {
+        --bg: #000;
+        --ink: #f4f2ef;
+        --dim: #8c8783;
+        --line: rgba(244, 242, 239, 0.28);
+        --pad: clamp(14px, 2.6vw, 34px);
+        --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+        --hw: min(56vw, 640px);
+        --persp: 1150px;
+        --safe-top: env(safe-area-inset-top, 0px);
+        --safe-right: env(safe-area-inset-right, 0px);
+        --safe-bottom: env(safe-area-inset-bottom, 0px);
+        --safe-left: env(safe-area-inset-left, 0px);
+        --tap: 44px;
+        --serif: 'Playfair Display', 'Times New Roman', serif;
+        --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+        /* Covers are 16:10, a little wider than a print, so the landing pages
+           lose less of their sides. */
+        --ar: 1.6;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html {
+        background: #000;
+        /* Unlocking the page must not shift the cards. */
+        scrollbar-gutter: stable;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--ink);
+        font-family: var(--sans);
+        font-weight: 300;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        overflow-x: hidden;
+        min-height: 100vh;
+        min-height: 100dvh;
+        overscroll-behavior-y: none;
+      }
+
+      body.locked {
+        overflow: hidden;
+        height: 100vh;
+        height: 100dvh;
+      }
+
+      img {
+        display: block;
+        max-width: 100%;
+      }
+
+      button {
+        font: inherit;
+        color: inherit;
+        background: none;
+        border: none;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+      }
+
+      a {
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      :focus-visible {
+        outline: 1px solid var(--ink);
+        outline-offset: 3px;
+      }
+
+      /* ---- 1. The scroll track: 16vh of scroll is the whole dolly ---- */
+      #scrolltrack {
+        height: 116vh;
+        pointer-events: none;
+      }
+
+      /* ---- 2. The stage ---- */
+      #stage {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        perspective: var(--persp);
+        perspective-origin: 50% 50%;
+        overflow: hidden;
+        touch-action: none;
+        transition: opacity 0.6s var(--ease), filter 0.6s var(--ease);
+      }
+
+      @media (pointer: coarse) {
+        #stage {
+          touch-action: pan-y;
+        }
+      }
+
+      #world {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 0;
+        height: 0;
+        transform-style: preserve-3d;
+        will-change: transform;
+      }
+
+      #orb {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 0;
+        height: 0;
+        transform-style: preserve-3d;
+        opacity: 1;
+        transform: none;
+      }
+
+      #headline {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: var(--hw);
+        margin-left: calc(var(--hw) / -2);
+        text-align: center;
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: clamp(25px, 3.7vw, 55px);
+        line-height: 1.06;
+        letter-spacing: -0.005em;
+        color: #fff;
+        text-shadow: 0 2px 34px rgba(0, 0, 0, 0.55);
+        pointer-events: none;
+        user-select: none;
+        -webkit-user-select: none;
+        /* Steps aside while a project is open, so it never runs through the
+           lightbox's words. */
+        transition: opacity 0.45s ease;
+      }
+
+      #headline .inner {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        transform: translateY(-50%);
+      }
+
+      /* Each word rises out of a blur once the page is revealed. */
+      #headline .inner > span {
+        display: inline-block;
+        opacity: 0;
+        transform: translateY(0.42em);
+        filter: blur(7px);
+      }
+
+      body.revealed #headline .inner > span {
+        opacity: 1;
+        transform: none;
+        filter: blur(0);
+        transition: opacity 1.05s var(--ease), transform 1.15s var(--ease), filter 1.05s var(--ease);
+        transition-delay: calc(0.9s + var(--i) * 0.085s);
+      }
+
+      /* The covers: each placed from the sphere's centre by its own transform. */
+      .card {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: var(--cw, 200px);
+        height: calc(var(--cw, 200px) / var(--ar));
+        margin-left: calc(var(--cw, 200px) / -2);
+        margin-top: calc(var(--cw, 200px) / var(--ar) / -2);
+        cursor: pointer;
+      }
+
+      /* Each cover is a small framed card: a dark lacquered mat with a lit
+         edge and a soft shadow, the screenshot set into it with its own
+         rounded corners. Every size follows the card's width, so it reads
+         the same on a phone as on a desktop. */
+      .card figure {
+        --u: calc(var(--cw, 200px) / 100);
+        position: relative;
+        width: 100%;
+        height: 100%;
+        padding: calc(var(--u) * 3.4);
+        border-radius: calc(var(--u) * 7);
+        background: linear-gradient(160deg, #2a2b31 0%, #141418 42%, #0a0a0c 100%);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.24),
+          0 calc(var(--u) * 5) calc(var(--u) * 12) rgba(0, 0, 0, 0.6);
+        transition: transform 0.5s ease;
+      }
+
+      .card:hover figure {
+        transform: scale(1.045);
+      }
+
+      .card img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: 50% 0;
+        border-radius: calc(var(--u) * 4.2);
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+        opacity: 0;
+        user-select: none;
+        -webkit-user-drag: none;
+      }
+
+      .card img.in {
+        opacity: 1;
+      }
+
+      body.revealed .card img {
+        transition: opacity 0.8s ease-out;
+      }
+
+      /* A glint across the top of the card, like light on lacquer. */
+      .card figure::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        border-radius: inherit;
+        background: linear-gradient(
+          165deg,
+          rgba(255, 255, 255, 0.16) 0%,
+          rgba(255, 255, 255, 0.04) 26%,
+          transparent 44%
+        );
+        pointer-events: none;
+      }
+
+      /* Depth is a flat black wash over the whole card, not a filter. */
+      .card figure::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        border-radius: inherit;
+        background: rgba(0, 0, 0, var(--d, 0));
+        pointer-events: none;
+      }
+
+      /* ---- 3. Vignette ---- */
+      .vig {
+        position: fixed;
+        inset: 0;
+        z-index: 12;
+        pointer-events: none;
+        background: radial-gradient(
+          ellipse 88% 92% at 50% 50%,
+          transparent 48%,
+          rgba(0, 0, 0, 0.26) 80%,
+          rgba(0, 0, 0, 0.72) 100%
+        );
+        transition: opacity 0.6s var(--ease);
+      }
+
+      body.gridview .vig,
+      body.lit .vig {
+        opacity: 0;
+      }
+
+      /* ---- 4. The flat grid ---- */
+      #grid {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding: calc(var(--pad) * 3.4) var(--pad) calc(var(--pad) * 4);
+        background: #000;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.6s var(--ease);
+      }
+
+      body.gridview #grid {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      body.gridview #stage {
+        opacity: 0;
+        filter: blur(14px);
+        pointer-events: none;
+      }
+
+      #grid .rows {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr));
+        gap: clamp(14px, 1.8vw, 26px);
+        max-width: 1680px;
+        margin: 0 auto;
+      }
+
+      /* The same card as on the sphere, at full size: the screenshot set into
+         a lacquered mat, the project's name and kind on the card below it. */
+      #grid figure {
+        position: relative;
+        padding: 9px 9px 0;
+        border-radius: 18px;
+        background: linear-gradient(160deg, #1f2025 0%, #111114 50%, #0a0a0c 100%);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09), inset 0 1px 0 rgba(255, 255, 255, 0.18),
+          0 30px 60px -34px rgba(0, 0, 0, 0.95);
+        cursor: pointer;
+        transition: box-shadow 0.5s var(--ease), transform 0.5s var(--ease);
+      }
+
+      #grid figure::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background: linear-gradient(
+          165deg,
+          rgba(255, 255, 255, 0.08) 0%,
+          rgba(255, 255, 255, 0.02) 24%,
+          transparent 40%
+        );
+        pointer-events: none;
+      }
+
+      #grid figure:hover,
+      #grid figure:focus-visible {
+        transform: translateY(-3px);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.26),
+          0 36px 70px -34px rgba(0, 0, 0, 1);
+      }
+
+      #grid .thumb {
+        position: relative;
+        aspect-ratio: var(--ar);
+        overflow: hidden;
+        border-radius: 11px;
+        background: #0b0b0b;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+      }
+
+      #grid img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: 50% 0;
+        opacity: 0.9;
+        transition: transform 0.8s var(--ease), opacity 0.8s var(--ease);
+      }
+
+      #grid figure:hover img,
+      #grid figure:focus-visible img {
+        transform: scale(1.04);
+        opacity: 1;
+      }
+
+      #grid figcaption {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 15px 7px 16px;
+      }
+
+      #grid figcaption b {
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: 19px;
+        line-height: 1.15;
+        letter-spacing: 0.005em;
+      }
+
+      #grid figcaption span {
+        flex-shrink: 0;
+        font-size: 11px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: rgba(244, 242, 239, 0.5);
+      }
+
+      /* ---- 5. Chrome: fades in once the page is revealed ---- */
+      .chrome {
+        opacity: 0;
+        transition: opacity 1.2s ease 0.15s, transform 0.5s var(--ease);
+      }
+
+      body.revealed .chrome {
+        opacity: 1;
+      }
+
+      header {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 60;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        padding: calc(var(--pad) * 0.8 + var(--safe-top)) calc(var(--pad) + var(--safe-right))
+          calc(var(--pad) * 0.35) calc(var(--pad) + var(--safe-left));
+        mix-blend-mode: difference;
+        pointer-events: none;
+      }
+
+      header > * {
+        pointer-events: auto;
+      }
+
+      .wordmark,
+      .mark {
+        font-family: var(--serif);
+        font-weight: 400;
+        letter-spacing: 0.005em;
+      }
+
+      .wordmark em,
+      .mark em,
+      .who b em {
+        font-style: normal;
+        margin-left: 0.24em;
+      }
+
+      .wordmark {
+        /* A full fingertip of tap area, without moving the word. */
+        display: inline-block;
+        padding: 13px 0;
+        margin: -13px 0;
+        font-size: clamp(19px, 2.1vw, 27px);
+        line-height: 1;
+        color: #fff;
+        text-decoration: none;
+        white-space: nowrap;
+        transition: color 0.35s ease;
+      }
+
+      .menu-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 5px;
+        min-width: var(--tap);
+        min-height: var(--tap);
+        padding: 8px 0 4px;
+        color: #fff;
+      }
+
+      .menu-label {
+        font-size: clamp(12px, 1.25vw, 15px);
+        letter-spacing: 0.01em;
+        transition: opacity 0.35s ease;
+      }
+
+      .bars {
+        position: relative;
+        display: block;
+        width: clamp(42px, 4.4vw, 62px);
+        height: clamp(16px, 2vw, 22px);
+      }
+
+      .bars i {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 50%;
+        height: 1px;
+        background: #fff;
+        transition: transform 0.55s var(--ease), width 0.55s var(--ease), background 0.35s ease;
+      }
+
+      .bars i:first-child {
+        transform: translateY(-5px);
+      }
+
+      .bars i:last-child {
+        left: auto;
+        width: clamp(34px, 3.6vw, 50px);
+        transform: translateY(5px);
+      }
+
+      .menu-btn:hover .bars i:last-child {
+        transform: translate(-8px, 5px);
+      }
+
+      body.menu-open header {
+        z-index: 90;
+        mix-blend-mode: normal;
+      }
+
+      body.menu-open .wordmark {
+        color: #f4f2ef;
+      }
+
+      body.menu-open .menu-label {
+        opacity: 0;
+      }
+
+      body.menu-open .bars i {
+        background: #f4f2ef;
+      }
+
+      body.menu-open .bars i:first-child {
+        width: 100%;
+        transform: rotate(45deg);
+      }
+
+      body.menu-open .bars i:last-child {
+        width: 100%;
+        transform: rotate(-45deg);
+      }
+
+      /* The card in the corner */
+      .bio {
+        position: fixed;
+        left: calc(var(--pad) + var(--safe-left));
+        bottom: calc(var(--pad) + var(--safe-bottom));
+        z-index: 55;
+        max-width: min(320px, 46vw);
+      }
+
+      .who {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 14px;
+      }
+
+      /* A monogram stands in for a portrait. */
+      .avatar {
+        flex-shrink: 0;
+        width: 52px;
+        height: 52px;
+        display: grid;
+        place-items: center;
+        border-radius: 3px;
+        background: #f4f2ef;
+        color: #000;
+        font-family: var(--serif);
+        font-size: 19px;
+        letter-spacing: 0.02em;
+      }
+
+      .who b {
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: 19px;
+        letter-spacing: 0.01em;
+      }
+
+      .bio p {
+        font-size: 12.5px;
+        line-height: 1.62;
+        color: rgba(244, 242, 239, 0.72);
+      }
+
+      body.revealed.deep .bio,
+      body.revealed.gridview .bio,
+      body.revealed.lit .bio {
+        opacity: 0;
+        transform: translateY(10px);
+        pointer-events: none;
+        transition: opacity 0.45s var(--ease), transform 0.45s var(--ease);
+      }
+
+      .colophon {
+        position: fixed;
+        right: calc(var(--pad) + var(--safe-right));
+        bottom: calc(var(--pad) + var(--safe-bottom));
+        z-index: 55;
+        font-size: 12.5px;
+        color: rgba(244, 242, 239, 0.72);
+      }
+
+      body.revealed.gridview .colophon,
+      body.revealed.lit .colophon {
+        opacity: 0;
+        transition: opacity 0.45s var(--ease);
+      }
+
+      /* The grid toggle: four squares that fold in while the grid is open. */
+      .gridbtn {
+        position: fixed;
+        left: calc(var(--pad) + var(--safe-left));
+        bottom: calc(var(--pad) + var(--safe-bottom));
+        z-index: 56;
+        width: 44px;
+        height: 44px;
+        padding: 5px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4px;
+        opacity: 0;
+        transform: translateY(8px);
+        pointer-events: none;
+        transition: opacity 0.5s var(--ease), transform 0.5s var(--ease);
+      }
+
+      .gridbtn b {
+        display: block;
+        border-radius: 2px;
+        background: #f4f2ef;
+        transition: transform 0.45s var(--ease), background 0.3s ease;
+      }
+
+      .gridbtn:hover b {
+        background: #fff;
+        transform: scale(0.86);
+      }
+
+      body.revealed.deep .gridbtn,
+      body.revealed.gridview .gridbtn {
+        opacity: 1;
+        transform: none;
+        pointer-events: auto;
+      }
+
+      body.gridview .gridbtn b:first-child {
+        transform: translate(3px, 3px);
+      }
+
+      body.gridview .gridbtn b:last-child {
+        transform: translate(-3px, -3px);
+      }
+
+      body.lit .gridbtn {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      /* The cue along the bottom */
+      .cue {
+        position: fixed;
+        left: 50%;
+        bottom: calc(var(--pad) + var(--safe-bottom) + 4px);
+        z-index: 54;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 10px;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        color: rgba(244, 242, 239, 0.42);
+        white-space: nowrap;
+        transform: translateX(-50%);
+        pointer-events: none;
+      }
+
+      .cue s {
+        position: relative;
+        display: block;
+        width: 44px;
+        height: 1px;
+        background: rgba(244, 242, 239, 0.28);
+        overflow: hidden;
+      }
+
+      .cue s::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: #f4f2ef;
+        transform: translateX(-100%);
+        animation: sweep 2.6s ease infinite;
+      }
+
+      @keyframes sweep {
+        55% {
+          transform: translateX(0);
+        }
+        100% {
+          transform: translateX(100%);
+        }
+      }
+
+      body.revealed.deep .cue,
+      body.revealed.gridview .cue,
+      body.revealed.lit .cue {
+        opacity: 0;
+        transition: opacity 0.45s var(--ease);
+      }
+
+      /* ---- 6. The menu ---- */
+      #menu {
+        position: fixed;
+        inset: 0;
+        z-index: 80;
+        display: grid;
+        place-items: center;
+        background: #050505;
+        clip-path: inset(0 0 100% 0);
+        transition: clip-path 0.85s var(--ease);
+        pointer-events: none;
+      }
+
+      body.menu-open #menu {
+        clip-path: inset(0);
+        pointer-events: auto;
+      }
+
+      #menu nav {
+        display: flex;
+        flex-direction: column;
+        gap: clamp(4px, 1vw, 10px);
+        text-align: center;
+      }
+
+      #menu nav a {
+        padding-block: 4px;
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: clamp(34px, 7.6vw, 78px);
+        line-height: 1.08;
+        color: #f4f2ef;
+        text-decoration: none;
+        opacity: 0.55;
+        transition: opacity 0.35s ease, letter-spacing 0.35s ease;
+      }
+
+      #menu nav a:hover,
+      #menu nav a:focus-visible {
+        opacity: 1;
+        letter-spacing: 0.012em;
+      }
+
+      #menu .addr {
+        position: absolute;
+        left: calc(var(--pad) + var(--safe-left));
+        right: calc(var(--pad) + var(--safe-right));
+        bottom: calc(var(--pad) + var(--safe-bottom));
+        font-size: 12.5px;
+        line-height: 1.7;
+        color: var(--dim);
+        text-align: center;
+      }
+
+      #menu .addr a {
+        display: inline-block;
+        padding-block: 15px;
+        margin-block: -15px;
+        color: inherit;
+        text-decoration: none;
+      }
+
+      #menu .addr a:hover {
+        color: var(--ink);
+      }
+
+      /* ---- 7. The lightbox: no scrim, the archive stays in the dark ---- */
+      #lit {
+        position: fixed;
+        inset: 0;
+        z-index: 90;
+        display: grid;
+        place-items: center;
+        padding: clamp(56px, 8vh, 84px) var(--pad);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.42s ease;
+      }
+
+      body.lit #lit {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      #lit .scrim {
+        position: absolute;
+        inset: 0;
+      }
+
+      .plate {
+        position: relative;
+        width: min(72vw, 960px, calc((100vh - 260px) * var(--sar, 1.6)));
+        transition: transform 0.62s var(--ease), opacity 0.42s ease;
+      }
+
+      /* The opened card: the same lacquered frame as the covers, at full size. */
+      .shot {
+        position: relative;
+        width: 100%;
+        padding: 10px;
+        border-radius: 20px;
+        background: linear-gradient(160deg, #24252a 0%, #121215 50%, #0a0a0c 100%);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.24),
+          0 40px 100px rgba(0, 0, 0, 0.8);
+      }
+
+      .shot img {
+        width: 100%;
+        height: auto;
+        aspect-ratio: var(--sar, 1.6);
+        object-fit: cover;
+        border-radius: 11px;
+        background: #0b0b0b;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+      }
+
+      .close,
+      .links a {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 44px;
+        padding: 10px 14px;
+        border: 1px solid rgba(244, 242, 239, 0.78);
+        border-radius: 6px;
+        background: rgba(0, 0, 0, 0.35);
+        color: #f4f2ef;
+        font-size: 12.5px;
+        font-weight: 400;
+        text-decoration: none;
+        transition: border-color 0.25s ease, background 0.25s ease;
+      }
+
+      .close:hover,
+      .links a:hover {
+        border-color: #fff;
+        background: rgba(0, 0, 0, 0.55);
+      }
+
+      .close {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+      }
+
+      .meta {
+        display: grid;
+        grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr);
+        gap: clamp(22px, 3.2vw, 48px);
+        padding-top: 16px;
+      }
+
+      #litTitle {
+        font-family: var(--serif);
+        font-weight: 400;
+        font-size: clamp(22px, 2.15vw, 32px);
+        line-height: 1.08;
+        letter-spacing: -0.01em;
+        margin-bottom: 6px;
+      }
+
+      .where {
+        font-size: 13px;
+        color: rgba(244, 242, 239, 0.62);
+      }
+
+      .note {
+        font-size: 13.5px;
+        line-height: 1.55;
+        color: rgba(244, 242, 239, 0.92);
+      }
+
+      .stack {
+        margin-top: 10px;
+        font-size: 12px;
+        line-height: 1.6;
+        color: rgba(244, 242, 239, 0.5);
+      }
+
+      .links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .links a {
+        background: transparent;
+      }
+
+      /* ---- 9. Splash ---- */
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 250;
+        display: grid;
+        place-items: center;
+        align-content: center;
+        gap: 26px;
+        background: #000;
+        transition: opacity 0.6s ease;
+      }
+
+      #splash.out {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .mark {
+        font-size: clamp(28px, 4.4vw, 52px);
+        color: #f4f2ef;
+        opacity: 0;
+        animation: riseIn 1.25s ease 0.15s forwards;
+      }
+
+      .bar {
+        width: clamp(120px, 17vw, 210px);
+        height: 1px;
+        background: rgba(244, 242, 239, 0.16);
+      }
+
+      .bar s {
+        display: block;
+        height: 100%;
+        background: #f4f2ef;
+        transform: scaleX(0);
+        transform-origin: left;
+        transition: transform 0.55s ease;
+      }
+
+      .tag {
+        font-size: 10px;
+        letter-spacing: 0.26em;
+        text-transform: uppercase;
+        color: rgba(244, 242, 239, 0.38);
+        opacity: 0;
+        animation: riseIn 0.9s ease 0.7s forwards;
+      }
+
+      @keyframes riseIn {
+        from {
+          opacity: 0;
+          transform: translateY(9px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      /* ---- 10. The cursor dot ---- */
+      #dot {
+        position: fixed;
+        left: 0;
+        top: 0;
+        z-index: 300;
+        width: 19px;
+        height: 19px;
+        margin: -9.5px 0 0 -9.5px;
+        border-radius: 50%;
+        border: 1px solid transparent;
+        background: rgba(214, 212, 209, 0.9);
+        mix-blend-mode: difference;
+        pointer-events: none;
+        opacity: 0;
+        transition: width 0.35s ease, height 0.35s ease, margin 0.35s ease, background 0.35s ease,
+          border-color 0.35s ease, opacity 0.35s ease;
+      }
+
+      #dot.on {
+        opacity: 1;
+      }
+
+      #dot.wide {
+        width: 52px;
+        height: 52px;
+        margin: -26px 0 0 -26px;
+        background: rgba(244, 242, 239, 0.14);
+        border-color: rgba(244, 242, 239, 0.75);
+      }
+
+      @media (hover: none), (pointer: coarse) {
+        #dot {
+          display: none;
+        }
+      }
+
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+
+      /* ---- Responsive ---- */
+      @media (max-width: 900px) {
+        .bio {
+          max-width: min(
+            420px,
+            calc(100vw - var(--pad) * 2 - var(--safe-left) - var(--safe-right))
+          );
+        }
+
+        .bio p {
+          font-size: 12px;
+        }
+
+        .colophon {
+          font-size: 11px;
+        }
+
+        .meta {
+          grid-template-columns: 1fr;
+          gap: 10px;
+          padding-top: 14px;
+        }
+
+        .plate {
+          width: min(92vw, calc((100dvh - 220px) * var(--sar, 1.6)));
+        }
+
+        #grid .rows {
+          grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+        }
+
+        #grid {
+          padding-top: calc(var(--pad) * 2.8 + var(--safe-top));
+        }
+      }
+
+      @media (max-width: 768px) {
+        .colophon {
+          display: none;
+        }
+
+        .bio {
+          max-width: calc(100vw - var(--pad) * 2 - var(--safe-left) - var(--safe-right));
+        }
+
+        #headline {
+          font-size: clamp(22px, 6.4vw, 34px);
+        }
+
+        #menu nav a {
+          font-size: clamp(28px, 9vw, 54px);
+        }
+
+        #menu .addr {
+          font-size: 11.5px;
+        }
+      }
+
+      @media (max-width: 640px) {
+        :root {
+          /* The title sits in front of the sphere, where perspective enlarges
+             it by about a quarter; this keeps the enlarged line inside the
+             screen with a margin. */
+          --hw: min(76vw, 330px);
+          --pad: clamp(12px, 4vw, 18px);
+        }
+
+        /* On a phone the open project sits over the sphere's middle, so the
+           archive goes dark behind it. */
+        #lit {
+          background: rgba(0, 0, 0, 0.88);
+        }
+
+        .shot {
+          padding: 7px;
+          border-radius: 16px;
+        }
+
+        .shot img {
+          border-radius: 10px;
+        }
+
+        .avatar {
+          width: 42px;
+          height: 42px;
+          font-size: 16px;
+        }
+
+        .who b {
+          font-size: 17px;
+        }
+
+        .bio p {
+          font-size: 11.5px;
+          line-height: 1.55;
+        }
+
+        .cue {
+          display: none;
+        }
+
+        #lit {
+          display: block;
+          overflow-y: auto;
+          padding: calc(52px + var(--safe-top)) calc(var(--pad) + var(--safe-right))
+            calc(var(--pad) + var(--safe-bottom)) calc(var(--pad) + var(--safe-left));
+        }
+
+        .plate {
+          width: 100%;
+          max-width: 560px;
+          margin: 0 auto;
+        }
+
+        #litTitle {
+          font-size: clamp(20px, 5.6vw, 26px);
+        }
+
+        .note {
+          font-size: 12.5px;
+          line-height: 1.58;
+        }
+
+        .close {
+          top: 14px;
+          right: 14px;
+        }
+
+        /* One full-width card per row: big enough to read each landing page. */
+        #grid .rows {
+          grid-template-columns: 1fr;
+          gap: 16px;
+        }
+
+        #grid figcaption b {
+          font-size: 18px;
+        }
+
+        /* Clear of the header, which stays over the grid. */
+        #grid {
+          padding: calc(76px + var(--safe-top)) calc(var(--pad) + var(--safe-right))
+            calc(var(--pad) * 5 + 44px + var(--safe-bottom)) calc(var(--pad) + var(--safe-left));
+        }
+      }
+
+      @media (max-width: 380px) {
+        :root {
+          --hw: min(74vw, 290px);
+        }
+
+        .who {
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+
+        .bio p {
+          display: none;
+        }
+
+        #grid .rows {
+          grid-template-columns: 1fr;
+        }
+
+        #menu nav {
+          gap: 2px;
+        }
+
+        #menu nav a {
+          font-size: clamp(24px, 10vw, 40px);
+        }
+      }
+
+      @media (max-height: 520px) and (orientation: landscape) {
+        .bio,
+        .colophon,
+        .cue {
+          display: none;
+        }
+
+        #headline {
+          font-size: clamp(18px, 4.8vh, 28px);
+        }
+
+        #lit {
+          padding-top: calc(36px + var(--safe-top));
+        }
+
+        .meta {
+          padding-top: 10px;
+        }
+
+        .plate {
+          width: min(58vw, calc((100dvh - 80px) * var(--sar, 1.6)));
+        }
+
+        header {
+          padding-top: calc(8px + var(--safe-top));
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.14s !important;
+        }
+      }
+    </style>
+  </head>
+  <body class="locked">
+    <div id="scrolltrack" aria-hidden="true"></div>
+
+    <div id="stage">
+      <div id="world">
+        <div id="orb" aria-hidden="true"></div>
+        <h1 id="headline"><span class="inner"></span></h1>
+      </div>
+    </div>
+
+    <div class="vig" aria-hidden="true"></div>
+
+    <section id="grid" aria-label="All projects">
+      <div class="rows"></div>
+    </section>
+
+    <header class="chrome">
+      <a class="wordmark" href="/" aria-label="Anurag Sable, back to the portfolio">Anurag<em>Sable</em></a>
+      <button
+        id="menuBtn"
+        class="menu-btn"
+        aria-expanded="false"
+        aria-controls="menu"
+        aria-label="Open menu"
+      >
+        <span class="menu-label">Menu</span>
+        <span class="bars" aria-hidden="true"><i></i><i></i></span>
+      </button>
+    </header>
+
+    <aside class="bio chrome">
+      <div class="who">
+        <span class="avatar" aria-hidden="true">AS</span>
+        <b>Anurag<em>Sable</em></b>
+      </div>
+      <p id="bioText"></p>
+    </aside>
+
+    <div class="colophon chrome" id="colophon"></div>
+
+    <button id="gridBtn" class="gridbtn" aria-label="Toggle grid view" aria-pressed="false">
+      <b></b><b></b><b></b><b></b>
+    </button>
+
+    <div class="cue chrome" aria-hidden="true"><s></s><span>Drag to rotate</span></div>
+
+    <div id="menu" aria-hidden="true">
+      <nav aria-label="Menu" id="menuNav"></nav>
+      <p class="addr" id="menuAddr"></p>
+    </div>
+
+    <div id="lit" aria-hidden="true">
+      <div class="scrim" data-close></div>
+      <div class="plate" role="dialog" aria-modal="true" aria-labelledby="litTitle">
+        <div class="shot">
+          <img id="litImg" alt="" />
+          <button class="close" type="button" data-close>Close</button>
+        </div>
+        <div class="meta">
+          <div>
+            <h2 id="litTitle"></h2>
+            <p class="where" id="litWhere"></p>
+          </div>
+          <div>
+            <p class="note" id="litNote"></p>
+            <p class="stack" id="litStack"></p>
+            <p class="links" id="litLinks"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="splash" aria-hidden="true">
+      <div class="mark">Anurag<em>Sable</em></div>
+      <div class="bar"><s id="bar"></s></div>
+      <div class="tag" id="splashTag">Projects</div>
+    </div>
+
+    <div id="dot" aria-hidden="true"></div>
+
+    <script type="module" src="/src/projects-page/main.js"></script>
+  </body>
+</html>

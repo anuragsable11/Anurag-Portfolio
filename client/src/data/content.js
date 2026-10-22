@@ -106,6 +106,14 @@ export const skillGroups = [
   },
 ]
 
+/** The Projects section's heading — also the title of the all-projects page. */
+export const projectsHead = {
+  eyebrow: 'Projects',
+  title: 'Things I have',
+  highlight: 'designed and shipped',
+  sub: 'Two LLM systems built end to end, plus the web applications where I learned the fundamentals.',
+}
+
 export const projects = [
   {
     id: 'verus',

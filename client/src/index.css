@@ -530,9 +530,25 @@ ul {
   background: var(--secondary);
 }
 
-.nav-mobile .btn {
+/* The resume button keeps its own look: the plain link rules above must not
+   reach it (they turned it grey on white and broke its arrow onto a line). */
+.nav-mobile .btn,
+.nav-mobile .btn:hover {
+  display: flex;
   width: 100%;
-  margin-top: 8px;
+  margin-top: 10px;
+  padding: 13px 18px;
+  font-size: 0.95rem;
+  color: var(--bg);
+  background: var(--fg);
+}
+
+/* Dims the page under the open sheet; a tap on it closes the menu. */
+.nav-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 98;
+  background: rgba(0, 0, 0, 0.5);
 }
 
 /* ============================================================
@@ -802,6 +818,29 @@ ul {
   font-size: 0.72rem;
 }
 
+.pipe-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Phones: tighter steps, so the whole loop stays on one centred line. */
+@media (max-width: 520px) {
+  .pipeline {
+    justify-content: center;
+    gap: 4px;
+    padding: 12px 10px;
+  }
+
+  .pipe-step {
+    gap: 4px;
+  }
+
+  .pipe-node {
+    padding: 4px 7px;
+  }
+}
+
 /* Scroll hint */
 .scroll-hint {
   display: none;
@@ -1030,6 +1069,13 @@ ul {
    Projects
    ============================================================ */
 
+/* The way out to every repository, centred under the rail. */
+.projects-more {
+  display: flex;
+  justify-content: center;
+  margin-top: clamp(28px, 3.5vw, 44px);
+}
+
 /* Segmented filter: one track, and a pill that slides to the active tab. */
 .projects-filter {
   display: inline-flex;
@@ -1075,6 +1121,28 @@ ul {
 
 .filter-label {
   position: relative;
+}
+
+/* Phones: one row that scrolls sideways, never a stray tab on a second line,
+   and taller tabs for a thumb. */
+@media (max-width: 640px) {
+  .projects-filter {
+    display: flex;
+    flex-wrap: nowrap;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+
+  .projects-filter::-webkit-scrollbar {
+    display: none;
+  }
+
+  .filter-btn {
+    flex: 0 0 auto;
+    padding: 10px 15px;
+  }
 }
 
 /* Dark glass surfaces — project frames and the detail view — are dark in
@@ -1377,16 +1445,63 @@ ul {
     flex-direction: column;
   }
 
+  /* Open, the whole screenshot runs across the top, uncropped, and the
+     caption sits on the card under it. */
   .rail-frame {
     --open-w: 100cqw;
-    --open-h: max(260px, calc(100cqw * 1.18 * 758 / 1599));
+    --open-h: calc(100cqw / 2.09 + 176px);
     width: 100%;
-    height: 60px;
+    height: 64px;
   }
 
   .rail-frame.is-open {
     width: 100%;
     height: var(--open-h);
+  }
+
+  .rail-pic,
+  .rail-frame.is-open .rail-pic {
+    background-size: 100% auto;
+    background-position: 50% 0;
+  }
+}
+
+/* Closed bands name their project, so a slice of a landing page is never all
+   there is to go on. Only where the rail stands on end. */
+.rail-band {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .rail-band {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    background: linear-gradient(
+      90deg,
+      rgba(8, 9, 12, 0.9) 0%,
+      rgba(8, 9, 12, 0.72) 50%,
+      rgba(8, 9, 12, 0.45) 100%
+    );
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    pointer-events: none;
+    transition: opacity 0.35s ease;
+  }
+
+  .rail-frame.is-open .rail-band {
+    opacity: 0;
+  }
+
+  /* Behind the name, the slice of landing page goes soft and dim, so its own
+     headline never competes with the label. */
+  .rail-frame:not(.is-open) .rail-pic {
+    filter: brightness(0.6) saturate(0.7) blur(1.5px);
   }
 }
 
@@ -2420,6 +2535,48 @@ a.contact-link:hover {
   }
 }
 
+/* Touch screens: every control gets a full fingertip (44px). */
+@media (pointer: coarse) {
+  .theme-toggle,
+  .nav-toggle,
+  .social-btn,
+  .to-top,
+  .modal-close,
+  .billboard-zoom,
+  .rail-round {
+    width: 44px;
+    height: 44px;
+  }
+
+  .social-btn {
+    flex-shrink: 0;
+  }
+
+  .bb-btn,
+  .rail-actions .bb-btn {
+    height: 44px;
+  }
+
+  .filter-btn {
+    padding-block: 12px;
+  }
+
+  .move-key {
+    min-height: 44px;
+  }
+
+  .nav-logo {
+    padding-block: 7px;
+  }
+
+  /* The zoom button keeps its gap from the larger close button. */
+  @media (max-width: 760px) {
+    .billboard-zoom {
+      right: 64px;
+    }
+  }
+}
+
 /* ============================================================
    Motion preferences
    ============================================================ */
@@ -2911,26 +3068,28 @@ a.contact-link:hover {
   border-color: var(--brand-border);
 }
 
+/* Phones: five keys across the full width, each a full fingertip tall, the
+   key above its name. */
 @media (max-width: 520px) {
   .samurai-moves {
-    gap: 4px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 6px;
   }
 
   .samurai-moves-label {
-    flex-basis: 100%;
+    grid-column: 1 / -1;
     text-align: center;
     margin: 0 0 2px;
   }
 
   .move-key {
+    flex-direction: column;
+    justify-content: center;
     gap: 5px;
-    padding: 3px 7px 3px 3px;
-    font-size: 0.68rem;
-  }
-
-  .move-key kbd {
-    min-width: 20px;
-    height: 20px;
+    min-height: 58px;
+    padding: 7px 4px 6px;
+    font-size: 0.72rem;
   }
 }
 

@@ -7,35 +7,40 @@ import { reportSkill } from '../lib/companion.js'
  * The tech stack as app-icon tiles scattered around the section title.
  *
  * Drawn on a 2D canvas; a couple of dozen sprites need nothing heavier.
- *  - Entrance: when the section scrolls into view, the icons burst out from
- *    behind the title one after another, overshooting to 1.5× before they
- *    settle on their spots.
+ *  - Entrance: when the section scrolls into view, the icons rise out from
+ *    behind the title in a ripple, nearest first, each with a soft overshoot.
+ *  - Rest: each icon floats a few pixels around its spot on its own slow loop.
  *  - Cursor: move through the section and the icons nearest the pointer
- *    string out behind it, each one tracing the path the pointer took a few
- *    frames before the one ahead of it. Leave, and they stay where you left
- *    them; click (or lift a finger) and they spring home, where they keep
- *    drifting a few pixels either way.
+ *    string out behind it along the path it drew, evenly spaced at any speed;
+ *    stop, and the chain holds its shape. Leave, click or lift a finger, and
+ *    they glide home.
+ *
+ * The simulation steps at a fixed 60 Hz, so it feels the same everywhere,
+ * and each frame is drawn between the last two steps, so the motion stays
+ * even on 59, 75, 120 or 144 Hz screens instead of stepping or stalling.
  */
 
 // Entrance, in milliseconds
-const STAGGER = 75
-const POP = 500
+const STAGGER = 55
+const POP = 650
 
-// The simulation steps at a fixed 60 Hz, so it feels the same on any display.
 const STEP = 1000 / 60
 const SPRING = 0.08
 const DAMPING = 0.82
-// Pointer trail: positions remembered, steps between neighbouring icons, and
-// how quickly each icon closes on its point.
-const TRAIL = 160
-const SPACING = 7
-const FOLLOW = 0.14
-// Once home, every icon picks a new resting spot this far off, this often.
-const WANDER = 10
-const WANDER_EVERY = 2000
+// Pointer trail: the path is kept as points SEG px apart, so neighbours in
+// the chain sit a fixed distance apart along it; FOLLOW is how quickly each
+// icon closes on its point.
+const SEG = 4
+const FOLLOW = 0.16
+// After a click, the pointer must move this far before it gathers them again.
+const REGATHER = 24
+// The resting float, in px.
+const FLOAT = 5
 
 const lerp = (a, b, t) => a + (b - a) * t
-const easeOutBack = (t) => 1 + 2.70158 * (t - 1) ** 3 + 1.70158 * (t - 1) ** 2
+const clamp01 = (t) => Math.min(Math.max(t, 0), 1)
+/** Overshoots by about 10% at c = 1.70158, and about 18% at c = 2.4. */
+const easeOutBack = (t, c = 1.70158) => 1 + (c + 1) * (t - 1) ** 3 + c * (t - 1) ** 2
 
 /** Seeded, so the icons land in the same places on every visit. */
 function rng(seed) {
@@ -213,29 +218,37 @@ export default function SkillsSwarm({ centerRef }) {
     }
     showHint(touch ? 'gatherTouch' : 'gather')
 
+    const rand = rng(7)
     const icons = TECH.map((tech) => ({
       tech,
+      // Where it is now, and where it was a step ago (frames draw between).
       x: 0,
       y: 0,
+      px: 0,
+      py: 0,
       vx: 0,
       vy: 0,
       homeX: 0,
       homeY: 0,
-      restX: 0,
-      restY: 0,
       scale: still ? 1 : 0,
+      delay: 0,
+      chained: false,
+      // Its own float: a period of 3.5–6 s on each axis, and a phase.
+      wx: (Math.PI * 2) / (3500 + rand() * 2500),
+      wy: (Math.PI * 2) / (3500 + rand() * 2500),
+      fx: rand() * Math.PI * 2,
+      fy: rand() * Math.PI * 2,
       tile: null,
     }))
-    const view = { w: 0, h: 0, ratio: 1, size: 0 }
-    const pointer = { x: 0, y: 0, active: false }
+    const view = { w: 0, h: 0, ratio: 1, size: 0, gap: 1, maxTrail: 1 }
+    const pointer = { x: 0, y: 0, active: false, heldAt: null }
     const trail = []
     let order = []
-    // waiting → entering → idle. Once idle, the icons either trail the
-    // pointer, spring home (`returning`), or stay put where they were left.
+    // waiting → entering → idle. Once idle, the icons trail the pointer while
+    // it moves through the stage, and float on their spots otherwise.
     let mode = still ? 'idle' : 'waiting'
-    let returning = false
     let enterAt = 0
-    let wanderClock = 0
+    let clock = 0
     let destroyed = false
 
     /* ---- Tiles, repainted when the size or the theme changes ---- */
@@ -285,66 +298,91 @@ export default function SkillsSwarm({ centerRef }) {
       // Keep clear of the title and of the hint along the bottom edge.
       const stage = wrap.getBoundingClientRect()
       const title = center.getBoundingClientRect()
+      const titleX = title.left + title.width / 2 - (stage.left + w / 2)
+      const titleY = title.top + title.height / 2 - (stage.top + h / 2)
       const clear = size * 0.55 + 8
       const margin = size * 0.62
       const spots = scatter(icons.length, Math.min(w / 2 - margin, 820), h / 2 - margin, [
-        {
-          x: title.left + title.width / 2 - (stage.left + w / 2),
-          y: title.top + title.height / 2 - (stage.top + h / 2),
-          hw: title.width / 2 + clear,
-          hh: title.height / 2 + clear,
-        },
+        { x: titleX, y: titleY, hw: title.width / 2 + clear, hh: title.height / 2 + clear },
         { x: 0, y: h / 2 - 36, hw: 120 + clear, hh: 14 + clear },
       ])
       icons.forEach((icon, i) => {
-        icon.homeX = icon.restX = spots[i].x
-        icon.homeY = icon.restY = spots[i].y
+        icon.homeX = spots[i].x
+        icon.homeY = spots[i].y
         if (still) {
-          icon.x = icon.homeX
-          icon.y = icon.homeY
+          icon.x = icon.px = icon.homeX
+          icon.y = icon.py = icon.homeY
         }
       })
-      // Settled icons follow their spots to the new layout.
-      if (mode === 'idle' && !pointer.active) returning = true
+      // The entrance ripples outward: nearest the title first.
+      icons
+        .map((icon) => [icon, Math.hypot(icon.homeX - titleX, icon.homeY - titleY)])
+        .sort((a, b) => a[1] - b[1])
+        .forEach(([icon], rank) => {
+          icon.delay = rank * STAGGER
+        })
+      // Neighbours in the chain sit 0.8 of a tile apart along the path.
+      view.gap = Math.max(1, Math.round((size * 0.8) / SEG))
+      view.maxTrail = icons.length * view.gap + 1
 
       if (resized) paintTiles()
       draw()
     }
 
     /* ---- Simulation ---- */
-    const step = (now) => {
-      if (mode === 'entering') {
-        const elapsed = now - enterAt
-        let done = true
-        icons.forEach((icon, i) => {
-          const t = (elapsed - i * STAGGER) / POP
-          if (t < 0) {
-            done = false
-            return
-          }
-          const k = Math.min(t, 1)
-          if (k < 1) done = false
-          const e = easeOutBack(k)
-          icon.x = icon.homeX * e
-          icon.y = icon.homeY * e
-          icon.scale = k < 0.5 ? lerp(0, 1.5, k * 2) : lerp(1.5, 1, (k - 0.5) * 2)
-        })
-        if (done) {
-          mode = 'idle'
-          icons.forEach((icon) => {
-            icon.x = icon.restX = icon.homeX
-            icon.y = icon.restY = icon.homeY
-            icon.scale = 1
-            icon.vx = icon.vy = 0
-          })
+    // Where an icon rests at this moment: its spot, plus its float.
+    const restX = (icon) => icon.homeX + Math.sin(clock * icon.wx + icon.fx) * FLOAT
+    const restY = (icon) => icon.homeY + Math.cos(clock * icon.wy + icon.fy) * FLOAT * 0.8
+
+    /** The entrance is timed against the clock, so it is posed every frame. */
+    const enter = (now) => {
+      let done = true
+      for (const icon of icons) {
+        const k = clamp01((now - enterAt - icon.delay) / POP)
+        if (k < 1) done = false
+        const e = k > 0 ? easeOutBack(k) : 0
+        icon.x = icon.px = icon.homeX * e
+        icon.y = icon.py = icon.homeY * e
+        icon.scale = k > 0 ? easeOutBack(k, 2.4) : 0
+      }
+      if (done) {
+        mode = 'idle'
+        for (const icon of icons) {
+          icon.scale = 1
+          icon.vx = icon.vy = 0
         }
+      }
+    }
+
+    /** Extends the path to the pointer in SEG-long pieces. */
+    const extendTrail = () => {
+      let head = trail[trail.length - 1]
+      if (!head) {
+        trail.push({ x: pointer.x, y: pointer.y })
         return
       }
-      if (mode !== 'idle') return
+      for (;;) {
+        const dx = pointer.x - head.x
+        const dy = pointer.y - head.y
+        const d = Math.hypot(dx, dy)
+        if (d < SEG) break
+        head = { x: head.x + (dx / d) * SEG, y: head.y + (dy / d) * SEG }
+        trail.push(head)
+      }
+      if (trail.length > view.maxTrail) trail.splice(0, trail.length - view.maxTrail)
+    }
 
-      if (pointer.active && !returning) {
-        trail.push({ x: pointer.x, y: pointer.y })
-        if (trail.length > TRAIL) trail.shift()
+    const step = () => {
+      for (const icon of icons) {
+        icon.px = icon.x
+        icon.py = icon.y
+      }
+      if (mode !== 'idle') return
+      clock += STEP
+
+      for (const icon of icons) icon.chained = false
+      if (pointer.active) {
+        extendTrail()
         // The chain forms nearest-first, fixed when the pointer arrives.
         if (!order.length) {
           order = icons
@@ -354,41 +392,49 @@ export default function SkillsSwarm({ centerRef }) {
           // The icon leading the chain is the one being played with.
           reportSkill(icons[order[0]]?.tech.group)
         }
+        // Each icon closes on its own point along the path; the ones the
+        // path has not reached yet keep floating at home until it does.
         order.forEach((i, k) => {
-          const at = trail.length - 1 - k * SPACING
+          const at = trail.length - 1 - k * view.gap
           if (at < 0) return
           const icon = icons[i]
-          icon.x = lerp(icon.x, trail[at].x, FOLLOW)
-          icon.y = lerp(icon.y, trail[at].y, FOLLOW)
-          icon.vx = icon.vy = 0
+          const x = lerp(icon.x, trail[at].x, FOLLOW)
+          const y = lerp(icon.y, trail[at].y, FOLLOW)
+          // Keep its speed, so letting go carries straight into the glide home.
+          icon.vx = x - icon.x
+          icon.vy = y - icon.y
+          icon.x = x
+          icon.y = y
+          icon.chained = true
         })
-      } else if (returning) {
-        for (const icon of icons) {
-          icon.vx = (icon.vx + (icon.restX - icon.x) * SPRING) * DAMPING
-          icon.vy = (icon.vy + (icon.restY - icon.y) * SPRING) * DAMPING
-          icon.x += icon.vx
-          icon.y += icon.vy
-        }
-        wanderClock += STEP
-        if (wanderClock > WANDER_EVERY) {
-          wanderClock = 0
-          for (const icon of icons) {
-            icon.restX = icon.homeX + (Math.random() * 2 - 1) * WANDER
-            icon.restY = icon.homeY + (Math.random() * 2 - 1) * WANDER
-          }
-        }
+      }
+
+      for (const icon of icons) {
+        if (icon.chained) continue
+        icon.vx = (icon.vx + (restX(icon) - icon.x) * SPRING) * DAMPING
+        icon.vy = (icon.vy + (restY(icon) - icon.y) * SPRING) * DAMPING
+        icon.x += icon.vx
+        icon.y += icon.vy
       }
     }
 
-    const draw = () => {
+    /** Paints the frame `alpha` of the way from the last step to the next. */
+    const draw = (alpha = 1) => {
       const { w, h, ratio } = view
       ctx.setTransform(1, 0, 0, 1, 0, 0)
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       ctx.setTransform(ratio, 0, 0, ratio, (w / 2) * ratio, (h / 2) * ratio)
-      for (const icon of icons) {
-        if (icon.scale <= 0 || !icon.tile) continue
+      const paint = (icon) => {
+        if (icon.scale <= 0 || !icon.tile) return
         const d = icon.tile.full * icon.scale
-        ctx.drawImage(icon.tile.canvas, icon.x - d / 2, icon.y - d / 2, d, d)
+        const x = lerp(icon.px, icon.x, alpha)
+        const y = lerp(icon.py, icon.y, alpha)
+        ctx.drawImage(icon.tile.canvas, x - d / 2, y - d / 2, d, d)
+      }
+      // The chain over the rest, its leader on top.
+      for (const icon of icons) if (!icon.chained) paint(icon)
+      for (let k = order.length - 1; k >= 0; k--) {
+        if (icons[order[k]].chained) paint(icons[order[k]])
       }
     }
 
@@ -403,14 +449,20 @@ export default function SkillsSwarm({ centerRef }) {
         last = now
         return
       }
+      if (mode === 'entering') {
+        enter(now)
+        last = now
+        draw()
+        return
+      }
       // Capped, so returning to the tab does not replay seconds of motion.
       acc += Math.min(now - (last || now), 250)
       last = now
       while (acc >= STEP) {
-        step(now)
+        step()
         acc -= STEP
       }
-      draw()
+      draw(acc / STEP)
     }
 
     const seen = new IntersectionObserver(
@@ -419,7 +471,7 @@ export default function SkillsSwarm({ centerRef }) {
       },
       { rootMargin: '120px' }
     )
-    // The burst waits until the section is well into view.
+    // The entrance waits until the section is well into view.
     const entrance = new IntersectionObserver(
       (entries) => {
         if (mode === 'waiting' && entries.some((e) => e.isIntersecting)) {
@@ -439,19 +491,29 @@ export default function SkillsSwarm({ centerRef }) {
     }
     const gather = (clientX, clientY, hintKey) => {
       toStage(clientX, clientY)
+      // Just sent home with a click: wait for a deliberate move, so a hand's
+      // tremor does not pull them straight back out.
+      if (pointer.heldAt) {
+        if (Math.hypot(pointer.x - pointer.heldAt.x, pointer.y - pointer.heldAt.y) < REGATHER) return
+        pointer.heldAt = null
+      }
       pointer.active = true
-      returning = false
       showHint(hintKey)
     }
-    const release = () => {
+    const sendHome = () => {
       pointer.active = false
       trail.length = 0
       order = []
-    }
-    const sendHome = () => {
-      release()
-      returning = true
+      for (const icon of icons) icon.chained = false
       showHint(touch ? 'gatherTouch' : 'gather')
+    }
+    const onClick = () => {
+      sendHome()
+      pointer.heldAt = { x: pointer.x, y: pointer.y }
+    }
+    const onLeave = () => {
+      sendHome()
+      pointer.heldAt = null
     }
     const onMouseMove = (e) => gather(e.clientX, e.clientY, 'home')
     const onTouchMove = (e) => {
@@ -473,11 +535,11 @@ export default function SkillsSwarm({ centerRef }) {
       seen.observe(wrap)
       entrance.observe(wrap)
       wrap.addEventListener('mousemove', onMouseMove)
-      wrap.addEventListener('mouseleave', release)
-      wrap.addEventListener('click', sendHome)
+      wrap.addEventListener('mouseleave', onLeave)
+      wrap.addEventListener('click', onClick)
       wrap.addEventListener('touchstart', onTouchMove, { passive: true })
       wrap.addEventListener('touchmove', onTouchMove, { passive: true })
-      wrap.addEventListener('touchend', sendHome)
+      wrap.addEventListener('touchend', onLeave)
       frame = requestAnimationFrame(tick)
     }
 
@@ -489,11 +551,11 @@ export default function SkillsSwarm({ centerRef }) {
       resizeWatcher.disconnect()
       themeWatcher.disconnect()
       wrap.removeEventListener('mousemove', onMouseMove)
-      wrap.removeEventListener('mouseleave', release)
-      wrap.removeEventListener('click', sendHome)
+      wrap.removeEventListener('mouseleave', onLeave)
+      wrap.removeEventListener('click', onClick)
       wrap.removeEventListener('touchstart', onTouchMove)
       wrap.removeEventListener('touchmove', onTouchMove)
-      wrap.removeEventListener('touchend', sendHome)
+      wrap.removeEventListener('touchend', onLeave)
     }
   }, [centerRef])
 

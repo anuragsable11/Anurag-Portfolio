@@ -194,7 +194,7 @@ export default function Hero() {
 
             <div className="pipeline">
               {['Client', 'API', 'Queue', 'LLM', 'Memory'].map((node, i, arr) => (
-                <span key={node} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <span key={node} className="pipe-step">
                   <span className="pipe-node">{node}</span>
                   {i < arr.length - 1 && <span className="pipe-arrow">→</span>}
                 </span>

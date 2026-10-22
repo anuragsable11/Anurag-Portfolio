@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion, useInView, useReducedMotion } from 'framer-motion'
-import { FiInfo, FiLock, FiMaximize2, FiPlus, FiX } from 'react-icons/fi'
+import { FiArrowRight, FiInfo, FiLock, FiMaximize2, FiPlus, FiX } from 'react-icons/fi'
 import { FaGithub, FaPlay } from 'react-icons/fa'
 import Reveal from './Reveal.jsx'
 import SectionHead from './SectionHead.jsx'
-import { projects } from '../data/content.js'
+import { projects, projectsHead } from '../data/content.js'
 import { act, celebrate } from '../lib/companion.js'
 
 const ease = [0.22, 1, 0.36, 1]
@@ -338,6 +338,9 @@ function RailFrame({ project, open, onActivate, onOpen }) {
           style={showcase ? { '--shot': `url(${showcase.image})` } : undefined}
           aria-hidden="true"
         />
+        <span className="rail-band" aria-hidden="true">
+          {project.name}
+        </span>
         <button
           ref={hitRef}
           className="rail-hit"
@@ -457,12 +460,7 @@ export default function Projects() {
   return (
     <section id="projects" className="section">
       <div className="container">
-        <SectionHead
-          eyebrow="Projects"
-          title="Things I have"
-          highlight="designed and shipped"
-          sub="Two LLM systems built end to end, plus the web applications where I learned the fundamentals."
-        />
+        <SectionHead {...projectsHead} />
 
         <Reveal>
           <div className="projects-filter">
@@ -522,6 +520,14 @@ export default function Projects() {
             </AnimatePresence>
           </div>
         </Reveal>
+
+        {/* Every project on one page: a sphere of covers you can turn. */}
+        <div className="projects-more">
+          <a className="btn btn-ghost" href="/projects.html">
+            View all projects
+            <FiArrowRight aria-hidden="true" />
+          </a>
+        </div>
       </div>
 
       {/* Portalled: the section sits inside transformed layout wrappers, which
