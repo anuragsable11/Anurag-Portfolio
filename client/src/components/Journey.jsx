@@ -1,20 +1,37 @@
-import { useRef } from 'react'
-import { motion, useReducedMotion, useScroll, useSpring } from 'framer-motion'
-import { FiAward, FiBookOpen, FiBriefcase } from 'react-icons/fi'
-import Reveal from './Reveal.jsx'
 import SectionHead from './SectionHead.jsx'
 import { certifications, timeline } from '../data/content.js'
 
-export default function Journey() {
-  // The rail fills with light as the timeline scrolls past.
-  const railRef = useRef(null)
-  const reduceMotion = useReducedMotion()
-  const { scrollYProgress } = useScroll({
-    target: railRef,
-    offset: ['start 75%', 'end 55%'],
-  })
-  const fill = useSpring(scrollYProgress, { stiffness: 120, damping: 30, restDelta: 0.001 })
+const fromTimeline = ({ id, title, org, period, points }) => ({ id, title, org, when: period, points })
 
+/**
+ * The section's own three words, one group each, set as a typeset ledger:
+ * the group in the margin, then each entry with its date flush right.
+ */
+const groups = [
+  {
+    id: 'training',
+    label: 'Training',
+    entries: timeline.filter((t) => t.kind === 'experience').map(fromTimeline),
+  },
+  {
+    id: 'education',
+    label: 'Education',
+    entries: timeline.filter((t) => t.kind === 'education').map(fromTimeline),
+  },
+  {
+    id: 'certifications',
+    label: 'Certifications',
+    entries: certifications.map(({ id, title, issuer, date, detail }) => ({
+      id,
+      title,
+      org: issuer,
+      when: date,
+      points: [detail],
+    })),
+  },
+]
+
+export default function Journey() {
   return (
     <section id="journey" className="section">
       <div className="container">
@@ -25,52 +42,31 @@ export default function Journey() {
           sub="Where the foundations came from — and what I picked up along the way."
         />
 
-        <div className="journey-grid">
-          <div className="timeline" ref={railRef}>
-            <motion.span
-              className="timeline-fill"
-              style={{ scaleY: reduceMotion ? 1 : fill }}
-              aria-hidden="true"
-            />
-            {timeline.map((item, i) => (
-              <Reveal key={item.id} delay={i * 0.1} x={-16} y={0}>
-                <div className="tl-item" data-kind={item.kind}>
-                  <span className="tl-node" aria-hidden="true">
-                    {item.kind === 'experience' ? <FiBriefcase /> : <FiBookOpen />}
-                  </span>
-                  <span className="tl-period">{item.period}</span>
-                  <h3 className="tl-title">{item.title}</h3>
-                  <div className="tl-org">{item.org}</div>
-                  {item.points.length > 0 && (
-                    <ul className="tl-points">
-                      {item.points.map((p, k) => (
-                        <li key={k}>{p}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </Reveal>
-            ))}
-          </div>
-
-          <div className="cert-list">
-            {certifications.map((cert, i) => (
-              <Reveal key={cert.id} delay={0.12 + i * 0.1}>
-                <div className="card cert-card">
-                  <span className="cert-icon">
-                    <FiAward />
-                  </span>
-                  <div>
-                    <h4>{cert.title}</h4>
-                    <div className="cert-meta">
-                      {cert.issuer} · {cert.date}
+        <div className="ledger">
+          {groups.map((group) => (
+            <div className="ledger-group" key={group.id}>
+              <h3 className="ledger-label">{group.label}</h3>
+              <ol className="ledger-entries">
+                {group.entries.map((entry) => (
+                  <li className="ledger-entry" key={entry.id}>
+                    <div className="ledger-head">
+                      <h4 className="ledger-title">{entry.title}</h4>
+                      <span className="ledger-when">{entry.when}</span>
                     </div>
-                    <p>{cert.detail}</p>
-                  </div>
-                </div>
-              </Reveal>
-            ))}
-          </div>
+                    <div className="ledger-org">{entry.org}</div>
+                    {entry.points.length === 1 && <p className="ledger-note">{entry.points[0]}</p>}
+                    {entry.points.length > 1 && (
+                      <ul className="ledger-points">
+                        {entry.points.map((p, k) => (
+                          <li key={k}>{p}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ))}
         </div>
       </div>
     </section>

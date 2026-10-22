@@ -4,14 +4,16 @@
  */
 import docmindLanding from '../assets/projects/docmind-landing-1600.webp'
 import docmindLandingSmall from '../assets/projects/docmind-landing-800.webp'
-import omnichatLanding from '../assets/projects/omnichat-landing-1600.webp'
-import omnichatLandingSmall from '../assets/projects/omnichat-landing-800.webp'
+import cursusLanding from '../assets/projects/cursus-landing-1600.webp'
+import cursusLandingSmall from '../assets/projects/cursus-landing-800.webp'
+import verusLanding from '../assets/projects/verus-landing-1600.webp'
+import verusLandingSmall from '../assets/projects/verus-landing-800.webp'
 import quizverseLanding from '../assets/projects/quizverse-landing-1600.webp'
 import quizverseLandingSmall from '../assets/projects/quizverse-landing-800.webp'
 import skysnapLanding from '../assets/projects/skysnap-landing-1600.webp'
 import skysnapLandingSmall from '../assets/projects/skysnap-landing-800.webp'
-import todoLanding from '../assets/projects/todo-landing-1600.webp'
-import todoLandingSmall from '../assets/projects/todo-landing-800.webp'
+import donewardLanding from '../assets/projects/doneward-landing-1600.webp'
+import donewardLandingSmall from '../assets/projects/doneward-landing-800.webp'
 
 export const profile = {
   name: 'Anurag Sable',
@@ -106,8 +108,8 @@ export const skillGroups = [
 
 export const projects = [
   {
-    id: 'omnichat',
-    name: 'OmniChat AI',
+    id: 'verus',
+    name: 'Verus AI',
     subtitle: 'Conversational LLM Orchestration Platform',
     year: '2025',
     featured: true,
@@ -133,15 +135,15 @@ export const projects = [
     flow: ['Client', 'REST / WS', 'Celery queue', 'Qwen3 via Ollama', 'Stream back'],
     // The product's own landing page, shown above the engineering write-up.
     showcase: {
-      image: omnichatLanding,
-      imageSmall: omnichatLandingSmall,
-      width: 1599,
-      height: 759,
-      address: 'omnichat.local',
-      alt: 'OmniChat landing page: the headline "Private AI chat, on your own terms." above Continue chatting and Explore features buttons, with a badge reading "Qwen3 via Ollama — zero cloud calls".',
+      image: verusLanding,
+      imageSmall: verusLandingSmall,
+      width: 1590,
+      height: 758,
+      address: 'verus.local',
+      alt: 'Verus AI landing page: the headline "Private AI chat, on your own terms." above Continue chatting and Explore features buttons, with a badge reading "Qwen3 via Ollama — zero cloud calls".',
       headline: 'Private AI chat, on your own terms.',
       pitch:
-        'A language model running on your own server, with answers streamed live to the browser. No API keys, no per-token bills, and not a single message leaves your infrastructure.',
+        'Verus AI runs a language model on your own server and delivers answers live to your browser. No API keys, no per-token bills, and not a single message leaves your infrastructure.',
       promises: ['Self-hosted', 'Conversation memory', 'Live WebSocket replies'],
     },
     links: { github: 'https://github.com/anuragsable11/OmniChat-AI' },
@@ -180,6 +182,38 @@ export const projects = [
     links: { github: 'https://github.com/anuragsable11/DocMind' },
   },
   {
+    id: 'cursus',
+    name: 'Cursus AI',
+    subtitle: 'Career Intelligence for AI Engineers',
+    year: '2026',
+    featured: true,
+    category: 'Full Stack',
+    accent: 'emerald',
+    summary:
+      'For aspiring AI Engineers: it reads your resume, scores it against a real job description, and turns the gaps into a 2–12 week learning roadmap — instant and rule-based, or expanded by a local Qwen3 model.',
+    highlights: [
+      'Built resume parsing that turns an uploaded PDF into a structured profile of skills, experience, education and projects.',
+      'Compared the extracted skills against a job description to score the match and list the missing skills as gaps.',
+      'Generated a 2–12 week learning roadmap from those gaps: an instant rule-based plan, plus an optional AI version on a local Qwen3 (4B) model via Ollama that adds explanations, project ideas and interview topics.',
+      'Built a FastAPI backend and a Next.js frontend with secure accounts (Argon2id password hashing and server-side sessions), progress tracking, and light and dark themes.',
+    ],
+    stack: ['FastAPI', 'Python', 'Next.js', 'TypeScript', 'Ollama (Qwen3 4B)', 'Argon2id'],
+    flow: ['Resume PDF', 'Skill profile', 'Job match', 'Skill gaps', 'Roadmap'],
+    showcase: {
+      image: cursusLanding,
+      imageSmall: cursusLandingSmall,
+      width: 1525,
+      height: 763,
+      address: 'cursus.local',
+      alt: 'Cursus AI overview page in dark mode: the headline "Anurag, know exactly what to learn next" beside an Analyze your resume button, a three-step journey (Resume profile, Job match, Learning roadmap), and an example card showing 12 skills found in resume.pdf, 68% skill coverage and a Week 2 Embeddings & RAG checklist.',
+      headline: 'Know exactly what to learn next.',
+      pitch:
+        'Turn your resume into a skill profile, see how it covers a real job description, and follow a week-by-week plan with projects worth building.',
+      promises: ['Resume profile', 'Job match', 'Learning roadmap'],
+    },
+    links: { github: 'https://github.com/anuragsable11/cursus-ai' },
+  },
+  {
     id: 'skysnap',
     name: 'SkySnap',
     subtitle: 'Weather Web Application',
@@ -197,10 +231,10 @@ export const projects = [
     showcase: {
       image: skysnapLanding,
       imageSmall: skysnapLandingSmall,
-      width: 1599,
-      height: 758,
+      width: 1571,
+      height: 728,
       address: 'sky-snap-weather-website-x92k.vercel.app',
-      alt: 'SkySnap landing page on a starry night-sky background: a sun-and-cloud icon above the headline "What\'s the sky doing?", a city search bar with a Snap it button, and quick picks for London, New York, Tokyo, Mumbai, Paris and Sydney.',
+      alt: 'SkySnap landing page on a starry night sky: the headline "What’s the sky doing?" under a "Live weather · Any city on earth" label, a city search bar with a Snap it button, recent searches and quick picks for London, New York, Tokyo, Mumbai, Paris and Sydney, with a sun-and-cloud icon on the right.',
     },
     links: {
       live: 'https://sky-snap-weather-website-x92k.vercel.app/',
@@ -208,13 +242,13 @@ export const projects = [
     },
   },
   {
-    id: 'todo',
-    name: 'Django To-Do List',
+    id: 'doneward',
+    name: 'Doneward',
     subtitle: 'Task Management Web Application',
     year: '2024',
     featured: false,
     category: 'Web App',
-    accent: 'emerald',
+    accent: 'amber',
     summary:
       'A task manager with full CRUD backed by the Django ORM and PostgreSQL, structured on a clean model-view-template architecture.',
     highlights: [
@@ -223,19 +257,19 @@ export const projects = [
     ],
     stack: ['Django', 'Python', 'PostgreSQL', 'HTML', 'CSS'],
     showcase: {
-      image: todoLanding,
-      imageSmall: todoLandingSmall,
-      width: 1581,
-      height: 765,
-      address: 'django-to-do-list-gules.vercel.app',
-      alt: 'To-Do landing page in a comic-book style: the headline "Get stuff done!" over a blue sunburst, Join free and Log in buttons, and a “Today’s missions” card with a task being typed in.',
-      headline: 'Get stuff done!',
+      image: donewardLanding,
+      imageSmall: donewardLandingSmall,
+      width: 1580,
+      height: 756,
+      address: 'doneward.vercel.app',
+      alt: 'Doneward landing page in dark mode: the serif headline "Write it down. Get it done." with "done." circled in orange, a "Meet Stripes, your task assistant" badge above it, Start for free and Log in buttons, and the line "Free · Private · No clutter".',
+      headline: 'Write it down. Get it done.',
       pitch:
-        'A to-do list with super powers. Add your tasks, knock them out one by one, and celebrate every win.',
-      promises: ['Add, edit and delete tasks', 'Mark tasks complete', 'Your own account'],
+        'A calm, focused to-do list for everything on your mind. Capture tasks in a keystroke, check them off with a satisfying click, and never lose a thing.',
+      promises: ['Free', 'Private', 'No clutter'],
     },
     links: {
-      live: 'https://django-to-do-list-gules.vercel.app/',
+      live: 'https://doneward.vercel.app/',
       github: 'https://github.com/anuragsable11/Django-TO-DO-List',
     },
   },
@@ -259,10 +293,10 @@ export const projects = [
     showcase: {
       image: quizverseLanding,
       imageSmall: quizverseLandingSmall,
-      width: 1580,
-      height: 756,
+      width: 1585,
+      height: 759,
       address: 'playquizverse.vercel.app',
-      alt: 'Quizverse landing page in dark mode: the headline "Test what you know. See how you improve." with Start a quiz and Create a free account buttons, beside a quiz card on question 4 of 10 asking which planet has the shortest day, with Jupiter selected.',
+      alt: 'Quizverse landing page in dark mode: the headline "Timed quizzes in 17 categories" with Start a quiz and Create an account buttons, beside a "Pick a category" grid running from General Knowledge to Vehicles, with a "How a quiz works" table below.',
     },
     links: {
       live: 'https://playquizverse.vercel.app/',
