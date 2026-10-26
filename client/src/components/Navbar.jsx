@@ -23,12 +23,8 @@ export default function Navbar() {
 
   return (
     <>
-      <motion.header
-        className={`nav ${scrolled ? 'scrolled' : ''}`}
-        initial={{ y: -80, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-      >
+      {/* Drops in with CSS (.nav), from the prerendered page's first paint. */}
+      <header className={`nav ${scrolled ? 'scrolled' : ''}`}>
         <nav className="nav-inner">
           <a href="#home" className="nav-logo" aria-label="Back to top">
             <span className="nav-mark">AS</span>
@@ -77,7 +73,7 @@ export default function Navbar() {
             </button>
           </div>
         </nav>
-      </motion.header>
+      </header>
 
       <AnimatePresence>
         {open && (

@@ -245,7 +245,7 @@ export const projects = [
       alt: 'SkySnap landing page on a starry night sky: the headline "What’s the sky doing?" under a "Live weather · Any city on earth" label, a city search bar with a Snap it button, recent searches and quick picks for London, New York, Tokyo, Mumbai, Paris and Sydney, with a sun-and-cloud icon on the right.',
     },
     links: {
-      live: 'https://sky-snap-weather-website-x92k.vercel.app/',
+      live: 'https://skysnap-v1.vercel.app/',
       github: 'https://github.com/anuragsable11/SkySnap-Weather-Website-',
     },
   },

@@ -38,3 +38,15 @@ export function canRenderSamurai() {
   if (typeof window === 'undefined') return false
   return hasWebGL()
 }
+
+/**
+ * True on phones: a touch screen without hover whose shorter side is under
+ * 600px, in either orientation (tablets start at 744px). Building the 3D
+ * samurai costs a phone ~2 s of main-thread work, so there he waits as his
+ * poster until he is tapped.
+ */
+export function isPhone() {
+  if (typeof window === 'undefined') return false
+  const touch = window.matchMedia('(hover: none) and (pointer: coarse)').matches
+  return touch && Math.min(window.screen.width, window.screen.height) < 600
+}

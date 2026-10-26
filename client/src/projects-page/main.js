@@ -5,9 +5,19 @@
  * each project on its own.
  *
  * Plain DOM, no framework. The projects come from the same data file as the
- * portfolio, so the two pages never disagree.
+ * portfolio, so the two pages never disagree, and the page's words come
+ * from markup.js, which the build also writes into the HTML.
  */
-import { navLinks, profile, projects, projectsHead } from '../data/content.js'
+import { profile, projectsHead } from '../data/content.js'
+import {
+  addressHTML,
+  gridHTML,
+  headlineHTML,
+  indexHTML,
+  list,
+  menuHTML,
+  projectLinks,
+} from './markup.js'
 
 const $ = (sel) => document.querySelector(sel)
 const root = document.documentElement
@@ -39,41 +49,20 @@ function el(tag, props = {}, children = []) {
 }
 
 /* ---- Words: all the portfolio's own ---- */
-const inner = headline.querySelector('.inner')
-const words = `${projectsHead.title} ${projectsHead.highlight}`.split(/\s+/)
-words.forEach((word, i) => {
-  if (i) inner.append(' ')
-  const span = el('span', { textContent: word })
-  span.style.setProperty('--i', i)
-  inner.append(span)
-})
+// The build has already written these into the HTML; writing them again
+// here costs nothing and keeps development (no build) the same.
+headline.querySelector('.inner').innerHTML = headlineHTML()
 $('#bioText').textContent = projectsHead.sub
 $('#colophon').textContent = profile.role
 $('#splashTag').textContent = projectsHead.eyebrow
-
-const label = (id) => navLinks.find((l) => l.id === id)?.label ?? id
-const menuLinks = [
-  { text: `All ${projectsHead.eyebrow.toLowerCase()}`, href: '#grid', grid: true },
-  { text: label('home'), href: '/' },
-  { text: 'GitHub', href: profile.github, external: true },
-  { text: label('contact'), href: '/#contact' },
-]
-$('#menuNav').append(
-  ...menuLinks.map((m) => {
-    const a = el('a', { href: m.href, textContent: m.text })
-    if (m.grid) a.dataset.grid = ''
-    if (m.external) Object.assign(a, { target: '_blank', rel: 'noopener noreferrer' })
-    return a
-  })
-)
-$('#menuAddr').append(
-  profile.location,
-  el('br'),
-  el('a', { href: `mailto:${profile.email}`, textContent: profile.email })
-)
+$('#menuNav').innerHTML = menuHTML()
+$('#menuAddr').innerHTML = addressHTML()
+rows.innerHTML = gridHTML()
+$('#index').innerHTML = indexHTML()
+// Only meaningful once the sphere can turn, so not in the HTML.
+$('.cue span').textContent = 'Drag to rotate'
 
 /* ---- The covers on a Fibonacci sphere ---- */
-const list = projects.filter((p) => p.showcase)
 // The sphere reads best with around twenty covers, so each project takes a
 // few places on it; the golden-angle spiral keeps a project's copies far apart.
 const N = Math.min(list.length * Math.max(1, Math.ceil(18 / list.length)), 30)
@@ -92,25 +81,6 @@ for (let i = 0; i < N; i++) {
   orb.append(node)
   cards.push({ node, img, pi, x, y, z, lat: Math.asin(y) / DEG, lon: Math.atan2(x, z) / DEG, d: -1, o: -1 })
 }
-
-/* ---- The flat grid: each project once ---- */
-list.forEach((p, pi) => {
-  const fig = el('figure', { tabIndex: 0 }, [
-    el(
-      'div',
-      { className: 'thumb' },
-      el('img', { src: p.showcase.imageSmall, alt: p.showcase.alt, loading: 'lazy', decoding: 'async' })
-    ),
-    el('figcaption', {}, [
-      el('b', { textContent: p.name }),
-      el('span', { textContent: `${p.category} · ${p.year}` }),
-    ]),
-  ])
-  fig.setAttribute('role', 'button')
-  fig.setAttribute('aria-label', `${p.name}, ${p.subtitle}. Open details`)
-  fig.dataset.p = pi
-  rows.append(fig)
-})
 
 /* ---- Layout: radius, cover size and perspective from the viewport ---- */
 let R = 300
@@ -314,15 +284,11 @@ let litFrom = null
 let litReturn = null
 
 function linksFor(p) {
-  const out = []
-  const add = (href, text, aria) => {
+  return projectLinks(p).map(({ href, text, label }) => {
     const a = el('a', { href, textContent: text, target: '_blank', rel: 'noopener noreferrer' })
-    a.setAttribute('aria-label', aria)
-    out.push(a)
-  }
-  if (p.links?.live) add(p.links.live, 'Live ↗', `${p.name} live demo (opens in a new tab)`)
-  if (p.links?.github) add(p.links.github, 'Code ↗', `${p.name} source code on GitHub (opens in a new tab)`)
-  return out
+    a.setAttribute('aria-label', label)
+    return a
+  })
 }
 
 /** Where `from` sits relative to the plate, as a transform. */

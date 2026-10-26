@@ -8,6 +8,9 @@ export default defineConfig(({ isSsrBuild }) => ({
   plugins: [react()],
   server: {
     port: 5173,
+    // The build's temporary SSR output (see prerender.js): watching it
+    // crashes this server on Windows when the build deletes it.
+    watch: { ignored: ['**/dist-ssr/**'] },
     proxy: {
       '/api': {
         target: 'http://localhost:5000',
@@ -18,6 +21,8 @@ export default defineConfig(({ isSsrBuild }) => ({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    // The SSR build only feeds prerender.js; public/ is copied by the other.
+    copyPublicDir: !isSsrBuild,
     // three.js alone is ~530kB. It sits in its own lazily-loaded chunk, so
     // it never blocks first paint — raise the warning past it deliberately.
     // The samurai's WebGPU renderer (~710kB) is lazier still: only browsers

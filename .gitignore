@@ -6,3 +6,4 @@ server/data/messages.json
 .DS_Store
 *.log
 .vite/
+dist-ssr/

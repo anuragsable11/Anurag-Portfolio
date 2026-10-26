@@ -1,12 +1,13 @@
-import { Suspense, lazy, useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { FiArrowDown, FiMail, FiMapPin } from 'react-icons/fi'
 import { FaLinkedinIn, FaGithub } from 'react-icons/fa'
 import { HiOutlineDocumentArrowDown } from 'react-icons/hi2'
 import SamuraiMoves from './SamuraiMoves.jsx'
 import SamuraiFallback from './Samurai3D/SamuraiFallback.jsx'
 import { profile } from '../data/content.js'
-import { canRenderSamurai } from '../lib/capabilities.js'
+import { useHydrated } from '../hooks/useHydrated.js'
+import { canRenderSamurai, isPhone } from '../lib/capabilities.js'
+import { MOVES, useCompanion } from '../lib/companion.js'
 import { preloadSamurai } from '../lib/samurai-preload.js'
 
 // Three.js is a large dependency — only fetch it when the scene can run.
@@ -16,11 +17,29 @@ const Samurai3D = lazy(loadSamurai)
 
 /**
  * The samurai's poster in his stage: what shows while his code loads, and
- * all that shows where 3D cannot run (`still`).
+ * all that shows where 3D cannot run (`still`). On a phone it is a button
+ * until he is woken (`onWake`); `waking` shows the summon glow over it
+ * while he loads.
  */
-function SamuraiStill({ still = false }) {
-  return (
-    <div className={`robot3d samurai3d has-poster${still ? ' is-fallback' : ''}`} aria-hidden="true">
+function SamuraiStill({ still = false, waking = false, onWake }) {
+  const modifiers = `${still ? ' is-fallback' : ''}${onWake ? ' is-asleep' : ''}${waking ? ' is-waking' : ''}`
+  return onWake ? (
+    <div
+      className={`robot3d samurai3d has-poster${modifiers}`}
+      role="button"
+      tabIndex={0}
+      aria-label="3D samurai companion. Tap to bring him to life."
+      onClick={onWake}
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return
+        e.preventDefault()
+        onWake()
+      }}
+    >
+      <SamuraiFallback />
+    </div>
+  ) : (
+    <div className={`robot3d samurai3d has-poster${modifiers}`} aria-hidden="true">
       <SamuraiFallback />
     </div>
   )
@@ -83,27 +102,41 @@ function useTypewriter(words, typeMs = 75, eraseMs = 40, holdMs = 1700) {
 
 export default function Hero() {
   const typed = useTypewriter(profile.roles)
-  const [can3D] = useState(canRenderSamurai)
+  const [canRender] = useState(canRenderSamurai)
+  // Unknown until hydrated: the prerendered page cannot know about WebGL.
+  const can3D = useHydrated() ? canRender : undefined
   const buildSamurai = useAfterFirstPaint()
+
+  // On a phone he sleeps as his poster until woken: tapping him (he then
+  // draws his katana, as a tap on him always does) or playing a move (he
+  // then plays it). `greet` is what he does once he is up.
+  const [phone] = useState(isPhone)
+  const [greet, setGreet] = useState(null)
+  const asleep = phone && !greet
+  const { action } = useCompanion()
+  const seenAction = useRef(action?.id ?? 0)
+  useEffect(() => {
+    if (!action || action.id === seenAction.current) return
+    seenAction.current = action.id
+    if (asleep && MOVES.some((m) => m.action === action.name)) setGreet(action.name)
+  }, [action, asleep])
 
   // Start the samurai's texture worker and reflection map at once, fetch his
   // code alongside them, and only hold back building him.
   useEffect(() => {
-    if (!can3D) return
+    if (!can3D || asleep) return
     preloadSamurai()
     loadSamurai()
-  }, [can3D])
+  }, [can3D, asleep])
 
   return (
     <section id="home" className="hero">
       <div className="container">
         <div className="hero-grid">
           {/* ---- Left: intro ---- */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-          >
+          {/* Both halves rise in with CSS, from the prerendered page's first
+              paint rather than once the JavaScript has loaded. */}
+          <div className="hero-enter">
             <span className="hero-badge">
               <span className="pulse-dot" />
               {profile.availability}
@@ -169,28 +202,22 @@ export default function Hero() {
                 <FiMapPin size={13} /> {profile.location}
               </span>
             </div>
-          </motion.div>
+          </div>
 
           {/* ---- Right: the samurai ---- */}
-          <motion.div
-            initial={{ opacity: 0, y: 36 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.9, delay: 0.32, ease: [0.22, 1, 0.36, 1] }}
-          >
-            {can3D ? (
-              buildSamurai ? (
-                <Suspense fallback={<SamuraiStill />}>
-                  <Samurai3D />
-                </Suspense>
-              ) : (
-                <SamuraiStill />
-              )
-            ) : (
+          <div className="hero-enter hero-enter-late">
+            {can3D === false ? (
               <SamuraiStill still />
+            ) : can3D && !asleep && buildSamurai ? (
+              <Suspense fallback={<SamuraiStill waking={!!greet} />}>
+                <Samurai3D greet={greet} />
+              </Suspense>
+            ) : (
+              <SamuraiStill onWake={can3D && asleep ? () => setGreet('cinematic') : undefined} />
             )}
 
             {/* The samurai's moves: a keycap per key, tappable on touch screens */}
-            {can3D && <SamuraiMoves />}
+            {can3D !== false && <SamuraiMoves />}
 
             <div className="pipeline">
               {['Client', 'API', 'Queue', 'LLM', 'Memory'].map((node, i, arr) => (
@@ -200,7 +227,7 @@ export default function Hero() {
                 </span>
               ))}
             </div>
-          </motion.div>
+          </div>
         </div>
       </div>
     </section>

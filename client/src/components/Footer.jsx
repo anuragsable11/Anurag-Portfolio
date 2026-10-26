@@ -17,8 +17,9 @@ export default function Footer() {
     <>
       <footer className="footer">
         <div className="container footer-inner">
-          <p>
-            © {new Date().getFullYear()} {profile.name} · {profile.role}
+          {/* The year is the build's in the prerendered HTML; this one wins. */}
+          <p suppressHydrationWarning>
+            {`© ${new Date().getFullYear()} ${profile.name} · ${profile.role}`}
           </p>
           <span className="footer-built">
             Built with <b>React</b> · <b>Vite</b> · <b>Node.js</b> · <b>Express</b>

@@ -6,6 +6,7 @@ import { FaGithub, FaPlay } from 'react-icons/fa'
 import Reveal from './Reveal.jsx'
 import SectionHead from './SectionHead.jsx'
 import { projects, projectsHead } from '../data/content.js'
+import { useHydrated } from '../hooks/useHydrated.js'
 import { act, celebrate } from '../lib/companion.js'
 
 const ease = [0.22, 1, 0.36, 1]
@@ -370,6 +371,9 @@ function RailFrame({ project, open, onActivate, onOpen }) {
             ))}
           </h3>
           <span className="rail-subtitle">{project.subtitle}</span>
+          {/* The summary is otherwise only in the details view: here it is in
+              the page's HTML, for screen readers and crawlers. */}
+          <p className="visually-hidden">{project.summary}</p>
           <div className="rail-actions">
             {links.live ? (
               <a
@@ -430,6 +434,7 @@ export default function Projects() {
   const [filter, setFilter] = useState('All')
   const [openIndex, setOpenIndex] = useState(() => middleOf(projects.length))
   const [detail, setDetail] = useState(null)
+  const hydrated = useHydrated()
 
   const visible = useMemo(
     () => (filter === 'All' ? projects : projects.filter((p) => p.category === filter)),
@@ -531,8 +536,9 @@ export default function Projects() {
       </div>
 
       {/* Portalled: the section sits inside transformed layout wrappers, which
-          would otherwise trap a position: fixed overlay. */}
-      {typeof document !== 'undefined' &&
+          would otherwise trap a position: fixed overlay. Mounted once
+          hydrated: the prerendered page has no document.body to portal to. */}
+      {hydrated &&
         createPortal(
           <AnimatePresence>
             {detail && (

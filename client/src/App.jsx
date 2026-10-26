@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { Suspense, useEffect } from 'react'
 import Background from './components/Background.jsx'
 import Navbar from './components/Navbar.jsx'
 import Hero from './components/Hero.jsx'
@@ -24,11 +24,24 @@ export default function App() {
       <Navbar />
       <main>
         <Hero />
-        <About />
-        <Skills />
-        <Projects />
-        <Journey />
-        <Contact />
+        {/* Each section below the hero is its own Suspense boundary, so React
+            hydrates the prerendered page a section at a time instead of in
+            one long task (nothing here suspends). */}
+        <Suspense>
+          <About />
+        </Suspense>
+        <Suspense>
+          <Skills />
+        </Suspense>
+        <Suspense>
+          <Projects />
+        </Suspense>
+        <Suspense>
+          <Journey />
+        </Suspense>
+        <Suspense>
+          <Contact />
+        </Suspense>
       </main>
       <Footer />
     </>

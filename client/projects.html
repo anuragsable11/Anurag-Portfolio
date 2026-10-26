@@ -8,6 +8,25 @@
       name="description"
       content="Two LLM systems built end to end, plus the web applications where I learned the fundamentals."
     />
+    <meta name="author" content="Anurag Sable" />
+    <!-- The site URL in these tags is filled in at build time (see prerender.js). -->
+    <link rel="canonical" href="%SITE_URL%/projects.html" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Anurag Sable" />
+    <meta property="og:url" content="%SITE_URL%/projects.html" />
+    <meta property="og:title" content="Projects — Anurag Sable" />
+    <meta
+      property="og:description"
+      content="Two LLM systems built end to end, plus the web applications where I learned the fundamentals."
+    />
+    <meta property="og:image" content="%SITE_URL%/og/projects.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Projects by Anurag Sable: the landing pages of Verus AI, DocMind, Cursus AI, SkySnap, Doneward and Quizverse." />
+    <meta name="twitter:card" content="summary_large_image" />
+
     <meta name="theme-color" content="#000000" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -1212,6 +1231,97 @@
         }
       }
     </style>
+    <noscript>
+      <style>
+        /* Without JavaScript there is no sphere to turn and no splash to
+           lift: the page is its title, its note and the project index. */
+        #scrolltrack,
+        #splash,
+        #orb,
+        .vig,
+        #grid,
+        .gridbtn,
+        .cue,
+        .menu-btn,
+        #menu,
+        #lit,
+        #dot,
+        .colophon {
+          display: none;
+        }
+
+        body,
+        body.locked {
+          display: flex;
+          flex-direction: column;
+          gap: 30px;
+          max-width: 760px;
+          height: auto;
+          margin: 0 auto;
+          padding: calc(110px + var(--safe-top)) calc(var(--pad) + var(--safe-right)) 72px
+            calc(var(--pad) + var(--safe-left));
+          overflow: auto;
+        }
+
+        body > * {
+          order: 3;
+        }
+
+        #stage {
+          order: 1;
+        }
+
+        .bio {
+          order: 2;
+        }
+
+        .chrome {
+          opacity: 1;
+        }
+
+        #stage,
+        #world,
+        #headline,
+        #headline .inner,
+        .bio,
+        #index {
+          position: static;
+          width: auto;
+          height: auto;
+          max-width: none;
+          margin: 0;
+          overflow: visible;
+          clip: auto;
+          white-space: normal;
+          transform: none;
+          perspective: none;
+          touch-action: auto;
+          text-align: left;
+        }
+
+        #headline .inner > span {
+          opacity: 1;
+          transform: none;
+          filter: none;
+        }
+
+        #index {
+          display: grid;
+          gap: 40px;
+        }
+
+        #index h2 {
+          margin-bottom: 6px;
+          font-family: var(--serif);
+          font-weight: 400;
+          font-size: clamp(22px, 2.15vw, 30px);
+        }
+
+        #index .note {
+          margin-top: 12px;
+        }
+      </style>
+    </noscript>
   </head>
   <body class="locked">
     <div id="scrolltrack" aria-hidden="true"></div>
@@ -1228,6 +1338,10 @@
     <section id="grid" aria-label="All projects">
       <div class="rows"></div>
     </section>
+
+    <!-- Every project as text: for screen readers and crawlers, and the
+         whole page without JavaScript. Filled from markup.js. -->
+    <section id="index" class="visually-hidden"></section>
 
     <header class="chrome">
       <a class="wordmark" href="/" aria-label="Anurag Sable, back to the portfolio">Anurag<em>Sable</em></a>
@@ -1257,7 +1371,7 @@
       <b></b><b></b><b></b><b></b>
     </button>
 
-    <div class="cue chrome" aria-hidden="true"><s></s><span>Drag to rotate</span></div>
+    <div class="cue chrome" aria-hidden="true"><s></s><span></span></div>
 
     <div id="menu" aria-hidden="true">
       <nav aria-label="Menu" id="menuNav"></nav>

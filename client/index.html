@@ -12,21 +12,25 @@
       content="Anurag Sable — Computer Science &amp; Engineering graduate building LLM-integrated backend systems with Python, Django, FastAPI, RAG pipelines and async orchestration."
     />
     <meta name="author" content="Anurag Sable" />
+    <!-- The site URL in these tags is filled in at build time (see prerender.js). -->
+    <link rel="canonical" href="%SITE_URL%/" />
 
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Anurag Sable" />
+    <meta property="og:url" content="%SITE_URL%/" />
     <meta property="og:title" content="Anurag Sable — Backend &amp; Agentic AI Engineer" />
     <meta
       property="og:description"
       content="Backend engineering for AI-driven systems: LLM orchestration, RAG pipelines, and async task pipelines in Python."
     />
+    <meta property="og:image" content="%SITE_URL%/og/home.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Anurag Sable, Backend &amp; Agentic AI Engineer, beside his samurai." />
+    <meta name="twitter:card" content="summary_large_image" />
 
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Geist:wght@300..800&family=Geist+Mono:wght@400..600&display=swap"
-      rel="stylesheet"
-    />
 
     <script>
       // Resolve the theme before first paint so there is no flash of the wrong one.
@@ -40,6 +44,16 @@
         }
       })()
     </script>
+    <noscript>
+      <style>
+        /* The page is prerendered at the first frame of its entrance
+           animations; without JavaScript, show it as they would leave it. */
+        #root [style*='opacity:0'] {
+          opacity: 1 !important;
+          transform: none !important;
+        }
+      </style>
+    </noscript>
   </head>
   <body>
     <div id="root"></div>

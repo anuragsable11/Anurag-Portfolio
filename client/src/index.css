@@ -109,8 +109,9 @@
 }
 
 :root {
-  --font: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --mono: 'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  /* Self-hosted variable fonts (@fontsource-variable, imported in main.jsx). */
+  --font: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'Geist Mono Variable', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
 
   --radius: 10px;
   --radius-sm: 6px;
@@ -395,6 +396,9 @@ ul {
   align-items: center;
   border-bottom: 1px solid transparent;
   transition: background 0.25s ease, border-color 0.25s ease;
+  /* Drops in on the first paint (rise-in is defined with the hero). */
+  --rise: -80px;
+  animation: rise-in 0.7s var(--ease) backwards;
 }
 
 .nav.scrolled {
@@ -568,6 +572,28 @@ ul {
   gap: clamp(40px, 5vw, 96px);
   align-items: center;
   width: 100%;
+}
+
+/* The hero's two halves rise in from the first paint, before any JavaScript.
+   Filled backwards only: a transform left in place after the entrance would
+   trap the samurai's fixed corner dock inside the hero. They start at 0.01,
+   not 0: Chrome counts nothing at opacity 0 as painted until its fade ends,
+   which held the page's Largest Contentful Paint back by over a second. */
+@keyframes rise-in {
+  from {
+    opacity: 0.01;
+    transform: translateY(var(--rise, 30px));
+  }
+}
+
+.hero-enter {
+  animation: rise-in 0.8s var(--ease) 0.1s backwards;
+}
+
+.hero-enter-late {
+  --rise: 36px;
+  animation-duration: 0.9s;
+  animation-delay: 0.32s;
 }
 
 .hero-badge {
@@ -2746,16 +2772,64 @@ a.contact-link:hover {
    and crossfaded out as the live canvas fades in over it. Where 3D cannot
    run, or the GPU context is lost, it stays. 3:1 and height-filled, it
    frames him exactly as the live camera does at any stage shape. */
+/* The poster for each theme. It is drawn three stage-heights wide: 1020px
+   on phones and tablets, up to 1800px on desktops. The 2000px file covers
+   phones up to 2× and desktops up to 1.5× (laptops scaled to 125–150%);
+   denser screens take the 3000px one. */
 .samurai-poster {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: center;
+  background: center / cover no-repeat;
+  background-image: url('./assets/samurai/poster-light-2000.webp');
+  background-image: -webkit-image-set(
+    url('./assets/samurai/poster-light-2000.webp') 1.5x,
+    url('./assets/samurai/poster-light-3000.webp') 2.25x
+  );
+  background-image: image-set(
+    url('./assets/samurai/poster-light-2000.webp') 1.5x,
+    url('./assets/samurai/poster-light-3000.webp') 2.25x
+  );
   pointer-events: none;
   user-select: none;
   transition: opacity 0.7s ease;
+}
+
+:root[data-theme='dark'] .samurai-poster {
+  background-image: url('./assets/samurai/poster-dark-2000.webp');
+  background-image: -webkit-image-set(
+    url('./assets/samurai/poster-dark-2000.webp') 1.5x,
+    url('./assets/samurai/poster-dark-3000.webp') 2.25x
+  );
+  background-image: image-set(
+    url('./assets/samurai/poster-dark-2000.webp') 1.5x,
+    url('./assets/samurai/poster-dark-3000.webp') 2.25x
+  );
+}
+
+@media (max-width: 1000px) {
+  .samurai-poster {
+    background-image: -webkit-image-set(
+      url('./assets/samurai/poster-light-2000.webp') 2x,
+      url('./assets/samurai/poster-light-3000.webp') 3x
+    );
+    background-image: image-set(
+      url('./assets/samurai/poster-light-2000.webp') 2x,
+      url('./assets/samurai/poster-light-3000.webp') 3x
+    );
+  }
+
+  :root[data-theme='dark'] .samurai-poster {
+    background-image: -webkit-image-set(
+      url('./assets/samurai/poster-dark-2000.webp') 2x,
+      url('./assets/samurai/poster-dark-3000.webp') 3x
+    );
+    background-image: image-set(
+      url('./assets/samurai/poster-dark-2000.webp') 2x,
+      url('./assets/samurai/poster-dark-3000.webp') 3x
+    );
+  }
 }
 
 .samurai3d canvas {
@@ -2778,6 +2852,12 @@ a.contact-link:hover {
 /* The poster stands in for the loading glow. */
 .samurai3d.has-poster::after {
   display: none;
+}
+
+/* …except on a phone, where he sleeps as his poster until tapped: once
+   woken, the glow says he is coming until he is drawn. */
+.samurai3d.is-waking:not(.is-ready):not(.is-lost):not(.is-fallback)::after {
+  display: block;
 }
 
 .samurai3d.is-fallback {

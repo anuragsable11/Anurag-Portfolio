@@ -135,12 +135,18 @@ import { createSamuraiEngine } from './SamuraiEngine.js'
  *   geometry.js, ik.js, poses.js, textures.js, constants.js, util.js
  */
 
-export default function Samurai3D() {
+/**
+ * `greet`: an action to play as soon as he is on screen. On a phone he
+ * starts as his poster and is built only when woken (see Hero.jsx); this is
+ * what woke him, and until he is drawn the summon glow says he is coming.
+ */
+export default function Samurai3D({ greet = null }) {
   const slotRef = useRef(null)
   const frameRef = useRef(null)
   const mountRef = useRef(null)
   const hitRef = useRef(null)
   const dismissRef = useRef(null)
+  const greetRef = useRef(greet)
   const [tip, setTip] = useState(false)
   // No renderer could start, or the model failed to build: his poster stays.
   const [fallback, setFallback] = useState(false)
@@ -162,8 +168,22 @@ export default function Samurai3D() {
       setFallback(true)
       engine.dispose()
     }
-    const offs = [engine.on('unsupported', fail), engine.on('error', fail), engine.on('fallback', standDown)]
+    // On the frame after 'ready': his clock only catches up to the present on
+    // his first frame, and an action started before then would be over.
+    let greetFrame = 0
+    const greetOnce = () => {
+      const name = greetRef.current
+      greetRef.current = null
+      if (name) greetFrame = requestAnimationFrame(() => engine.playAnimation(name))
+    }
+    const offs = [
+      engine.on('unsupported', fail),
+      engine.on('error', fail),
+      engine.on('fallback', standDown),
+      engine.on('ready', greetOnce),
+    ]
     return () => {
+      cancelAnimationFrame(greetFrame)
       offs.forEach((off) => off())
       engine.dispose()
     }
@@ -173,7 +193,7 @@ export default function Samurai3D() {
     <div className="samurai-slot" ref={slotRef}>
       <div className="samurai-frame" ref={frameRef}>
         <div
-          className={`robot3d samurai3d has-poster${fallback ? ' is-fallback' : ''}`}
+          className={`robot3d samurai3d has-poster${fallback ? ' is-fallback' : ''}${greet ? ' is-waking' : ''}`}
           ref={mountRef}
           role={fallback ? undefined : 'button'}
           tabIndex={fallback ? undefined : 0}
