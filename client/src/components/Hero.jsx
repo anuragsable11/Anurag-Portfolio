@@ -8,6 +8,7 @@ import { profile } from '../data/content.js'
 import { useHydrated } from '../hooks/useHydrated.js'
 import { canRenderSamurai, isPhone } from '../lib/capabilities.js'
 import { MOVES, useCompanion } from '../lib/companion.js'
+import { whenOpeningDone } from '../lib/opening.js'
 import { preloadSamurai } from '../lib/samurai-preload.js'
 
 // Three.js is a large dependency — only fetch it when the scene can run.
@@ -46,25 +47,50 @@ function SamuraiStill({ still = false, waking = false, onWake }) {
 }
 
 /**
- * True once the hero has painted and the browser has a moment to spare.
- * The samurai builds his geometry in small slices, so he can start soon
- * after the intro is on screen without stalling its animation.
+ * True once the opening screen above the hero has formed and the browser
+ * has a moment to spare. Until then the samurai's preparation would compete
+ * with the portrait's and the name's intro for the main thread and the GPU,
+ * and make them stutter.
  */
-function useAfterFirstPaint(minDelay = 400) {
+function useAfterOpening() {
   const [ready, setReady] = useState(false)
   useEffect(() => {
     let idle = 0
-    const timer = setTimeout(() => {
+    const stop = whenOpeningDone(() => {
       if (window.requestIdleCallback) {
         idle = window.requestIdleCallback(() => setReady(true), { timeout: 800 })
       } else setReady(true)
-    }, minDelay)
+    })
     return () => {
-      clearTimeout(timer)
+      stop()
       if (idle) window.cancelIdleCallback?.(idle)
     }
-  }, [minDelay])
+  }, [])
   return ready
+}
+
+/**
+ * True once `ref`'s element has started to come into view, and from then
+ * on. The hero sits below the opening screen, so the samurai is built when
+ * the visitor scrolls towards him rather than while they play with the
+ * portrait above (his build's longer tasks would hitch it). His poster
+ * stands in until he is ready.
+ */
+function useApproached(ref) {
+  const [approached, setApproached] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el || approached) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) setApproached(true)
+      },
+      { rootMargin: '0px 0px -5% 0px' }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [ref, approached])
+  return approached
 }
 
 /** Rotating type-on / type-off effect for the role line. */
@@ -105,7 +131,9 @@ export default function Hero() {
   const [canRender] = useState(canRenderSamurai)
   // Unknown until hydrated: the prerendered page cannot know about WebGL.
   const can3D = useHydrated() ? canRender : undefined
-  const buildSamurai = useAfterFirstPaint()
+  const heroRef = useRef(null)
+  const settled = useAfterOpening()
+  const approached = useApproached(heroRef)
 
   // On a phone he sleeps as his poster until woken: tapping him (he then
   // draws his katana, as a tap on him always does) or playing a move (he
@@ -113,6 +141,8 @@ export default function Hero() {
   const [phone] = useState(isPhone)
   const [greet, setGreet] = useState(null)
   const asleep = phone && !greet
+  // Woken by hand, he comes at once.
+  const buildSamurai = (settled && approached) || !!greet
   const { action } = useCompanion()
   const seenAction = useRef(action?.id ?? 0)
   useEffect(() => {
@@ -121,16 +151,20 @@ export default function Hero() {
     if (asleep && MOVES.some((m) => m.action === action.name)) setGreet(action.name)
   }, [action, asleep])
 
-  // Start the samurai's texture worker and reflection map at once, fetch his
-  // code alongside them, and only hold back building him.
+  // Start the samurai's texture worker and reflection map once the opening
+  // has formed (both run off the main thread), and fetch his code as the
+  // hero comes into view, alongside building him.
   useEffect(() => {
-    if (!can3D || asleep) return
+    if (!can3D || asleep || !(settled || greet)) return
     preloadSamurai()
-    loadSamurai()
-  }, [can3D, asleep])
+  }, [can3D, asleep, settled, greet])
+
+  useEffect(() => {
+    if (can3D && !asleep && buildSamurai) loadSamurai()
+  }, [can3D, asleep, buildSamurai])
 
   return (
-    <section id="home" className="hero">
+    <section id="home" className="hero" ref={heroRef}>
       <div className="container">
         <div className="hero-grid">
           {/* ---- Left: intro ---- */}

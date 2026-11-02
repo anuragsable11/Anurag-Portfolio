@@ -556,6 +556,49 @@ ul {
 }
 
 /* ============================================================
+   Portrait — the halftone screen that opens the page
+   ============================================================ */
+/* Full width and one screen tall, or less where the picture runs out of
+   width first: the print above, the name in particles below, overlapping
+   the print's faded waist. */
+.portrait-intro {
+  --name-size: clamp(3rem, 10.5vw, 11rem);
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  height: max(480px, min(100svh, calc(144vw + var(--nav-h) + var(--name-size))));
+  padding-top: var(--nav-h);
+}
+
+/* The print sits on the page's own colours: its top fades into the faint
+   wash behind the nav, and the waist, where the picture is cut, fades out
+   under the name. */
+.portrait-print {
+  min-height: 0;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 40px, #000 70%, transparent 98%);
+  mask-image: linear-gradient(to bottom, transparent, #000 40px, #000 70%, transparent 98%);
+}
+
+.portrait-name {
+  position: relative;
+  z-index: 1;
+  height: calc(var(--name-size) * 1.5);
+  margin-top: calc(var(--name-size) * -0.5);
+  color: var(--fg);
+}
+
+/* The band is as tall as the name needs, not the component's default. */
+.portrait-name .particle-text {
+  min-height: 0;
+}
+
+.portrait-print img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* ============================================================
    Hero
    ============================================================ */
 .hero {

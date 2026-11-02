@@ -1,6 +1,7 @@
 import { Suspense, useEffect } from 'react'
 import Background from './components/Background.jsx'
 import Navbar from './components/Navbar.jsx'
+import PortraitIntro from './components/PortraitIntro.jsx'
 import Hero from './components/Hero.jsx'
 import About from './components/About.jsx'
 import Skills from './components/Skills.jsx'
@@ -23,6 +24,7 @@ export default function App() {
       <Background />
       <Navbar />
       <main>
+        <PortraitIntro />
         <Hero />
         {/* Each section below the hero is its own Suspense boundary, so React
             hydrates the prerendered page a section at a time instead of in

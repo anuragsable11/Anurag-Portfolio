@@ -41,7 +41,7 @@ export function createDock({ frameEl, slotEl, dismissEl, onChange }) {
   const dockQuery = window.matchMedia('(min-width: 1280px) and (hover: hover) and (pointer: fine)')
   const dock = { on: false, hidden: false }
   let enabled = false
-  let slotVisible = true
+  let slotPassed = false
   let dismissed = false
   let undockTimer = 0
   try {
@@ -107,7 +107,7 @@ export function createDock({ frameEl, slotEl, dismissEl, onChange }) {
   }
 
   const update = () => {
-    const want = enabled && !slotVisible && !dismissed && dockQuery.matches
+    const want = enabled && slotPassed && !dismissed && dockQuery.matches
     if (want === dock.on || !frameEl) return
     dock.on = want
     frameEl.classList.toggle('is-docked', want)
@@ -135,13 +135,17 @@ export function createDock({ frameEl, slotEl, dismissEl, onChange }) {
   dismissEl?.addEventListener('click', onDismiss)
 
   // The fixed nav covers the top of the viewport, so the slot counts as
-  // gone once it is only behind the nav.
+  // gone once it is only behind the nav. Only gone upwards: the portrait
+  // section above the hero keeps the slot below the fold on load, and he
+  // waits there to be scrolled to rather than docking straight away. The
+  // root runs on far below the viewport, so a jump from below the hero to
+  // the top of the page (which never shows the slot) still brings him back.
   const slotWatcher = new IntersectionObserver(
     (entries) => {
-      slotVisible = entries.some((e) => e.isIntersecting)
+      slotPassed = !entries[entries.length - 1].isIntersecting
       update()
     },
-    { rootMargin: '-64px 0px 0px 0px' }
+    { rootMargin: '-64px 0px 1000000px 0px' }
   )
   if (slotEl) slotWatcher.observe(slotEl)
   dockQuery.addEventListener('change', update)
