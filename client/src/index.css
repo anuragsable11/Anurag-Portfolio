@@ -14,6 +14,7 @@
   --border-hi: #d4d4d4;
   --input: #e5e5e5;
   --ring: #a1a1a1;
+  --portrait-panel: #f1f2f5; /* the opening card's paper */
 
   --robot-shell: #ccd5e0;
   --robot-plate: #8d99ab;
@@ -67,6 +68,7 @@
   --border-hi: rgba(255, 255, 255, 0.2);
   --input: rgba(255, 255, 255, 0.15);
   --ring: #737373;
+  --portrait-panel: #15181e; /* the opening card's paper */
 
   --robot-shell: #46525f;
   --robot-plate: #2b3540;
@@ -556,39 +558,109 @@ ul {
 }
 
 /* ============================================================
-   Portrait — the halftone screen that opens the page
+   Portrait — the screens that open the page (PortraitIntro)
    ============================================================ */
-/* Full width and one screen tall, or less where the picture runs out of
-   width first: the print above, the name in particles below, overlapping
-   the print's faded waist. */
+/* The welcome screen, filling the card's stage (one screen) at its open
+   size: the print above, the welcome in particles below, overlapping the
+   print's faded waist. The welcome's size has it span about 86% of the
+   width (it is ~12.6em long in Geist at 800).
+   Each line's band is taller than its words: the particle text caps how
+   many particles it draws by its band's area, and a band only as tall as
+   the words thinned them into stripes. */
 .portrait-intro {
-  --name-size: clamp(3rem, 10.5vw, 11rem);
+  --welcome-size: clamp(1.75rem, 6.8vw, 7.5rem);
+  --welcome-band: 2.4; /* each line's band, in welcome sizes */
+  --welcome-lines: 1;
+  --welcome-overlap: 0.95; /* how far the bands rise over the print */
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
-  height: max(480px, min(100svh, calc(144vw + var(--nav-h) + var(--name-size))));
+  height: 100%;
   padding-top: var(--nav-h);
 }
 
-/* The print sits on the page's own colours: its top fades into the faint
-   wash behind the nav, and the waist, where the picture is cut, fades out
-   under the name. */
+/* Phones: two lines (PortraitIntro splits the welcome at the same width),
+   twice the size, set close together. */
+@media (max-width: 640px) {
+  .portrait-intro {
+    --welcome-size: 14vw;
+    --welcome-band: 1.3;
+    --welcome-lines: 2;
+    --welcome-overlap: 0.4;
+  }
+}
+
+/* The print is inked on the card's panel: its top fades out under the
+   nav, and the waist, where the picture is cut, fades out under the
+   welcome. */
 .portrait-print {
   min-height: 0;
   -webkit-mask-image: linear-gradient(to bottom, transparent, #000 40px, #000 70%, transparent 98%);
   mask-image: linear-gradient(to bottom, transparent, #000 40px, #000 70%, transparent 98%);
 }
 
-.portrait-name {
+.portrait-welcome {
   position: relative;
   z-index: 1;
-  height: calc(var(--name-size) * 1.5);
-  margin-top: calc(var(--name-size) * -0.5);
+  height: calc(var(--welcome-size) * var(--welcome-band) * var(--welcome-lines));
+  margin-top: calc(var(--welcome-size) * var(--welcome-overlap) * -1);
   color: var(--fg);
 }
 
-/* The band is as tall as the name needs, not the component's default. */
-.portrait-name .particle-text {
+.portrait-welcome .particle-text {
   min-height: 0;
+  height: calc(var(--welcome-size) * var(--welcome-band));
+}
+
+/* The card holding the welcome screen, opening to the whole screen as the
+   page scrolls. Its heights until the component measures the window: one
+   screen, plus 1.2 to open and 0.35 held open (its defaults), so nothing
+   jumps when it hydrates. */
+.portrait-expand .scroll-expand__track {
+  height: calc(100svh * 2.55);
+}
+
+.portrait-expand .scroll-expand__stage {
+  height: 100svh;
+}
+
+/* Its resting card: the whole screen at 60% (70% on phones), as
+   PortraitIntro starts it, drawn by the prerendered page too so nothing
+   jumps when the script takes over. The panel sets the card off the page;
+   the print is inked on the same. */
+.portrait-expand .scroll-expand__frame {
+  clip-path: inset(20% round 24px);
+  background: var(--portrait-panel);
+}
+
+.portrait-expand .scroll-expand__media {
+  transform: scale(0.6);
+}
+
+/* The navbar starts inside the card: shrunk by the same amount towards the
+   middle of the screen (Navbar.jsx then follows the card's zoom). */
+.nav {
+  transform: scale(0.6);
+  transform-origin: 50% 50svh; /* the card's stage is the small viewport */
+}
+
+@media (max-width: 640px) {
+  .portrait-expand .scroll-expand__frame {
+    clip-path: inset(15% round 24px);
+  }
+
+  .portrait-expand .scroll-expand__media,
+  .nav {
+    transform: scale(0.7);
+  }
+}
+
+/* Inside the card the bar stays bare, as at the top of a page: its frosted
+   backing would square off the card's rounded corners. */
+.nav.is-miniature {
+  background: transparent;
+  border-bottom-color: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .portrait-print img {

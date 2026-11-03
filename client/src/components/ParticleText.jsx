@@ -71,6 +71,9 @@ const ParticleText = ({
   fontWeight = 800,
   fontFamily = 'inherit',
   glow = true,
+  // Added for this site: the text is sampled at once but nothing is drawn,
+  // and the intro waits, until `hold` turns false.
+  hold = false,
   className = '',
   style
 }) => {
@@ -78,6 +81,7 @@ const ParticleText = ({
   const canvasRef = useRef(null);
   const settingsRef = useRef(null);
   const wakeRef = useRef(() => {});
+  const releaseRef = useRef(() => {});
 
   useEffect(() => {
     settingsRef.current = {
@@ -101,8 +105,10 @@ const ParticleText = ({
       fontSize,
       fontWeight,
       fontFamily,
-      glow
+      glow,
+      hold
     };
+    releaseRef.current();
     wakeRef.current();
   });
 
@@ -125,6 +131,7 @@ const ParticleText = ({
     let sampleFrame = 0;
     let buildId = 0;
     let introPending = true;
+    let held = false;
     let sampledKey = '';
     let sampledText = '';
     let requestedSize = '';
@@ -336,6 +343,11 @@ const ParticleText = ({
     const step = now => {
       const s = settingsRef.current;
       if (!s) return false;
+      if (held) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        return false;
+      }
       const dt = last ? Math.min(0.05, Math.max(0, (now - last) / 1000)) : 1 / 60;
       last = now;
       ensureColors(s);
@@ -669,7 +681,11 @@ const ParticleText = ({
         pointer.smoothY = pointer.y;
       }
 
-      if (intro) {
+      // A held intro stays held through a resample (a resize while waiting).
+      const waiting = (intro || held) && !!settingsRef.current?.hold;
+      const begin = (intro || held) && !waiting;
+      held = waiting;
+      if (begin) {
         startIntro(true);
       } else {
         gathering = false;
@@ -677,6 +693,12 @@ const ParticleText = ({
 
       step(performance.now());
       wake();
+    };
+
+    releaseRef.current = () => {
+      if (!held || settingsRef.current?.hold) return;
+      held = false;
+      startIntro(true);
     };
 
     function queueSample(intro) {
@@ -688,10 +710,18 @@ const ParticleText = ({
       });
     }
 
-    const locate = event => {
+    // Changed for this site: in the canvas's own pixels, so the pointer
+    // lines up while an ancestor scales the canvas.
+    const toLocal = event => {
       const rect = canvas.getBoundingClientRect();
-      pointer.x = event.clientX - rect.left;
-      pointer.y = event.clientY - rect.top;
+      return [
+        ((event.clientX - rect.left) * canvas.clientWidth) / (rect.width || 1),
+        ((event.clientY - rect.top) * canvas.clientHeight) / (rect.height || 1)
+      ];
+    };
+
+    const locate = event => {
+      [pointer.x, pointer.y] = toLocal(event);
     };
 
     const handlePointerMove = event => {
@@ -717,8 +747,7 @@ const ParticleText = ({
     const handlePointerDown = event => {
       const s = settingsRef.current;
       if (!s || s.trigger === 'click' || !s.clickBurst || reducedMotion) return;
-      const rect = canvas.getBoundingClientRect();
-      burst(event.clientX - rect.left, event.clientY - rect.top);
+      burst(...toLocal(event));
     };
 
     const handleClick = () => {
@@ -773,6 +802,7 @@ const ParticleText = ({
       alive = false;
       buildId += 1;
       wakeRef.current = () => {};
+      releaseRef.current = () => {};
       resizeObserver.disconnect();
       intersectionObserver.disconnect();
       themeObserver.disconnect();

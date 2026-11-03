@@ -704,14 +704,20 @@ const HalftoneReveal = ({
         burstData[i * 4 + 3] = 1 - k * k * k;
       });
 
-      if (state.presence > 0.002) state.trailUntil = now + s.linger * 1000 + 200;
+      // Changed for this site: a resting pointer no longer redraws the whole
+      // canvas every frame. Once the brush has caught up and its trail has
+      // faded, the picture is still until the pointer moves again.
+      const moving =
+        Math.abs(targetX - brush.x) + Math.abs(targetY - brush.y) > 0.25 ||
+        Math.abs((engaged ? 1 : 0) - state.presence) > 0.002;
+      if (state.presence > 0.002 && moving) state.trailUntil = now + s.linger * 1000 + 200;
       drawMask(s, dt);
       brush.px = brush.x;
       brush.py = brush.y;
       const intro = drawView(s, now);
 
       const busy =
-        engaged || state.presence > 0.002 || bursts.length > 0 || now < state.trailUntil || (state.image && intro < 1);
+        wandering || moving || bursts.length > 0 || now < state.trailUntil || (state.image && intro < 1);
       if (busy) raf = requestAnimationFrame(frame);
       else last = 0;
     };
@@ -746,10 +752,12 @@ const HalftoneReveal = ({
     };
     image.src = src;
 
+    // Changed for this site: measured in the canvas's own pixels, so the
+    // brush stays under the pointer while an ancestor scales the canvas.
     const locatePointer = event => {
       const rect = container.getBoundingClientRect();
-      pointer.x = event.clientX - rect.left;
-      pointer.y = event.clientY - rect.top;
+      pointer.x = ((event.clientX - rect.left) * container.clientWidth) / (rect.width || 1);
+      pointer.y = ((event.clientY - rect.top) * container.clientHeight) / (rect.height || 1);
       pointer.placed = true;
     };
     const onMove = event => {

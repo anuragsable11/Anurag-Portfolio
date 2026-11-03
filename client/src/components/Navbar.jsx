@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { HiOutlineMenuAlt4, HiX } from 'react-icons/hi'
 import { FiArrowUpRight } from 'react-icons/fi'
 import ThemeToggle from './ThemeToggle.jsx'
 import { navLinks, profile } from '../data/content.js'
 import { useActiveSection, useScrolled } from '../hooks/useActiveSection.js'
+import { watchOpeningZoom } from '../lib/opening.js'
 
 const ids = navLinks.map((l) => l.id)
 
@@ -12,6 +13,23 @@ export default function Navbar() {
   const [open, setOpen] = useState(false)
   const scrolled = useScrolled(24)
   const active = useActiveSection(ids)
+
+  // Inside the opening card the bar shrinks with it, towards the middle of
+  // the screen (see .nav in the CSS), so it reads as the card's own navbar
+  // and becomes the page's as the card fills the screen. Written straight
+  // to the element: it changes every frame of the zoom.
+  const headerRef = useRef(null)
+  const [miniature, setMiniature] = useState(false)
+  useEffect(
+    () =>
+      watchOpeningZoom((zoom) => {
+        const inside = zoom < 0.999
+        // `none` rather than scale(1) once out: no transform left behind.
+        if (headerRef.current) headerRef.current.style.transform = inside ? `scale(${zoom})` : 'none'
+        setMiniature(inside)
+      }),
+    []
+  )
 
   // Lock body scroll while the mobile sheet is open.
   useEffect(() => {
@@ -24,7 +42,10 @@ export default function Navbar() {
   return (
     <>
       {/* Drops in with CSS (.nav), from the prerendered page's first paint. */}
-      <header className={`nav ${scrolled ? 'scrolled' : ''}`}>
+      <header
+        ref={headerRef}
+        className={`nav${scrolled ? ' scrolled' : ''}${miniature ? ' is-miniature' : ''}`}
+      >
         <nav className="nav-inner">
           <a href="#home" className="nav-logo" aria-label="Back to top">
             <span className="nav-mark">AS</span>

@@ -34,6 +34,8 @@ export const profile = {
   github: 'https://github.com/anuragsable11',
   resume: '/Anurag_Sable_Resume.pdf',
   availability: 'Open to backend / AI engineering roles',
+  // Gathered out of particles on the opening screen, under the portrait.
+  welcome: 'Welcome to my portfolio',
   summary: [
     'Computer Science & Engineering graduate specializing in backend engineering for AI-driven systems, with hands-on experience building LLM-integrated applications — conversational pipelines with asynchronous task orchestration, and Retrieval-Augmented Generation (RAG) systems that ground LLM outputs in external data.',
     'Strong foundation in Python, Django, FastAPI and REST API design, with a growing focus on agentic AI engineering — orchestrating LLMs, tools and stateful context into reliable backend systems.',

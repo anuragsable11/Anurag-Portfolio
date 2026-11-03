@@ -6,6 +6,7 @@ import SamuraiMoves from './SamuraiMoves.jsx'
 import SamuraiFallback from './Samurai3D/SamuraiFallback.jsx'
 import { profile } from '../data/content.js'
 import { useHydrated } from '../hooks/useHydrated.js'
+import { useReached } from '../hooks/useReached.js'
 import { canRenderSamurai, isPhone } from '../lib/capabilities.js'
 import { MOVES, useCompanion } from '../lib/companion.js'
 import { whenOpeningDone } from '../lib/opening.js'
@@ -69,30 +70,6 @@ function useAfterOpening() {
   return ready
 }
 
-/**
- * True once `ref`'s element has started to come into view, and from then
- * on. The hero sits below the opening screen, so the samurai is built when
- * the visitor scrolls towards him rather than while they play with the
- * portrait above (his build's longer tasks would hitch it). His poster
- * stands in until he is ready.
- */
-function useApproached(ref) {
-  const [approached, setApproached] = useState(false)
-  useEffect(() => {
-    const el = ref.current
-    if (!el || approached) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) setApproached(true)
-      },
-      { rootMargin: '0px 0px -5% 0px' }
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [ref, approached])
-  return approached
-}
-
 /** Rotating type-on / type-off effect for the role line. */
 function useTypewriter(words, typeMs = 75, eraseMs = 40, holdMs = 1700) {
   const [index, setIndex] = useState(0)
@@ -131,9 +108,13 @@ export default function Hero() {
   const [canRender] = useState(canRenderSamurai)
   // Unknown until hydrated: the prerendered page cannot know about WebGL.
   const can3D = useHydrated() ? canRender : undefined
+  // The hero sits below the opening screens, so the samurai is built when
+  // the visitor scrolls towards him rather than while they play with the
+  // portrait above (his build's longer tasks would hitch it). His poster
+  // stands in until he is ready.
   const heroRef = useRef(null)
   const settled = useAfterOpening()
-  const approached = useApproached(heroRef)
+  const approached = useReached(heroRef)
 
   // On a phone he sleeps as his poster until woken: tapping him (he then
   // draws his katana, as a tap on him always does) or playing a move (he
