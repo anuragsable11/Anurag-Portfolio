@@ -2548,6 +2548,18 @@ a.contact-link:hover {
   border: 1px solid var(--danger-soft);
 }
 
+.form-status > svg {
+  flex-shrink: 0;
+}
+
+.form-status-link {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+
 .spinner {
   width: 14px;
   height: 14px;

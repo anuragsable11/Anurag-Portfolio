@@ -36,6 +36,16 @@ const channels = [
 
 const empty = { name: '', email: '', subject: '', message: '' }
 
+/** A mailto link that carries the visitor's message over to their mail app. */
+function mailtoFor(values) {
+  const params = new URLSearchParams({
+    subject: values.subject.trim() || 'Portfolio contact',
+    body: values.message.trim(),
+  })
+  // URLSearchParams writes spaces as "+", which mail apps show literally.
+  return `mailto:${profile.email}?${params.toString().replace(/\+/g, '%20')}`
+}
+
 function validate(values) {
   const errors = {}
   if (!values.name.trim()) errors.name = 'Please enter your name.'
@@ -76,6 +86,19 @@ export default function Contact() {
 
       if (!res.ok) throw new Error(data.error || 'Something went wrong. Please try again.')
 
+      // The server accepted the message but the email to my inbox failed, so
+      // a reply cannot be counted on. Keep what they typed and hand it to
+      // their own mail app instead of claiming success.
+      if (data.delivered === false) {
+        setStatus({
+          state: 'error',
+          message: 'Your message did not reach my inbox. Please email me directly at',
+          mailto: mailtoFor(values),
+        })
+        setMood('thinking', 2600)
+        return
+      }
+
       setStatus({
         state: 'success',
         message: data.message || 'Message sent. I will get back to you soon.',
@@ -83,9 +106,12 @@ export default function Contact() {
       setValues(empty)
       celebrate()
     } catch (err) {
+      // fetch rejects with a bare TypeError ("Failed to fetch") when offline.
+      const reason = err instanceof TypeError ? 'Could not reach the server.' : err.message
       setStatus({
         state: 'error',
-        message: `${err.message} You can also email me directly at ${profile.email}.`,
+        message: `${reason} You can also email me directly at`,
+        mailto: mailtoFor(values),
       })
       setMood('thinking', 2600)
     }
@@ -157,7 +183,14 @@ export default function Contact() {
                   initial={{ opacity: 0, y: -8 }}
                   animate={{ opacity: 1, y: 0 }}
                 >
-                  <FiAlertCircle /> {status.message}
+                  <FiAlertCircle />
+                  <span>
+                    {status.message}{' '}
+                    <a className="form-status-link" href={status.mailto}>
+                      {profile.email}
+                    </a>
+                    .
+                  </span>
                 </motion.div>
               )}
 

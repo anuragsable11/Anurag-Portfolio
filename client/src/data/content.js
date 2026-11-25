@@ -43,9 +43,9 @@ export const profile = {
 }
 
 export const stats = [
-  { value: '5+', label: 'Projects shipped' },
-  { value: '2', label: 'LLM systems built' },
-  { value: '6', label: 'Months of training' },
+  { value: '6', label: 'Projects shipped' },
+  { value: '3', label: 'LLM systems built' },
+  { value: '3', label: 'Live web apps' },
   { value: '2026', label: 'B.E. graduate' },
 ]
 
@@ -113,7 +113,7 @@ export const projectsHead = {
   eyebrow: 'Projects',
   title: 'Things I have',
   highlight: 'designed and shipped',
-  sub: 'Two LLM systems built end to end, plus the web applications where I learned the fundamentals.',
+  sub: 'Three LLM systems built end to end, plus the web applications where I learned the fundamentals.',
 }
 
 export const projects = [
@@ -243,7 +243,7 @@ export const projects = [
       imageSmall: skysnapLandingSmall,
       width: 1571,
       height: 728,
-      address: 'sky-snap-weather-website-x92k.vercel.app',
+      address: 'skysnap-v1.vercel.app',
       alt: 'SkySnap landing page on a starry night sky: the headline "What’s the sky doing?" under a "Live weather · Any city on earth" label, a city search bar with a Snap it button, recent searches and quick picks for London, New York, Tokyo, Mumbai, Paris and Sydney, with a sun-and-cloud icon on the right.',
     },
     links: {
@@ -353,13 +353,6 @@ export const certifications = [
     issuer: 'QSpiders',
     date: 'Sep 2025',
     detail: 'Backend with Django, REST APIs, databases and frontend technologies.',
-  },
-  {
-    id: 'tata-strive',
-    title: 'Entrepreneurship Awareness Program',
-    issuer: 'Tata STRIVE',
-    date: 'Apr 2026',
-    detail: 'Certified in entrepreneurship fundamentals, business planning and startup development.',
   },
 ]
 
