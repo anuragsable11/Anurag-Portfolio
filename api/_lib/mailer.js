@@ -2,38 +2,60 @@
  * Contact-form email delivery.
  *
  * Shared by the local Express server and the Vercel serverless function so
- * both behave identically. Uses Resend's HTTP API through global fetch, so
- * there is no dependency to install.
+ * both behave identically. Sends through Gmail's SMTP server with nodemailer.
  *
  * Configure with environment variables:
- *   RESEND_API_KEY      required — from https://resend.com/api-keys
- *   CONTACT_TO_EMAIL    required — where messages should land
- *   CONTACT_FROM_EMAIL  optional — defaults to Resend's shared test sender
- *
- * With the default sender (onboarding@resend.dev) Resend will only deliver to
- * the address that owns the API key. That is fine for a personal portfolio.
- * To send anywhere else, verify your own domain in Resend and set
- * CONTACT_FROM_EMAIL to an address on it.
+ *   GMAIL_USER          required — the Gmail address that sends the mail
+ *   GMAIL_APP_PASSWORD  required — a 16-character app password for that
+ *                       account (Google Account → Security → 2-Step
+ *                       Verification → App passwords). NOT the normal
+ *                       Gmail password; Google rejects that over SMTP.
+ *   CONTACT_TO_EMAIL    optional — where messages land; defaults to GMAIL_USER
  */
 
-const DEFAULT_FROM = 'Portfolio <onboarding@resend.dev>'
+import { createTransport } from 'nodemailer'
+
+let transport = null
+
+function credentials() {
+  const user = process.env.GMAIL_USER?.trim() || ''
+  // Google displays app passwords as "abcd efgh ijkl mnop"; the spaces are
+  // only for readability, so accept the value pasted either way.
+  const pass = (process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, '')
+  return { user, pass }
+}
 
 /** Reports whether email is wired up, and why not if it isn't. */
 export function mailerStatus() {
-  const hasKey = Boolean(process.env.RESEND_API_KEY)
-  const to = process.env.CONTACT_TO_EMAIL
+  const { user, pass } = credentials()
 
   const missing = []
-  if (!hasKey) missing.push('RESEND_API_KEY')
-  if (!to) missing.push('CONTACT_TO_EMAIL')
+  if (!user) missing.push('GMAIL_USER')
+  if (!pass) missing.push('GMAIL_APP_PASSWORD')
 
   return {
     configured: missing.length === 0,
-    provider: 'resend',
-    to: to || null,
-    from: process.env.CONTACT_FROM_EMAIL || DEFAULT_FROM,
+    provider: 'gmail',
+    to: process.env.CONTACT_TO_EMAIL?.trim() || user || null,
+    from: user || null,
     missing,
   }
+}
+
+function getTransport() {
+  if (!transport) {
+    const { user, pass } = credentials()
+    transport = createTransport({
+      service: 'gmail',
+      auth: { user, pass },
+      // Fail fast instead of eating the whole serverless time budget when
+      // SMTP is unreachable.
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
+    })
+  }
+  return transport
 }
 
 function buildBody(entry) {
@@ -67,34 +89,26 @@ export async function sendContactEmail(entry) {
   }
 
   try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: status.from,
-        to: [status.to],
-        reply_to: entry.email,
-        subject: `Portfolio: ${entry.subject}`,
-        text: buildBody(entry),
-      }),
+    const info = await getTransport().sendMail({
+      from: { name: 'Portfolio contact', address: status.from },
+      to: status.to,
+      // Hitting "Reply" in the inbox answers the visitor, not yourself.
+      replyTo: { name: entry.name, address: entry.email },
+      subject: `Portfolio: ${entry.subject}`,
+      text: buildBody(entry),
     })
-
-    if (!response.ok) {
-      // Resend puts the actual cause in the body — surface it, because
-      // "sending failed" alone is not diagnosable.
-      const detail = await response.text().catch(() => '')
-      return {
-        sent: false,
-        reason: `resend responded ${response.status}: ${detail.slice(0, 300)}`,
-      }
-    }
-
-    const data = await response.json().catch(() => ({}))
-    return { sent: true, id: data.id ?? null }
+    return { sent: true, id: info.messageId ?? null }
   } catch (err) {
-    return { sent: false, reason: `request failed: ${err.message}` }
+    // A bad password is by far the most common failure — say so plainly,
+    // because Gmail's own "535 Username and Password not accepted" does not
+    // mention app passwords.
+    const hint =
+      err.code === 'EAUTH'
+        ? ' — check GMAIL_APP_PASSWORD: it must be an app password (needs 2-Step Verification on), not the normal Gmail password'
+        : ''
+    return {
+      sent: false,
+      reason: `gmail ${err.code ?? 'error'}: ${String(err.message).slice(0, 300)}${hint}`,
+    }
   }
 }

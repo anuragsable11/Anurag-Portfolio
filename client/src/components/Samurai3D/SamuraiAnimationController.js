@@ -54,7 +54,11 @@ import { clamp, keyframeCurve, lerp, smoothstep, smootherstep } from './util.js'
  * He idles standing. Moods are whole-body poses (stance, arms via IK,
  * blade, eyes) that he eases between on springs; actions are keyframes
  * layered on top, from the pose he was in back to the one his mood calls
- * for, joined by a spline so a move flows through its keys. Between them he
+ * for, joined by a spline so a move flows through its keys. An action that
+ * replaces one still playing crossfades out of it, as an animation mixer
+ * would: the new one starts from its beginning while the old one plays on
+ * underneath and fades out, so a move cut short never stops dead or snaps —
+ * a whirlwind cut mid-turn turns on to a whole turn. Between them he
  * breathes, blinks, glances about and shifts his weight, and his head (and
  * a little of his upper body) follows a mouse cursor.
  *
@@ -116,7 +120,22 @@ export function createAnimationController({
   /* ---- Meditation: `w` runs 0 (standing) → 1 (seated in seiza) ---- */
   // A long-idle behaviour: he kneels only once the visitor has done nothing
   // for IDLE_SIT_AFTER seconds, and rises as soon as they do something.
-  const pose = { w: 0, from: 0, to: 0, start: -TRANSITION, next: IDLE_SIT_AFTER }
+  // `k` is how far through the transition he is, `kneel` where the legs'
+  // choreography has got to (it runs on the plain timeline, `w` on an eased
+  // one) and `effort` how far he leans into the motion: turning back
+  // mid-way carries on from all three.
+  const pose = {
+    w: 0,
+    from: 0,
+    to: 0,
+    start: -TRANSITION,
+    next: IDLE_SIT_AFTER,
+    k: 1,
+    kneel: 0,
+    kneelFrom: 0,
+    effort: 0,
+    effortFrom: 0,
+  }
   // Wall-clock seconds: the loop clock stops while he is off screen, and
   // time spent reading elsewhere on the page is still the visitor active.
   const wallClock = () => performance.now() / 1000
@@ -125,6 +144,11 @@ export function createAnimationController({
   const toggleMeditation = () => {
     const now = clock.now
     pose.from = pose.w
+    // Rising while still kneeling down (a move, or the visitor back): the
+    // legs go back from where they are, not from where the eased pose is,
+    // and the lean into the motion eases off rather than vanishing.
+    pose.kneelFrom = pose.kneel
+    pose.effortFrom = pose.k < 1 ? pose.effort : 0
     pose.to = pose.to ? 0 : 1
     pose.start = now
     pose.next = now + TRANSITION + (pose.to ? MEDITATE_FOR : STAND_FOR)
@@ -168,13 +192,257 @@ export function createAnimationController({
     springVec(cur.edge, vel.edge, target.edge, 5 * pace, dt)
   }
 
-  /** Starts a compiled action (poses.js compileAction) from wherever he is. */
-  const begin = (def, name) => {
+  /* ---- Crossfades: an action that replaces another blends out of it ---- */
+  // The new action starts from its beginning — from the pose he is in —
+  // while the one it replaced plays on underneath, on its own timeline, and
+  // fades out over FADE seconds (slower under reduced motion), as a mixer's
+  // incoming.reset().crossFadeFrom(outgoing) would. The motion he was in
+  // carries on into the new one, so nothing stops dead and nothing snaps;
+  // one cut short mid-crossfade fades out the same way, crossfade and all.
+  const FADE = 0.4
+  const fadeFor = () => FADE * (calmMotion ? 1.6 : 1)
+  // What plays on underneath, oldest first: an action (or, once that has
+  // run out, the mood itself), each fading in over everything below it.
+  const LAYERS = 4
+  const layers = Array.from({ length: LAYERS }, () => ({
+    def: null,
+    start: 0,
+    fadeStart: 0,
+    fadeDur: 0,
+    from: makePose(),
+    pose: makePose(),
+  }))
+  let layerCount = 0
+  // The current action's (or the mood's) own fade over the layers.
+  let fadeStart = 0
+  let fadeDur = 0
+  // Past LAYERS at once, the oldest settles where it is (settleBottom).
+  const settled = makePose()
+  let settledOn = false
+  const under = makePose()
+  // An eased weight: no jolt as a fade starts or as it ends.
+  const fadeAt = (start, dur, now) => (dur > 0 ? smootherstep(clamp((now - start) / dur, 0, 1)) : 1)
+
+  /** A layer's pose now: its action's spline, or the mood once that has run out. */
+  const evalLayer = (l, now) => {
+    if (l.def) {
+      const u = (now - l.start) / l.def.duration
+      if (u < 1 || l.def.hold) return evalSpline(l.def, l.from, Math.min(u, 1), l.pose)
+      l.def = null
+    }
+    copyPose(l.pose, cur)
+  }
+
+  /** Recycles the layers below `i`: everything they showed is covered for good. */
+  const dropBelow = (i) => {
+    for (let n = 0; n < i; n++) {
+      const l = layers[0]
+      for (let j = 1; j < LAYERS; j++) layers[j - 1] = layers[j]
+      layers[LAYERS - 1] = l
+    }
+    layerCount -= i
+    settledOn = false
+  }
+
+  /**
+   * Interrupted again and again faster than the fades run: the oldest layer
+   * (with whatever it was fading in over) stops where it is, and the one
+   * above it fades in over that still pose instead. By then it barely shows.
+   */
+  const settleBottom = (now) => {
+    const l = layers[0]
+    evalLayer(l, now)
+    if (settledOn) carryOn(settled, l.pose, settled, l.from, fadeAt(l.fadeStart, l.fadeDur, now))
+    else copyPose(settled, l.pose)
+    dropBelow(1)
+    settledOn = true
+  }
+
+  /** The current action (or the mood) goes underneath, to fade out. */
+  const pushLayer = (now, fade) => {
+    if (layerCount === LAYERS) settleBottom(now)
+    const l = layers[layerCount]
+    l.def = action ? action.def : null
+    l.start = action ? action.start : 0
+    // The pose it started from (still the one an action that has run out
+    // into the mood started from): what it has moved since is measured
+    // from here (carryOn).
+    copyPose(l.from, actionFrom)
+    // Its own fade over the layers below, if it was still fading in.
+    l.fadeStart = fadeStart
+    l.fadeDur = layerCount ? fadeDur : 0
+    layerCount++
+    fadeStart = now
+    fadeDur = fade
+  }
+
+  /** Mid-crossfade: the layers, bottom up, and this frame's action over them all. */
+  const blendLayers = (now) => {
+    if (now - fadeStart >= fadeDur) {
+      // Faded in completely: nothing underneath shows any more.
+      layerCount = 0
+      settledOn = false
+      return
+    }
+    for (let i = layerCount - 1; i >= 0; i--) {
+      const l = layers[i]
+      if ((i || settledOn) && now - l.fadeStart >= l.fadeDur) {
+        dropBelow(i)
+        break
+      }
+    }
+    let l = layers[0]
+    evalLayer(l, now)
+    if (settledOn) carryOn(under, l.pose, settled, l.from, fadeAt(l.fadeStart, l.fadeDur, now))
+    else copyPose(under, l.pose)
+    for (let i = 1; i < layerCount; i++) {
+      l = layers[i]
+      evalLayer(l, now)
+      carryOn(under, l.pose, under, l.from, fadeAt(l.fadeStart, l.fadeDur, now))
+    }
+    carryOn(out, out, under, actionFrom, fadeAt(fadeStart, fadeDur, now))
+  }
+
+  // A stance only ever changes by a step: half of one fading out would be
+  // a step taken and taken back, so the feet go where the newest action
+  // puts them.
+  const STANCE = ['splay', 'stride']
+  const CARRIED = SCALARS.filter((ch) => !STANCE.includes(ch))
+  const dirFrom = new THREE.Vector3()
+  const dirNow = new THREE.Vector3()
+  const dirTurn = new THREE.Quaternion()
+  const dirPart = new THREE.Quaternion()
+  const NO_TURN = new THREE.Quaternion()
+  /**
+   * One layer over another: dst = `top`, plus however far the pose under it
+   * (`below`) has moved since top started from it (`from`), taken (1 - k) of
+   * the way. Top plays exactly as it would on its own, and the motion it cut
+   * short carries on through it, fading out as k reaches 1 — a crossfade
+   * that does not hold back the new move where the old one has stopped. dst
+   * may be any of the poses.
+   */
+  const carryOn = (dst, top, below, from, k) => {
+    const keep = 1 - k
+    for (const ch of CARRIED) dst.s[ch] = top.s[ch] + (below.s[ch] - from.s[ch]) * keep
+    for (const ch of STANCE) dst.s[ch] = top.s[ch]
+    for (const c of AXES) {
+      dst.R[c] = top.R[c] + (below.R[c] - from.R[c]) * keep
+      dst.L[c] = top.L[c] + (below.L[c] - from.L[c]) * keep
+      dst.edge[c] = top.edge[c] + (below.edge[c] - from.edge[c]) * keep
+    }
+    // The blade turns on by as much as the one underneath has turned since
+    // (as a turn, not a sum of vectors, so it can never shrink to nothing).
+    // Its edge goes along as the splines move edges; update() keeps it
+    // from rolling over where that leaves it unclear.
+    dirFrom.copy(from.dir).normalize()
+    dirNow.copy(below.dir).normalize()
+    dirTurn.setFromUnitVectors(dirFrom, dirNow)
+    dirPart.slerpQuaternions(NO_TURN, dirTurn, keep)
+    dst.dir.copy(top.dir).applyQuaternion(dirPart)
+    return dst
+  }
+
+  /* ---- The whole figure's turn ---- */
+  // A whirlwind turns the whole figure, and a full turn ends where it
+  // began. Cut short, the turn it had does not snap back: it carries on
+  // from where it is, as fast as it was turning, and comes to rest on the
+  // nearest whole turn — the one its momentum carries it toward — on a
+  // quintic that matches its angle, rate and acceleration (carryTurn).
+  const TURN = Math.PI * 2
+  const turnNow = { x: 0, v: 0, a: 0 }
+  /** An action's own turn at `now`, with its rate and acceleration. */
+  const turnOf = (def, start, now) => {
+    const sp = def.spin
+    const s = ((now - start) / def.duration - sp[0]) / (sp[1] - sp[0])
+    turnNow.x = smootherstep(clamp(s, 0, 1)) * sp[2]
+    turnNow.v = turnNow.a = 0
+    if (s > 0 && s < 1) {
+      const ds = 1 / (def.duration * (sp[1] - sp[0]))
+      turnNow.v = 30 * s * s * (1 - s) * (1 - s) * ds * sp[2]
+      turnNow.a = 60 * s * (1 - s) * (1 - 2 * s) * ds * ds * sp[2]
+    }
+    return turnNow
+  }
+  const carry = { on: false, start: 0, dur: 1, x0: 0, b1: 0, b2: 0, c3: 0, c4: 0, c5: 0 }
+  const carryNow = { x: 0, v: 0, a: 0 }
+  const carryAt = (now) => {
+    const { dur, x0, b1, b2, c3, c4, c5 } = carry
+    const s = clamp((now - carry.start) / dur, 0, 1)
+    carryNow.x = x0 + s * (b1 + s * (b2 + s * (c3 + s * (c4 + s * c5))))
+    carryNow.v = (b1 + s * (2 * b2 + s * (3 * c3 + s * (4 * c4 + s * 5 * c5)))) / dur
+    carryNow.a = (2 * b2 + s * (6 * c3 + s * (12 * c4 + s * 20 * c5))) / (dur * dur)
+    return carryNow
+  }
+  /** As an action is replaced: whatever turn the figure has carries on from here. */
+  const carryTurn = (now) => {
+    let x = 0
+    let v = 0
+    let a = 0
+    if (carry.on) {
+      carryAt(now)
+      x = carryNow.x
+      v = carryNow.v
+      a = carryNow.a
+    }
+    if (action?.def.spin) {
+      turnOf(action.def, action.start, now)
+      x += turnNow.x
+      v += turnNow.v
+      a += turnNow.a
+    }
+    // The same heading, within half a turn of facing front.
+    x -= Math.round(x / TURN) * TURN
+    if (Math.abs(x) < 1e-6 && Math.abs(v) < 1e-6 && Math.abs(a) < 1e-6) {
+      carry.on = false
+      return
+    }
+    // The whole turn nearest to where its momentum would take it in half
+    // a fade: one barely begun turns back, one well under way goes round.
+    const h = fadeFor() / 2
+    const to = Math.round((x + v * h + 0.5 * a * h * h) / TURN) * TURN
+    // Long enough not to whip round much faster than the whirlwind itself.
+    const dur = Math.max(fadeFor(), Math.abs(to - x) / 9)
+    // x(s) = x + b1 s + b2 s² + c3 s³ + c4 s⁴ + c5 s⁵ over s = 0..1, ending
+    // at `to` at rest (no speed, no acceleration).
+    const b1 = v * dur
+    const b2 = 0.5 * a * dur * dur
+    const E = to - x - b1 - b2
+    const F = -b1 - 2 * b2
+    const G = -2 * b2
+    carry.on = true
+    carry.start = now
+    carry.dur = dur
+    carry.x0 = x
+    carry.b1 = b1
+    carry.b2 = b2
+    carry.c3 = 10 * E - 4 * F + 0.5 * G
+    carry.c4 = 7 * F - 15 * E - G
+    carry.c5 = 6 * E - 3 * F + 0.5 * G
+  }
+
+  /**
+   * Starts a compiled action (poses.js compileAction) from wherever he is,
+   * crossfading out of whatever was playing over `fade` seconds.
+   */
+  const begin = (def, name, fade = fadeFor()) => {
     standUp()
+    const now = clock.now
+    carryTurn(now)
+    // Mid-way through another action (or a crossfade), that plays on
+    // underneath and fades out while this one fades in.
+    if (action || layerCount) pushLayer(now, fade)
     // Start from wherever he is now, even mid-way through another action.
     copyPose(actionFrom, out)
-    action = { def, name, start: clock.now, nextCue: 0 }
-    micro.glance = micro.shift = null
+    action = { def, name, start: now, nextCue: 0 }
+    // A glance or a weight shift under way eases out rather than stopping dead.
+    if (micro.glance && micro.glance.cut === null) {
+      micro.glance.cut = now
+      micro.glance.cutFor = fadeFor()
+    }
+    if (micro.shift && micro.shift.cut === null) {
+      micro.shift.cut = now
+      micro.shift.cutFor = fadeFor()
+    }
     wake()
     return true
   }
@@ -194,11 +462,11 @@ export function createAnimationController({
     const fade = Math.max(0.05, duration * (calmMotion ? 1.6 : 1))
     if (state === 'IDLE' || state === 'RETURN_IDLE') {
       if (!action) return true
-      return begin({ duration: fade, spin: null, states: [['RETURN_IDLE', 0]], keys: [], hold: false }, 'RETURN_IDLE')
+      return begin({ duration: fade, spin: null, states: [['RETURN_IDLE', 0]], keys: [], hold: false }, 'RETURN_IDLE', fade)
     }
     const key = STATE_KEYS[state]
     if (!key) return false
-    return begin({ duration: fade, spin: null, states: [[state, 0]], keys: [key], hold: true }, state)
+    return begin({ duration: fade, spin: null, states: [[state, 0]], keys: [key], hold: true }, state, fade)
   }
 
   const setMood = (next) => {
@@ -218,14 +486,52 @@ export function createAnimationController({
   // A key only sets what it names; anything else follows the mood.
   const scalarOf = (p, ch) => (p.partial && !(ch in p.s) ? cur.s[ch] : p.s[ch])
   const vectorOf = (p, name) => (p.partial ? p[name] || cur[name] : p[name])
-  const evalAction = () => {
-    const { def, start } = action
-    let u = (clock.now - start) / def.duration
-    // Cues (effects) fire as the timeline passes their key.
-    while (action.nextCue < def.keys.length && def.keys[action.nextCue].t <= u) {
-      const cue = def.keys[action.nextCue++].cue
-      if (cue) onCue?.(cue, action.name)
+  // The channel being evaluated, read by two fixed accessors: no closures
+  // made per channel per frame (a crossfade evaluates several actions).
+  const VECTORS = ['R', 'L', 'dir', 'edge']
+  const AXES = ['x', 'y', 'z']
+  let curveCh = ''
+  let curveAxis = ''
+  const scalarAt = (i) => scalarOf(curveP[i], curveCh)
+  const vectorAt = (i) => vectorOf(curveP[i], curveCh)[curveAxis]
+  /** An action's spline at u, into `into`: from `from` through its keys to the mood. */
+  const evalSpline = (def, from, u, into) => {
+    let n = 0
+    curveT[n] = 0
+    curveP[n++] = from
+    for (const key of def.keys) {
+      curveT[n] = key.t
+      curveP[n++] = key
     }
+    if (!def.hold && curveT[n - 1] < 1) {
+      curveT[n] = 1
+      curveP[n++] = cur
+    }
+    for (const ch of SCALARS) {
+      curveCh = ch
+      into.s[ch] = keyframeCurve(n, curveT, scalarAt, u)
+    }
+    for (const name of VECTORS) {
+      curveCh = name
+      const v = into[name]
+      for (const c of AXES) {
+        curveAxis = c
+        v[c] = keyframeCurve(n, curveT, vectorAt, u)
+      }
+    }
+  }
+  const evalAction = () => {
+    const act = action
+    const { def, start } = act
+    let u = (clock.now - start) / def.duration
+    // Cues (effects) fire as the timeline passes their key — this action's
+    // only: one it replaced is fading out underneath, and its are dropped.
+    while (act.nextCue < def.keys.length && def.keys[act.nextCue].t <= u) {
+      const cue = def.keys[act.nextCue++].cue
+      if (cue) onCue?.(cue, act.name)
+    }
+    // A cue's listener started something else: that takes over next frame.
+    if (action !== act) return
     if (u >= 1) {
       if (!def.hold) {
         action = null
@@ -235,22 +541,7 @@ export function createAnimationController({
       // A held state stays on its last key until something replaces it.
       u = 1
     }
-    let n = 0
-    curveT[n] = 0
-    curveP[n++] = actionFrom
-    for (const key of def.keys) {
-      curveT[n] = key.t
-      curveP[n++] = key
-    }
-    if (!def.hold && curveT[n - 1] < 1) {
-      curveT[n] = 1
-      curveP[n++] = cur
-    }
-    for (const ch of SCALARS) out.s[ch] = keyframeCurve(n, curveT, (i) => scalarOf(curveP[i], ch), u)
-    for (const name of ['R', 'L', 'dir', 'edge']) {
-      const v = out[name]
-      for (const c of ['x', 'y', 'z']) v[c] = keyframeCurve(n, curveT, (i) => vectorOf(curveP[i], name)[c], u)
-    }
+    evalSpline(def, actionFrom, u, out)
   }
 
   /* ---- Idle life: blinks, glances, weight shifts, a grip adjustment ---- */
@@ -879,17 +1170,21 @@ export function createAnimationController({
         toggleMeditation()
       }
     }
-    const k = clamp((t - pose.start) / TRANSITION, 0, 1)
+    const k = (pose.k = clamp((t - pose.start) / TRANSITION, 0, 1))
     const w = (pose.w = lerp(pose.from, pose.to, smootherstep(k)))
     // The legs' choreography runs on the plain timeline; the rest eases.
-    const kneel = lerp(pose.from, pose.to, k)
+    const kneel = (pose.kneel = lerp(pose.kneelFrom, pose.to, k))
     const stand = 1 - w
     // Peaks mid-transition: he leans into the motion of sitting or rising.
-    const effort = Math.sin(Math.PI * k) * Math.abs(pose.to - pose.from)
+    let effort = Math.sin(Math.PI * k) * Math.abs(pose.to - pose.from)
+    if (pose.effortFrom) effort += pose.effortFrom * (1 - smootherstep(clamp(k * 4, 0, 1)))
+    pose.effort = effort
 
     followMood(dt)
     if (action) evalAction()
     else copyPose(out, cur)
+    // Mid-crossfade: what was playing before plays on underneath, fading out.
+    if (layerCount) blendLayers(now)
 
     // Hovered, he is a little more alive: deeper breath, more sway, eyes
     // brighter and narrower, weight a touch lower. Scrolling tips his head
@@ -958,32 +1253,39 @@ export function createAnimationController({
     blink = 1 - 0.92 * bump((t - micro.blinkStart) / 0.17)
     if (still) {
       const quietCursor = !cursor.active || t - cursor.at > 3
+      // (`cut`: when an action cut it short; it then eases out over cutFor.)
       if (!action && stand > 0.95 && quietCursor && t >= micro.glanceAt) {
         micro.glance = {
           start: t,
           yaw: (Math.random() < 0.5 ? -1 : 1) * (0.18 + Math.random() * 0.2),
           pitch: (Math.random() - 0.4) * 0.12,
+          cut: null,
+          cutFor: 0,
         }
         micro.glanceAt = t + 7 + Math.random() * 6
       }
       if (micro.glance) {
-        const g = envelope((t - micro.glance.start) / 1.8, 0.25, 0.3)
-        glanceYaw = micro.glance.yaw * g
-        glancePitch = micro.glance.pitch * g
-        if (t - micro.glance.start > 1.8) micro.glance = null
+        const glance = micro.glance
+        let g = envelope((t - glance.start) / 1.8, 0.25, 0.3)
+        if (glance.cut !== null) g *= 1 - fadeAt(glance.cut, glance.cutFor, t)
+        glanceYaw = glance.yaw * g
+        glancePitch = glance.pitch * g
+        if (t - glance.start > 1.8 || (glance.cut !== null && t - glance.cut >= glance.cutFor)) micro.glance = null
       }
 
       // A weight shift: the hips move over one foot, the body settles with them.
       if (!action && stand > 0.95 && t >= micro.shiftAt) {
-        micro.shift = { start: t, dir: Math.random() < 0.5 ? -1 : 1 }
+        micro.shift = { start: t, dir: Math.random() < 0.5 ? -1 : 1, cut: null, cutFor: 0 }
         micro.shiftAt = t + 9 + Math.random() * 6
       }
       if (micro.shift) {
-        const g = envelope((t - micro.shift.start) / 2.6, 0.35, 0.4)
-        shiftDir = micro.shift.dir * g
-        shiftTilt = micro.shift.dir * 0.018 * g
-        shiftTwist = micro.shift.dir * 0.03 * g
-        if (t - micro.shift.start > 2.6) micro.shift = null
+        const shift = micro.shift
+        let g = envelope((t - shift.start) / 2.6, 0.35, 0.4)
+        if (shift.cut !== null) g *= 1 - fadeAt(shift.cut, shift.cutFor, t)
+        shiftDir = shift.dir * g
+        shiftTilt = shift.dir * 0.018 * g
+        shiftTwist = shift.dir * 0.03 * g
+        if (t - shift.start > 2.6 || (shift.cut !== null && t - shift.cut >= shift.cutFor)) micro.shift = null
       }
 
       // A guard is never quite still: the grip resettles now and then.
@@ -1005,10 +1307,12 @@ export function createAnimationController({
     saya.quaternion.slerpQuaternions(sayaStand, sayaSeated, THREE.MathUtils.smoothstep(w, 0, 0.6))
     samurai.rotation.z = Math.sin(t * 0.5) * 0.01 * sway
     // A whirlwind turns the whole figure; a full turn ends where it began.
-    let turn = 0
-    if (action?.def.spin) {
-      const [from, to, angle] = action.def.spin
-      turn = smootherstep(clamp(((now - action.start) / action.def.duration - from) / (to - from), 0, 1)) * angle
+    // One cut short turns on, over the new action, to a whole turn.
+    let turn = action?.def.spin ? turnOf(action.def, action.start, now).x : 0
+    if (carry.on) {
+      turn += carryAt(now).x
+      // At rest on a whole turn: the same heading as no turn at all.
+      if (now - carry.start >= carry.dur) carry.on = false
     }
     samurai.rotation.y = turn
 

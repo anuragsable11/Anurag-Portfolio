@@ -34,11 +34,11 @@
   --samurai-cloth: #a8322a; /* the silk obi and cords */
   --samurai-leather: #4a3b33;
   --samurai-helmet-lacing: #232a3d; /* the helmet's dark silk lacing */
-  --samurai-eye: #ffb347; /* the glow behind the visor */
+  --samurai-eye: #ff9a3c; /* the glow behind the visor (deeper than it looks: ACES whitens it to amber) */
   --samurai-shadow: 0.4; /* his shadow on the floor */
   --samurai-floor-light: 0; /* the white page is floor enough */
   --samurai-rim: 0.04; /* fresnel edge light: the dark armour already stands out */
-  --samurai-rim-color: #9fc0ff;
+  --samurai-rim-color: #7fd4ff; /* cool, like the cyan rim light behind him */
 
   --brand: #2584f5; /* fills, rules, focus rings */
   --brand-text: #1069d2; /* text — darker so it clears AA on white */
@@ -88,11 +88,11 @@
   --samurai-cloth: #a8322a; /* the silk obi and cords */
   --samurai-leather: #4a3b33;
   --samurai-helmet-lacing: #232a3d; /* the helmet's dark silk lacing */
-  --samurai-eye: #ffb347; /* the glow behind the visor */
+  --samurai-eye: #ff9a3c; /* the glow behind the visor (deeper than it looks: ACES whitens it to amber) */
   --samurai-shadow: 0.7; /* his shadow, inside the pool of light below */
-  --samurai-floor-light: 0.3; /* the key light's pool on the floor */
-  --samurai-rim: 0.1; /* fresnel edge light, a hairline to lift him off the dark page (the rim lights do the rest) */
-  --samurai-rim-color: #9fc0ff;
+  --samurai-floor-light: 0.18; /* the key light's pool on the floor (ACES at 1.25 brightens it) */
+  --samurai-rim: 0.14; /* fresnel edge light, a cool hairline carving him off the dark page (the rim lights do the rest) */
+  --samurai-rim-color: #7fd4ff; /* cool, like the cyan rim light behind him */
 
   --brand: #569fff;
   --brand-text: #569fff;

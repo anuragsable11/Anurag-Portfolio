@@ -4,9 +4,14 @@
  * The rungs a device can render on, top first. Each renders the scene at
  * `dpr` times the CSS size and, where it has ambient occlusion, the
  * occlusion at `ao` times that; rungs without AO skip the post-processing
- * chain and draw straight to the canvas. Desktops climb to nine samples per
+ * chain and draw straight to the canvas. Desktops climb to four samples per
  * screen pixel (on a 1× display) and drop as far as 1× with no AO; phones
  * only ever trade resolution.
+ *
+ * No rung renders above MAX_DPR (2×), whatever the display: past that the
+ * frame cost keeps growing with the square of the ratio while no one can
+ * see the difference — a 3× phone would pay 2.25× the pixels of 2× for the
+ * same picture. (SamuraiQuality also caps the display's own ratio at 2.)
  *
  * Screen-space AO only ever comes with at least 1.5× the display's pixels:
  * the model carries its own occlusion baked in (ao-bake.js), so what the
@@ -19,11 +24,12 @@
  * scene's pixels, and — with AO — one more scene pass for normals plus the
  * occlusion's own pixels, which are dear.
  */
+export const MAX_DPR = 2
+
 export function qualityLadder(finePointer, nativeDpr) {
+  nativeDpr = Math.min(nativeDpr, MAX_DPR)
   const rungs = finePointer
     ? [
-        [3, 1],
-        [2.5, 1],
         [2, 1],
         [2, 0.5],
         [1.5, 0.5],

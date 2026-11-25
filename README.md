@@ -193,8 +193,8 @@ Returns `201` on success, `400` on validation failure, `429` when rate limited.
 ## Getting the contact form to email you
 
 **By default it does not email anyone.** Messages are saved and logged, but nothing is
-sent until you add a Resend API key. That is the single most common reason for "I filled
-in the form and got no mail".
+sent until you add a Gmail app password. That is the single most common reason for "I
+filled in the form and got no mail".
 
 ### Check which state you are in
 
@@ -206,13 +206,16 @@ curl http://localhost:5000/api/health
 also prints this at boot:
 
 ```
-Contact email OFF (missing RESEND_API_KEY, CONTACT_TO_EMAIL)
+Contact email OFF (missing GMAIL_USER, GMAIL_APP_PASSWORD)
 ```
 
 ### Turn it on (about two minutes)
 
-1. Sign up at **https://resend.com** using the address you want messages delivered to.
-2. Create an API key at **https://resend.com/api-keys**.
+Mail goes out through Gmail's SMTP server (`api/_lib/mailer.js`, via nodemailer).
+
+1. Turn on **2-Step Verification** for the Gmail account that should send the mail.
+2. Create an app password at **https://myaccount.google.com/apppasswords**. Use this,
+   not the normal Gmail password — Google rejects that over SMTP.
 3. **Locally** — copy the example env file and fill in the two values:
 
    ```bash
@@ -220,24 +223,23 @@ Contact email OFF (missing RESEND_API_KEY, CONTACT_TO_EMAIL)
    ```
 
    ```
-   RESEND_API_KEY=re_your_key_here
-   CONTACT_TO_EMAIL=you@example.com
+   GMAIL_USER=you@gmail.com
+   GMAIL_APP_PASSWORD=abcd efgh ijkl mnop
    ```
 
-   Restart the API. It should now print `Contact email -> you@example.com`.
+   Restart the API. It should now print `Contact email -> you@gmail.com`.
 
 4. **On Vercel** — add the same two variables under
    Settings → **Environment Variables**, then redeploy.
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `RESEND_API_KEY` | yes | From resend.com/api-keys |
-| `CONTACT_TO_EMAIL` | yes | Where messages are delivered |
-| `CONTACT_FROM_EMAIL` | no | Defaults to Resend's shared test sender |
+| `GMAIL_USER` | yes | The Gmail address that sends the mail |
+| `GMAIL_APP_PASSWORD` | yes | 16-character app password; spaces are fine |
+| `CONTACT_TO_EMAIL` | no | Where messages are delivered; defaults to `GMAIL_USER` |
 
-> On the default sender (`onboarding@resend.dev`), Resend only delivers to the address
-> that owns the API key. That is fine for a personal portfolio. To send anywhere else,
-> verify your own domain in Resend and set `CONTACT_FROM_EMAIL` to an address on it.
+Each message arrives with **Reply-To** set to the visitor, so replying from your inbox
+answers them directly.
 
 ### If it still does not arrive
 
@@ -245,8 +247,8 @@ The server never hides a delivery failure. Check the logs — locally in the ter
 Vercel under your project → **Logs**:
 
 ```
-[contact] emailed to you@example.com (3f2a...)      <- delivered
-[contact] NOT EMAILED — resend responded 401: ...   <- the actual cause
+[contact] emailed to you@gmail.com (<...@gmail.com>)   <- delivered
+[contact] NOT EMAILED — gmail EAUTH: 535 ...            <- the actual cause
 ```
 
 A failed send never loses the message: it is stored (locally) and logged (everywhere)
@@ -300,14 +302,14 @@ provided by `api/contact.js`, which Vercel deploys automatically as a function a
 
 Serverless filesystems are ephemeral, so the Vercel function cannot write to disk.
 Submissions are always written to the function logs (Vercel dashboard → your project →
-**Logs**). To also receive them by email, add a free [Resend](https://resend.com) key under
+**Logs**). To also receive them by email, add the Gmail credentials under
 Vercel → Settings → **Environment Variables**:
 
 | Variable | Example | Required |
 | --- | --- | --- |
-| `RESEND_API_KEY` | `re_...` | yes, for email |
-| `CONTACT_TO_EMAIL` | `anuragsable01@gmail.com` | yes, for email |
-| `CONTACT_FROM_EMAIL` | `Portfolio <onboarding@resend.dev>` | optional |
+| `GMAIL_USER` | `you@gmail.com` | yes, for email |
+| `GMAIL_APP_PASSWORD` | `abcd efgh ijkl mnop` | yes, for email |
+| `CONTACT_TO_EMAIL` | `you@gmail.com` | optional, defaults to `GMAIL_USER` |
 
 Without them the form still works and still returns success — the message just lands in
 the logs rather than your inbox.

@@ -16,5 +16,10 @@
   "devDependencies": {
     "concurrently": "^9.1.2"
   },
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "nodemailer": "10.4.1"
+  }
 }

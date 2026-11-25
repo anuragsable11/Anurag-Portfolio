@@ -6,8 +6,8 @@ import { mailerStatus, sendContactEmail } from './_lib/mailer.js'
  *
  * Serverless filesystems are ephemeral, so unlike the local Express server
  * this does not write messages to disk. It always logs the submission (visible
- * in the Vercel dashboard under Logs) and, when RESEND_API_KEY and
- * CONTACT_TO_EMAIL are set, emails it via api/_lib/mailer.js — the same
+ * in the Vercel dashboard under Logs) and, when GMAIL_USER and
+ * GMAIL_APP_PASSWORD are set, emails it via api/_lib/mailer.js — the same
  * delivery path the local server uses.
  */
 export default async function handler(req, res) {

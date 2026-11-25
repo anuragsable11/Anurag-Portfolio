@@ -1,5 +1,5 @@
 import { clamp } from './util.js'
-import { MAX_PIXELS, START_DISCRETE, START_INTEGRATED, qualityLadder, rungOf } from './quality.js'
+import { MAX_DPR, MAX_PIXELS, START_DISCRETE, START_INTEGRATED, qualityLadder, rungOf } from './quality.js'
 
 /**
  * Quality: measured, not guessed.
@@ -50,7 +50,8 @@ export function createQuality({
   onTier,
   onStruggle,
 }) {
-  const nativeDpr = Math.min(window.devicePixelRatio || 1, 2)
+  // The display's own pixel ratio, never above 2 (see MAX_DPR).
+  const nativeDpr = Math.min(window.devicePixelRatio || 1, MAX_DPR)
   const ladder = qualityLadder(finePointer, nativeDpr)
   const bigShadows = finePointer && !integrated
   const SETTINGS = {

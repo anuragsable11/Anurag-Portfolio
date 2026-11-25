@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { cssNumber } from '../../lib/three-utils.js'
 import { SIT_TARGET_Y, STAND_TARGET_Y } from './constants.js'
-import { blendGlowLinear, dampAngle, dampTo, lerp } from './util.js'
+import { blendGlowLinear, clamp, dampAngle, dampTo, lerp } from './util.js'
 
 const UP = new THREE.Vector3(0, 1, 0)
 
@@ -23,14 +23,23 @@ export function createStage({ renderer, mount, bigShadows }) {
   camera.position.set(-1.4, 2.6, 8.8)
 
   /* ================================================================
-     Studio lighting: warm key, two near-white rims, the studio as fill
+     Studio lighting: warm key, a cool cyan rim and a warm one behind
+     him, a soft warm fill, the studio's reflections
      ================================================================ */
-  // The reflection map arrives asynchronously (see the engine's start()).
-  // Metals are lit mostly by what they reflect, so it carries more weight
-  // than it would in a matte scene.
-  scene.environmentIntensity = 0.62
+  // Balanced for ACES Filmic at exposure 1.25 (SamuraiEngine): that curve
+  // lifts the mid-tones about a stop above the old neutral one, so every
+  // light here is about two thirds as strong as it used to be — the same
+  // picture, with the filmic curve's deep blacks and soft highlights.
 
-  const key = new THREE.DirectionalLight(0xfff3e6, 2.5)
+  // The reflection map arrives asynchronously (see the engine's start()).
+  // Metals are lit mostly by what they reflect — the blade, the gilt, the
+  // lacquer's clear coat — so it carries more weight than in a matte scene.
+  scene.environmentIntensity = 0.4
+
+  // The key: warm, high and to the front, the only light that casts a
+  // shadow.
+  const key = new THREE.DirectionalLight(0xffe2c2, 1.6)
+  key.name = 'key'
   key.position.set(-3.6, 6.5, 5.2)
   key.castShadow = true
   // A 4k map is a 16-megapixel depth pass every frame: discrete GPUs only.
@@ -45,26 +54,36 @@ export function createStage({ renderer, mount, bigShadows }) {
   key.shadow.normalBias = 0.018
   key.shadow.radius = bigShadows ? 7 : 4
 
-  // The rims stand behind him to either side, as a photographer's strip
-  // lights do: from the usual three-quarter view they only graze his edges
-  // (helmet, sode, arms, shins), tracing the silhouette in a thin line that
-  // lifts the black lacquer off a dark page, while the faces turned to the
-  // viewer stay black. Near-white, one a touch warm and one a touch cool:
-  // coloured rims would tint the lacquer, and black lacquer tinted blue
-  // reads as plastic.
-  const rimL = new THREE.DirectionalLight(0xfff2e6, 7)
-  rimL.position.set(5, 4.5, -7)
-  const rimR = new THREE.DirectionalLight(0xe6eeff, 5.5)
-  rimR.position.set(-5, 3.5, -7)
-  // The fill is the studio itself (the reflection map lights every side):
-  // a fill light as well cost a tenth of the frame on an integrated GPU for
-  // light no one could see.
-  scene.add(key, rimL, rimR)
+  // The rims stand behind him, as a photographer's strip lights do: from the
+  // usual three-quarter view they only graze his edges (helmet, shikoro,
+  // sode, arms, blade), carving the silhouette out of a dark page while the
+  // faces turned to the viewer stay black. The cool one — cyan-blue, on the
+  // shadow side, opposite the warm key — is the cinematic one; it sits well
+  // behind and above him, because moved round to his side it would lay a
+  // broad blue sheen over the black lacquer (lacquer tinted blue reads as
+  // plastic). Pale rather than saturated for the same reason: its colour
+  // shows on the edges and the steel, not on the faces. The warm rim traces
+  // the key side's outline.
+  const rimCool = new THREE.DirectionalLight(0x7fd0ff, 4)
+  rimCool.name = 'rim-cool'
+  rimCool.position.set(4, 6, -8)
+  const rimWarm = new THREE.DirectionalLight(0xffe9d6, 3)
+  rimWarm.name = 'rim-warm'
+  rimWarm.position.set(-5, 3.5, -7)
+  // The fill: a warm sky over a dark floor. It lights no highlights of its
+  // own (a hemisphere light is diffuse only), so it costs next to nothing
+  // and can't blow out the lacquer; the baked occlusion still darkens it in
+  // every crease and between the plates, which keeps them deep. Kept low:
+  // the studio's reflections are most of the fill.
+  const fill = new THREE.HemisphereLight(0xffcf9e, 0x0d1117, 0.25)
+  fill.name = 'fill'
+  scene.add(key, rimCool, rimWarm, fill)
   // The studio turns with the view, as if he stood on a turntable: dragged
   // round, he is lit from every side as he is from the front — the key on
   // his face, the rims behind — and his reflections and shadow turn with it,
   // rather than the rims blazing at the viewer once his back is turned.
-  const studio = [key, rimL, rimR].map((light) => ({ light, home: light.position.clone() }))
+  // (The fill needs no turning: it is the same from every side.)
+  const studio = [key, rimCool, rimWarm].map((light) => ({ light, home: light.position.clone() }))
   let studioTurn = 0
   const turnStudio = (angle) => {
     if (Math.abs(angle - studioTurn) < 1e-5) return
@@ -201,13 +220,70 @@ export function createStage({ renderer, mount, bigShadows }) {
   // Seconds after a drag before the camera starts home.
   const RETURN_AFTER = 1.6
 
+  /* ---- Parallax: the view floats after the cursor ---- */
+  // Wherever the cursor is on the page, he turns a few degrees toward it
+  // and tips his face to it: the camera swings round him the opposite way
+  // (so his feet stay planted), with a hair of roll. It follows with
+  // inertia rather than tracking — easing PARALLAX.lerp of the remaining
+  // way every 60th of a second, the same glide at any frame rate and
+  // through a dropped frame. The studio turns with the true view only
+  // (turnStudio), so as the view floats, the highlights slide across the
+  // lacquer, gilt and steel. Off while docked, mid-drag, without a mouse,
+  // and under reduced motion.
+  //   yaw / pitch / roll: radians with the cursor half a window away
+  const PARALLAX = { lerp: 0.05, yaw: 0.07, pitch: 0.035, roll: 0.008 }
+  const parallax = { x: 0, y: 0, on: false }
+  const trueView = new THREE.Vector3()
+  // Where the canvas sits and how big the window is, read a few times a
+  // second at most: reading layout every frame could force one while the
+  // page is animating.
+  const where = { cx: 0, cy: 0, halfW: 1, halfH: 1, at: -Infinity }
+  const measure = () => {
+    const r = renderer.domElement.getBoundingClientRect()
+    where.cx = r.left + r.width / 2
+    where.cy = r.top + r.height / 2
+    where.halfW = (window.innerWidth || 2) / 2
+    where.halfH = (window.innerHeight || 2) / 2
+    where.at = performance.now()
+  }
+  const updateParallax = (dt, cursor, calm) => {
+    let gx = 0
+    let gy = 0
+    if (cursor?.active && !docked && !orbit.interacting && !calm) {
+      if (performance.now() - where.at > 250) measure()
+      // From his own centre: a cursor on him leaves him square to the
+      // viewer, one over the text beside him turns him toward the text.
+      gx = clamp((cursor.x - where.cx) / where.halfW, -1, 1)
+      gy = clamp((cursor.y - where.cy) / where.halfH, -1, 1)
+    }
+    const k = 1 - Math.pow(1 - PARALLAX.lerp, dt * 60)
+    parallax.x += (gx - parallax.x) * k
+    parallax.y += (gy - parallax.y) * k
+    parallax.on = Math.abs(parallax.x) + Math.abs(parallax.y) > 1e-4
+    if (!parallax.on) return
+    trueView.copy(camera.position)
+    offset.copy(camera.position).sub(controls.target)
+    spherical.setFromVector3(offset)
+    // Swinging the camera the other way turns him toward the cursor, and
+    // dropping it a little lifts his face toward a cursor above him.
+    spherical.theta -= parallax.x * PARALLAX.yaw
+    spherical.phi = clamp(spherical.phi - parallax.y * PARALLAX.pitch, 0.05, Math.PI - 0.05)
+    camera.position.copy(controls.target).add(offset.setFromSpherical(spherical))
+    camera.lookAt(controls.target)
+    camera.rotateZ(-parallax.x * PARALLAX.roll)
+  }
+
   /**
    * One frame of camera motion. `seated` is how far into seiza he is (0..1):
    * the aim drops with him. `rise` (0..1, how far the hero has scrolled
    * away) lifts the camera a few degrees, so he is seen a touch more from
    * above as the page moves on. `calm` (reduced motion) holds it still.
+   * `cursor` ({ x, y, active }, page-wide) floats the view (parallax).
    */
-  const updateCamera = (dt, { seated, rise = 0, calm = false }) => {
+  const updateCamera = (dt, { seated, rise = 0, calm = false, cursor = null }) => {
+    // Last frame's parallax was for the picture only: the orbit, a drag and
+    // the way home all work from the true view.
+    if (parallax.on) camera.position.copy(trueView)
     const aimY = lerp(docked ? DOCK.aimY : STAND_TARGET_Y, SIT_TARGET_Y, seated)
     camera.position.y += aimY - controls.target.y
     controls.target.y = aimY
@@ -227,6 +303,7 @@ export function createStage({ renderer, mount, bigShadows }) {
     if (!HOME) HOME = new THREE.Spherical().setFromVector3(offset.copy(camera.position).sub(controls.target))
     // Wherever the view has swung round him, the studio has swung too.
     turnStudio(Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z) - HOME.theta)
+    updateParallax(dt, cursor, calm)
   }
 
   return {
@@ -234,7 +311,7 @@ export function createStage({ renderer, mount, bigShadows }) {
     camera,
     controls,
     orbit,
-    lights: { key, rimL, rimR },
+    lights: { key, rimCool, rimWarm, fill },
     ground: { floor, pool, floorGlow },
     applyTheme,
     updateCamera,
@@ -263,6 +340,10 @@ export function createStage({ renderer, mount, bigShadows }) {
       if (detached) document.body.appendChild(canvas)
       controls.dispose()
       if (detached) canvas.remove()
+      // The key's shadow map is a render target of its own (2k–4k square):
+      // disposing the light frees it on the GPU now, not whenever the
+      // context happens to go.
+      for (const light of [key, rimCool, rimWarm, fill]) light.dispose()
       geos.forEach((g) => g.dispose())
       shadowMat.dispose()
       poolMat.dispose()

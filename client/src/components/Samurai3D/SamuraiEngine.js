@@ -206,15 +206,19 @@ async function boot(
   renderer.setPixelRatio(quality.dpr)
   renderer.setSize(mount.clientWidth, mount.clientHeight)
   renderer.outputColorSpace = THREE.SRGBColorSpace
-  // Khronos PBR Neutral: colours stay the colours the materials are given
-  // (ACES turned the vermilion lacquer coral and the gold brassy), and only
-  // the brightest highlights roll off toward white, as on a photograph.
-  renderer.toneMapping = THREE.NeutralToneMapping
-  renderer.toneMappingExposure = 1
+  // ACES Filmic, the film-like curve: blacks sink deep, highlights roll off
+  // softly instead of clipping, and bright saturated colours lean toward
+  // white as on film. The studio (SamuraiScene) is balanced for it at this
+  // exposure, and the theme's eye and rim colours (index.css) allow for its
+  // hue shifts, so the vermilion, gilt and amber eyes keep their colour.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping
+  renderer.toneMappingExposure = 1.25
   renderer.shadowMap.enabled = true
-  // Not PCFSoftShadowMap: three.js r18x silently swaps that for PCF at
-  // render time, which changes every shader's cache key and throws away the
-  // programs compiled ahead of time. `key.shadow.radius` still softens PCF.
+  // Soft shadows: in three.js r18x PCFShadowMap *is* the soft filter (five
+  // hardware-filtered taps on a noise-rotated Vogel disk, as wide as
+  // `key.shadow.radius`). PCFSoftShadowMap has been removed: three warns
+  // and swaps it for PCF at render time, which also changes every shader's
+  // cache key and throws away the programs compiled ahead of time.
   renderer.shadowMap.type = THREE.PCFShadowMap
   mount.appendChild(renderer.domElement)
 
@@ -226,7 +230,7 @@ async function boot(
   prepareMaterials(model.materials, model.rim)
   scene.add(model.root)
   // The rim light's colour, from the theme (see applyTheme).
-  const rimTint = cssColor('--samurai-rim-color', '#9fc0ff')
+  const rimTint = cssColor('--samurai-rim-color', '#7fd4ff')
 
   // The page-wide cursor, which his gaze follows.
   const cursor = { x: 0, y: 0, active: false, at: -10 }
@@ -290,7 +294,7 @@ async function boot(
   const update = (dt, t) => {
     controller.update(dt, t)
     effects.update(dt, t, { still: controller.still, hover: controller.hoverLevel })
-    stage.updateCamera(dt, { seated: controller.seated, rise: interaction.rise, calm: !controller.still })
+    stage.updateCamera(dt, { seated: controller.seated, rise: interaction.rise, calm: !controller.still, cursor })
   }
 
   // The frame's own timestamp, not the moment this callback happens to run:
@@ -470,7 +474,7 @@ async function boot(
   const applyTheme = () => {
     model.applyTheme()
     stage.applyTheme()
-    rimTint.copy(cssColor('--samurai-rim-color', '#9fc0ff'))
+    rimTint.copy(cssColor('--samurai-rim-color', '#7fd4ff'))
     effects?.setRimBase(cssNumber('--samurai-rim', 0.04))
     effects?.setPage(document.documentElement.dataset.theme)
     wake()
