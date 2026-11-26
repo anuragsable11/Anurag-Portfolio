@@ -317,10 +317,22 @@ export const projects = [
 
 export const timeline = [
   {
-    id: 'qspiders',
+    id: 'shubham-tanks',
     kind: 'experience',
+    title: 'Python Full Stack Developer Intern',
+    org: 'Shubham Tanks and Liners Pvt Ltd',
+    period: 'Jun 2026 – Present',
+    points: [
+      "Working on the company's in-house ERP system, building features with Django REST Framework, PostgreSQL and React.",
+      'Built and handled REST APIs with Django REST Framework: request validation, clear error responses and frontend integration.',
+      'Learned how a production ERP is structured across departments, and how to ship features in a shared team codebase with Git.',
+    ],
+  },
+  {
+    id: 'qspiders',
+    kind: 'training',
     title: 'Python Full Stack Trainee',
-    org: 'QSpiders',
+    org: 'QSpiders · Certified',
     period: 'Sep 2025 · 6 Months',
     points: [
       'Trained in backend development with Django and Django REST Framework, building and consuming RESTful APIs.',
@@ -343,16 +355,6 @@ export const timeline = [
     org: 'K V Pendharkar College of Arts, Science and Commerce',
     period: '2022',
     points: [],
-  },
-]
-
-export const certifications = [
-  {
-    id: 'qspiders-cert',
-    title: 'Python Full Stack Development Training',
-    issuer: 'QSpiders',
-    date: 'Sep 2025',
-    detail: 'Backend with Django, REST APIs, databases and frontend technologies.',
   },
 ]
 

@@ -71,14 +71,28 @@ SKILLS = [
     ('Other', 'REST APIs, WebSockets, OOP, SQL'),
 ]
 
+# Company work is described by what was built, never by internal product,
+# partner or client names: this PDF is public.
+EXPERIENCE = [
+    {
+        'title': 'Python Full Stack Developer Intern — Shubham Tanks and Liners Pvt Ltd',
+        'when': 'Jun 2026 – Present',
+        'points': [
+            "Working on the company's in-house ERP system, building features with Django REST Framework, PostgreSQL, and React.",
+            'Built and handled REST APIs with Django REST Framework: request validation, clear error responses, and frontend integration.',
+            'Learned how a production ERP is structured across departments, and how to ship features in a shared team codebase with Git.',
+        ],
+    },
+]
+
 TRAINING = [
     {
         'title': 'Python Full Stack Trainee — QSpiders',
         'when': 'Sep 2025 (6 Months)',
+        # One line: the internship above now carries the hands-on story. The
+        # training certificate is folded in here rather than given a section.
         'points': [
-            'Trained in backend development with Django and Django REST Framework, building and consuming RESTful APIs.',
-            'Worked with relational databases including MySQL and SQLite; hands-on practice with query optimization and schema design.',
-            'Gained frontend exposure in HTML5, CSS3, and JavaScript to support full-stack project delivery.',
+            'Certified training in Django, Django REST Framework, REST APIs, and MySQL/SQLite schema design and query optimization.',
         ],
     },
 ]
@@ -154,13 +168,6 @@ EDUCATION = [
     },
 ]
 
-CERTIFICATIONS = [
-    (
-        'Python Full Stack Development Training',
-        ' – QSpiders (Sep 2025): Django, REST APIs, databases, and frontend technologies.',
-    ),
-]
-
 # ---------------------------------------------------------------------------
 # Layout
 # ---------------------------------------------------------------------------
@@ -215,10 +222,11 @@ def story(fit):
     section('TECHNICAL SKILLS')
     out.extend(Paragraph(f'<b>{label}:</b> {items}', s['skill']) for label, items in SKILLS)
 
-    section('INTERNSHIP / TRAINING')
-    for t in TRAINING:
-        out.append(Paragraph(f'{t["title"]}{gap}{t["when"]}', s['item']))
-        bullets(t['points'])
+    for heading, entries in (('EXPERIENCE', EXPERIENCE), ('TRAINING', TRAINING)):
+        section(heading)
+        for t in entries:
+            out.append(Paragraph(f'{t["title"]}{gap}{t["when"]}', s['item']))
+            bullets(t['points'])
 
     section('PROJECTS')
     for p in PROJECTS:
@@ -231,9 +239,6 @@ def story(fit):
         out.append(Paragraph(f'{e["title"]}{gap}{e["when"]}', s['item']))
         if e['note']:
             out.append(Paragraph(e['note'], s['note']))
-
-    section('CERTIFICATIONS')
-    bullets(f'<b>{title}</b>{rest}' for title, rest in CERTIFICATIONS)
 
     return out
 
