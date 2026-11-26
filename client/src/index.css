@@ -1,20 +1,33 @@
 /* ============================================================
-   Design tokens — neutral base, one brand accent, light + dark
+   Design tokens — navy and teal: soft white paper, deep navy type
+   and dark bands, teal for buttons and highlights. Dark mode turns
+   the page night-navy and lifts the teal.
    ============================================================ */
 :root,
 :root[data-theme='light'] {
-  --bg: #ffffff;
-  --bg-subtle: #fafafa;
-  --fg: #0a0a0a;
+  --bg: #f6f8fb; /* soft white */
+  --page: #f6f8fb; /* the page itself: bands redefine --bg, never this */
+  --bg-tint: #dcefed; /* About: a pale wash of the teal (small teal text 4.6:1) */
+  --bg-warm: #fbebc8; /* Projects: warm sand */
+  --warm: #f59e0b; /* gold: the label tab on the sand, the ribbons into Contact */
+  --warm-text: #92400e; /* small gold text on the sand (6:1) */
+  --warm-display: #b45309; /* the highlighted heading words on the sand (4.3:1, large type) */
+  --edge-depth: 0.6; /* how dark the shadow under each section edge falls */
+  --bg-subtle: #eef2f7;
+  --bg-glow: rgba(20, 184, 166, 0.07); /* a breath of the teal over the top of the page */
+  --fg: #0f1b2d; /* deep navy: text */
+  --display: #0f1b2d; /* headings */
+  --highlight: #0d9488; /* the highlighted words in a heading (3.5:1, large type only) */
   --card: #ffffff;
-  --secondary: #f5f5f5;
-  --secondary-fg: #171717;
-  --muted-fg: #6b6b6b;
-  --border: #e5e5e5;
-  --border-hi: #d4d4d4;
-  --input: #e5e5e5;
-  --ring: #a1a1a1;
-  --portrait-panel: #f1f2f5; /* the opening card's paper */
+  --secondary: #eef2f7;
+  --secondary-fg: #0f1b2d;
+  --muted-fg: #4b5a6e;
+  --border: #e3e8ef;
+  --border-hi: #c9d2de;
+  --rule: #0f1b2d;
+  --input: #c9d2de;
+  --ring: #14b8a6;
+  --band-dark: #0b1d33; /* the contact band and the footer: navy */
 
   --robot-shell: #ccd5e0;
   --robot-plate: #8d99ab;
@@ -40,35 +53,49 @@
   --samurai-rim: 0.04; /* fresnel edge light: the dark armour already stands out */
   --samurai-rim-color: #7fd4ff; /* cool, like the cyan rim light behind him */
 
-  --brand: #2584f5; /* fills, rules, focus rings */
-  --brand-text: #1069d2; /* text — darker so it clears AA on white */
-  --brand-fg: #fafafa;
-  --brand-soft: rgba(37, 132, 245, 0.08);
-  --brand-border: rgba(37, 132, 245, 0.28);
+  --brand: #14b8a6; /* teal: buttons, bars, icons, focus rings */
+  --brand-text: #0f766e; /* small teal text (5.1:1) */
+  --brand-fg: #0b1d33; /* navy on a teal fill (6.8:1) */
+  --brand-soft: rgba(20, 184, 166, 0.1);
+  --brand-border: rgba(20, 184, 166, 0.35);
+  --seal: #0d9488; /* the AS mark in the navbar */
+  --navy: #0b1d33; /* what a primary button turns to under the pointer */
+  --on-navy: #ffffff;
 
   --success: #15803d;
   --success-soft: rgba(22, 163, 74, 0.1);
-  --danger: #dc2626;
-  --danger-soft: rgba(220, 38, 38, 0.08);
+  --danger: #c81e3c;
+  --danger-soft: rgba(200, 30, 60, 0.08);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 16px -4px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 12px 32px -12px rgba(0, 0, 0, 0.16);
+  --shadow-sm: 0 1px 2px rgba(15, 27, 45, 0.06);
+  --shadow-md: 0 10px 28px -14px rgba(15, 27, 45, 0.22);
+  --shadow-lg: 0 24px 48px -22px rgba(15, 27, 45, 0.3);
 }
 
 :root[data-theme='dark'] {
-  --bg: #0a0a0a;
-  --bg-subtle: #0f0f0f;
-  --fg: #fafafa;
-  --card: #171717;
-  --secondary: #262626;
-  --secondary-fg: #fafafa;
-  --muted-fg: #a1a1a1;
-  --border: rgba(255, 255, 255, 0.1);
-  --border-hi: rgba(255, 255, 255, 0.2);
-  --input: rgba(255, 255, 255, 0.15);
-  --ring: #737373;
-  --portrait-panel: #15181e; /* the opening card's paper */
+  --bg: #0a1322; /* night navy */
+  --page: #0a1322;
+  --bg-tint: #0d2433; /* a step lighter, toward the teal */
+  --bg-warm: #1e1b2b; /* a step lighter, toward plum */
+  --warm: #f59e0b;
+  --warm-text: #fbbf24;
+  --warm-display: #fbbf24;
+  --edge-depth: 1;
+  --bg-subtle: #0e1a2c;
+  --bg-glow: rgba(20, 184, 166, 0.06);
+  --fg: #e6edf6;
+  --display: #f1f5fb;
+  --highlight: #2dd4bf; /* the teal, lifted to read on the navy (10:1) */
+  --card: #101d31;
+  --secondary: #15243a;
+  --secondary-fg: #e6edf6;
+  --muted-fg: #9eb0c7;
+  --border: rgba(230, 237, 246, 0.1);
+  --border-hi: rgba(230, 237, 246, 0.2);
+  --rule: #e6edf6;
+  --input: rgba(230, 237, 246, 0.22);
+  --ring: #2dd4bf;
+  --band-dark: #070e1a; /* the contact band and footer: a step deeper than the page and the tint above it */
 
   --robot-shell: #46525f;
   --robot-plate: #2b3540;
@@ -94,25 +121,31 @@
   --samurai-rim: 0.14; /* fresnel edge light, a cool hairline carving him off the dark page (the rim lights do the rest) */
   --samurai-rim-color: #7fd4ff; /* cool, like the cyan rim light behind him */
 
-  --brand: #569fff;
-  --brand-text: #569fff;
-  --brand-fg: #171717;
-  --brand-soft: rgba(86, 159, 255, 0.1);
-  --brand-border: rgba(86, 159, 255, 0.3);
+  --brand: #14b8a6;
+  --brand-text: #2dd4bf;
+  --brand-fg: #0a1322;
+  --brand-soft: rgba(20, 184, 166, 0.14);
+  --brand-border: rgba(45, 212, 191, 0.4);
+  --seal: #2dd4bf;
+  --navy: #e6edf6;
+  --on-navy: #0a1322;
 
   --success: #4ade80;
   --success-soft: rgba(74, 222, 128, 0.1);
-  --danger: #ff6568;
-  --danger-soft: rgba(255, 101, 104, 0.1);
+  --danger: #ff6b81;
+  --danger-soft: rgba(255, 107, 129, 0.1);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 16px -4px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 10px 28px -14px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 24px 48px -22px rgba(0, 0, 0, 0.7);
 }
 
 :root {
-  /* Self-hosted variable fonts (@fontsource-variable, imported in main.jsx). */
-  --font: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Self-hosted variable fonts (@fontsource-variable, imported in main.jsx).
+     Montserrat sets everything: heavy (800-900) for the name, headings,
+     labels and buttons; regular for reading. */
+  --font: 'Montserrat Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --heading: 'Montserrat Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: 'Geist Mono Variable', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
 
   --radius: 10px;
@@ -125,6 +158,22 @@
   --stage-h: clamp(340px, 30vw + 40px, 600px);
   --nav-h: 64px;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Where one section gives way to the next, the edge between them is
+     drawn in a strip this tall (see "Section edges"). */
+  --edge-h: clamp(40px, 6.5vw, 120px);
+  --edge-wave-cut: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 100' preserveAspectRatio='none'%3E%3Cpath d='M1440 100V40C1400 26 1350 18 1290 24C1210 32 1180 70 1090 74C1000 78 960 44 880 34C800 24 760 26 700 40C620 58 560 80 470 76C380 72 340 36 250 30C160 24 90 52 0 64V100Z'/%3E%3C/svg%3E");
+  --edge-wave-hang: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 100' preserveAspectRatio='none'%3E%3Cpath d='M1440 0V40C1400 26 1350 18 1290 24C1210 32 1180 70 1090 74C1000 78 960 44 880 34C800 24 760 26 700 40C620 58 560 80 470 76C380 72 340 36 250 30C160 24 90 52 0 64V0Z'/%3E%3C/svg%3E");
+  --edge-arch-cut: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 100' preserveAspectRatio='none'%3E%3Cpath d='M1440 100V96C1080 4 360 4 0 96V100Z'/%3E%3C/svg%3E");
+  --edge-arch-hang: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 100' preserveAspectRatio='none'%3E%3Cpath d='M1440 0V96C1080 4 360 4 0 96V0Z'/%3E%3C/svg%3E");
+  --edge-slant-cut: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 100' preserveAspectRatio='none'%3E%3Cpath d='M1440 100V92L0 8V100Z'/%3E%3C/svg%3E");
+  --edge-slant-hang: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 100' preserveAspectRatio='none'%3E%3Cpath d='M1440 0V92L0 8V0Z'/%3E%3C/svg%3E");
+  --edge-layers-cut: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 100' preserveAspectRatio='none'%3E%3Cpath d='M0 100V60C180 80 420 86 640 74C860 62 1000 50 1180 54C1270 56 1380 62 1440 64V100Z'/%3E%3C/svg%3E");
+  --edge-layers-hang: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 100' preserveAspectRatio='none'%3E%3Cpath d='M0 0V60C180 80 420 86 640 74C860 62 1000 50 1180 54C1270 56 1380 62 1440 64V0Z'/%3E%3C/svg%3E");
+  --edge-wave-shade: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 140' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='b' x='-10%' y='-60%' width='120%' height='220%'%3E%3CfeGaussianBlur stdDeviation='8'/%3E%3C/filter%3E%3CclipPath id='c'%3E%3Cpath d='M1480 140V40L1440 40C1400 26 1350 18 1290 24C1210 32 1180 70 1090 74C1000 78 960 44 880 34C800 24 760 26 700 40C620 58 560 80 470 76C380 72 340 36 250 30C160 24 90 52 0 64L-40 64V140Z'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23c)'%3E%3Cpath d='M1480 0V40L1440 40C1400 26 1350 18 1290 24C1210 32 1180 70 1090 74C1000 78 960 44 880 34C800 24 760 26 700 40C620 58 560 80 470 76C380 72 340 36 250 30C160 24 90 52 0 64L-40 64V0Z' transform='translate(0 6)' fill='%23000' fill-opacity='0.5' filter='url(%23b)'/%3E%3C/g%3E%3C/svg%3E");
+  --edge-arch-shade: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 140' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='b' x='-10%' y='-60%' width='120%' height='220%'%3E%3CfeGaussianBlur stdDeviation='8'/%3E%3C/filter%3E%3CclipPath id='c'%3E%3Cpath d='M1480 140V96L1440 96C1080 4 360 4 0 96L-40 96V140Z'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23c)'%3E%3Cpath d='M1480 0V96L1440 96C1080 4 360 4 0 96L-40 96V0Z' transform='translate(0 6)' fill='%23000' fill-opacity='0.5' filter='url(%23b)'/%3E%3C/g%3E%3C/svg%3E");
+  --edge-slant-shade: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 140' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='b' x='-10%' y='-60%' width='120%' height='220%'%3E%3CfeGaussianBlur stdDeviation='8'/%3E%3C/filter%3E%3CclipPath id='c'%3E%3Cpath d='M1480 140V92L1440 92L0 8L-40 8V140Z'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23c)'%3E%3Cpath d='M1480 0V92L1440 92L0 8L-40 8V0Z' transform='translate(0 6)' fill='%23000' fill-opacity='0.5' filter='url(%23b)'/%3E%3C/g%3E%3C/svg%3E");
+  --edge-layers-shade: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 140' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='b' x='-10%' y='-60%' width='120%' height='220%'%3E%3CfeGaussianBlur stdDeviation='7'/%3E%3C/filter%3E%3CclipPath id='n'%3E%3Cpath d='M-40 0V60L0 60C180 80 420 86 640 74C860 62 1000 50 1180 54C1270 56 1380 62 1440 64L1480 64V0Z'/%3E%3C/clipPath%3E%3CclipPath id='c1'%3E%3Cpath d='M-40 140V22L0 22C220 40 460 46 700 32C900 20 1060 8 1240 12C1330 14 1400 20 1440 22L1480 22V140Z'/%3E%3C/clipPath%3E%3CclipPath id='c2'%3E%3Cpath d='M-40 140V40L0 40C200 60 440 66 660 52C880 38 1020 28 1200 32C1290 34 1380 40 1440 42L1480 42V140Z'/%3E%3C/clipPath%3E%3CclipPath id='c3'%3E%3Cpath d='M-40 140V60L0 60C180 80 420 86 640 74C860 62 1000 50 1180 54C1270 56 1380 62 1440 64L1480 64V140Z'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23n)'%3E%3Cpath d='M-40 140V22L0 22C220 40 460 46 700 32C900 20 1060 8 1240 12C1330 14 1400 20 1440 22L1480 22V140Z' fill='%23f59e0b' fill-opacity='.2'/%3E%3Cpath d='M-40 140V40L0 40C200 60 440 66 660 52C880 38 1020 28 1200 32C1290 34 1380 40 1440 42L1480 42V140Z' fill='%23f59e0b' fill-opacity='.45'/%3E%3C/g%3E%3Cg clip-path='url(%23c1)'%3E%3Cpath d='M-40 0V22L0 22C220 40 460 46 700 32C900 20 1060 8 1240 12C1330 14 1400 20 1440 22L1480 22V0Z' transform='translate(0 5)' fill='%23000' fill-opacity='0.16' filter='url(%23b)'/%3E%3C/g%3E%3Cg clip-path='url(%23c2)'%3E%3Cpath d='M-40 0V40L0 40C200 60 440 66 660 52C880 38 1020 28 1200 32C1290 34 1380 40 1440 42L1480 42V0Z' transform='translate(0 5)' fill='%23000' fill-opacity='0.2' filter='url(%23b)'/%3E%3C/g%3E%3Cg clip-path='url(%23c3)'%3E%3Cpath d='M-40 0V60L0 60C180 80 420 86 640 74C860 62 1000 50 1180 54C1270 56 1380 62 1440 64L1480 64V0Z' transform='translate(0 6)' fill='%23000' fill-opacity='0.38' filter='url(%23b)'/%3E%3C/g%3E%3C/svg%3E");
 }
 
 /* ============================================================
@@ -147,14 +196,20 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+/* While Lenis runs (lib/smooth-scroll.js) it does the gliding; the CSS kind
+   would fight it. */
+html.lenis {
+  scroll-behavior: auto;
+}
+
 body {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font);
   font-size: 16px;
-  line-height: 1.65;
+  line-height: 1.7;
   font-weight: 400;
-  letter-spacing: -0.011em;
+  letter-spacing: 0.005em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
@@ -165,6 +220,11 @@ img,
 svg {
   display: block;
   max-width: 100%;
+}
+
+/* No word left alone on a paragraph's last line. */
+p {
+  text-wrap: pretty;
 }
 
 a {
@@ -190,7 +250,7 @@ ul {
 }
 
 ::selection {
-  background: var(--brand-text);
+  background: var(--brand);
   color: var(--brand-fg);
 }
 
@@ -216,18 +276,14 @@ ul {
 }
 
 /* ============================================================
-   Background — one faint brand wash, nothing more
+   Background — soft light falling on the paper, nothing more
    ============================================================ */
 .bg-layer {
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: radial-gradient(
-    60rem 32rem at 50% -8rem,
-    var(--brand-soft),
-    transparent 70%
-  );
+  background: radial-gradient(70rem 36rem at 50% -10rem, var(--bg-glow), transparent 70%);
 }
 
 .scroll-progress {
@@ -252,54 +308,190 @@ ul {
 
 .section {
   position: relative;
-  padding-block: clamp(64px, 6vw + 1rem, 120px);
-  border-top: 1px solid var(--border);
+  padding-block: clamp(72px, 7vw + 1rem, 148px);
 }
 
-#home + .section {
-  border-top: none;
+/* ============================================================
+   Section edges — each boundary drawn its own way
+   ============================================================ */
+/* Sections alternate between the page and a tint (.band-tint), and the
+   contact band is navy (.band-dark). A band paints its colour on ::before
+   with its top edge cut to a shape, so the section above shows through the
+   cut exactly as it is (the light on the page included); a plain section
+   after a tinted one has the tint hanging into its top in the shape
+   instead. The shapes, each in a strip --edge-h tall:
+     wave    soft hills of different sizes (into About)
+     arch    the page rising as a dome over Skills' centred title
+     slant   one straight diagonal (into Projects)
+     layers  a wave with two teal ribbons above it (into Contact)
+   Each also has a shadow (see Depth below), so the page reads as sheets
+   laid one over the next. */
+.band-tint {
+  --bg: var(--bg-tint);
 }
 
+/* The warm band (Projects): sand, with gold for its label, its tab and the
+   highlighted words. Buttons keep the teal. */
+.band-warm {
+  --bg: var(--bg-warm);
+  --brand: var(--warm);
+  --brand-text: var(--warm-text);
+  --highlight: var(--warm-display);
+}
+
+.band-tint::before,
+.band-dark::before {
+  content: '';
+  position: absolute;
+  /* One pixel past the bottom, so no hairline of the page shows between
+     this band and what follows it. */
+  inset: 0 0 -1px;
+  z-index: -1;
+  background: var(--bg);
+  -webkit-mask: var(--edge-cut, var(--edge-wave-cut)) var(--edge-at, 0 0) / var(--edge-w, 100%) var(--edge-h)
+      var(--edge-repeat, no-repeat),
+    linear-gradient(#000 0 0) 0 calc(var(--edge-h) - 1px) / 100% calc(100% - var(--edge-h) + 1px) no-repeat;
+  mask: var(--edge-cut, var(--edge-wave-cut)) var(--edge-at, 0 0) / var(--edge-w, 100%) var(--edge-h)
+      var(--edge-repeat, no-repeat),
+    linear-gradient(#000 0 0) 0 calc(var(--edge-h) - 1px) / 100% calc(100% - var(--edge-h) + 1px) no-repeat;
+  pointer-events: none;
+  /* Keeps pace with the page when the theme changes (see body). */
+  transition: background-color 0.25s ease;
+}
+
+/* A tinted section right above the navy band runs on under the band's top
+   strip, so the cut in the band shows the tint rather than the page. */
+.band-tint:has(+ .band-dark)::before {
+  bottom: calc(-1 * var(--edge-h));
+}
+
+/* A plain section after a tinted one: the tint hangs into its top. */
+.band-tint + .section:not(.band-tint):not(.band-dark)::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: calc(var(--edge-h) + 1px);
+  z-index: -1;
+  background: var(--bg-tint);
+  -webkit-mask: var(--edge-hang, var(--edge-wave-hang)) var(--edge-at, 0 0) / var(--edge-w, 100%) 100%
+    var(--edge-repeat, no-repeat);
+  mask: var(--edge-hang, var(--edge-wave-hang)) var(--edge-at, 0 0) / var(--edge-w, 100%) 100%
+    var(--edge-repeat, no-repeat);
+  pointer-events: none;
+  transition: background-color 0.25s ease;
+}
+
+.band-warm + .section:not(.band-tint):not(.band-dark)::before {
+  background: var(--bg-warm);
+}
+
+/* Which edge each section opens with. */
+#about {
+  --edge-shade: var(--edge-wave-shade);
+  --edge-cut: var(--edge-wave-cut);
+}
+
+#skills {
+  --edge-shade: var(--edge-arch-shade);
+  --edge-hang: var(--edge-arch-hang);
+}
+
+#projects {
+  --edge-shade: var(--edge-slant-shade);
+  --edge-cut: var(--edge-slant-cut);
+}
+
+#contact {
+  --edge-cut: var(--edge-layers-cut);
+  --edge-shade: var(--edge-layers-shade);
+  /* Its strip carries the ribbons too, so it is never faded. */
+  --edge-depth: 1;
+}
+
+/* Depth: the section above each edge lies over the one below like a sheet
+   of paper and casts a soft shadow just under the edge, drawn on ::after
+   in a strip a little taller than the edge so the shadow can fade out.
+   On the contact band the strip also carries its two gold ribbons, each
+   ribbon a sheet with its own shadow. */
+.band-tint::after,
+.band-dark::after,
+.band-tint + .section:not(.band-tint):not(.band-dark)::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(var(--edge-h) * 1.4);
+  z-index: -1;
+  background: var(--edge-shade, var(--edge-wave-shade)) var(--edge-at, 0 0) / var(--edge-w, 100%) 100%
+    var(--edge-repeat, no-repeat);
+  opacity: var(--edge-depth, 1);
+  pointer-events: none;
+}
+
+/* Lined up with the tint hanging in, which starts a pixel up. */
+.band-tint + .section:not(.band-tint):not(.band-dark)::after {
+  top: -1px;
+  height: calc((var(--edge-h) + 1px) * 1.4);
+}
+
+/* A heading set like a branding studio's: a small tabbed label, then the
+   title, heavy and tight, then a line or two under it. */
 .section-head {
-  margin-bottom: 44px;
-  max-width: 680px;
+  max-width: 860px;
+  margin-bottom: clamp(40px, 4.5vw, 72px);
 }
 
 .eyebrow {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.04em;
+  gap: 12px;
+  margin-bottom: 18px;
+  font-family: var(--heading);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
   color: var(--brand-text);
-  margin-bottom: 14px;
 }
 
+/* A short, thick bar in front: the label's tab. */
 .eyebrow::before {
   content: '';
-  width: 14px;
-  height: 1px;
+  width: 28px;
+  height: 4px;
   background: var(--brand);
 }
 
 .section-title {
-  font-size: clamp(1.75rem, 1rem + 2vw, 2.8rem);
-  font-weight: 600;
+  color: var(--display);
+  font-family: var(--heading);
+  font-size: clamp(2.5rem, 1.2rem + 3.8vw, 5.2rem);
+  font-weight: 800;
   letter-spacing: -0.03em;
-  line-height: 1.15;
-  margin-bottom: 12px;
+  line-height: 1.02;
+  text-wrap: balance;
+  margin-bottom: 20px;
 }
 
 .section-sub {
-  color: var(--muted-fg);
-  font-size: 1rem;
+  max-width: 54ch;
+  color: var(--fg);
+  font-size: clamp(1rem, 0.95rem + 0.2vw, 1.12rem);
+  line-height: 1.7;
+  letter-spacing: 0.02em;
 }
 
-/* Kept for the one accented word in each heading. */
+/* The highlighted words in each heading take the second colour. */
 .gradient-text {
-  color: var(--brand-text);
+  color: var(--highlight);
+}
+
+/* A hyphenated word in a heading stays on one line (SectionHead). */
+.nowrap {
+  white-space: nowrap;
 }
 
 /* Card */
@@ -307,55 +499,56 @@ ul {
   position: relative;
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
-.card:hover {
-  border-color: var(--border-hi);
-  box-shadow: var(--shadow-md);
-}
-
-/* Buttons */
+/* Buttons: rounded blocks. The primary one is the teal with navy type;
+   under the pointer it turns navy, with white type, and lifts a hair. */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 10px 18px;
-  border-radius: var(--radius);
+  gap: 10px;
+  padding: 13px 22px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-family: var(--heading);
   font-size: 0.9rem;
-  font-weight: 500;
-  letter-spacing: -0.01em;
+  font-weight: 700;
+  letter-spacing: 0;
   white-space: nowrap;
-  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease,
-    box-shadow 0.18s ease, transform 0.18s ease;
+  transition: background-color 0.3s var(--ease), border-color 0.3s var(--ease),
+    color 0.3s var(--ease), box-shadow 0.4s var(--ease), transform 0.4s var(--ease);
 }
 
 .btn:active {
   transform: translateY(1px);
+  transition-duration: 0.1s;
 }
 
 .btn-primary {
-  background: var(--fg);
-  color: var(--bg);
-  border: 1px solid var(--fg);
+  border-color: var(--brand);
+  background-color: var(--brand);
+  color: var(--brand-fg);
+  box-shadow: 0 10px 24px -14px rgba(13, 148, 136, 0.8);
 }
 
-.btn-primary:hover {
-  opacity: 0.88;
-  box-shadow: var(--shadow-md);
+.btn-primary:hover:not(:disabled) {
+  border-color: var(--navy);
+  background-color: var(--navy);
+  color: var(--on-navy);
+  box-shadow: 0 14px 28px -14px rgba(11, 29, 51, 0.55);
+  transform: translateY(-2px);
 }
 
 .btn-ghost {
-  border: 1px solid var(--border);
-  background: var(--card);
+  border-color: var(--border-hi);
+  background-color: var(--card);
   color: var(--fg);
 }
 
 .btn-ghost:hover {
-  background: var(--secondary);
-  border-color: var(--border-hi);
+  border-color: var(--fg);
+  transform: translateY(-2px);
 }
 
 .btn:disabled {
@@ -403,11 +596,13 @@ ul {
   animation: rise-in 0.7s var(--ease) backwards;
 }
 
+/* Scrolled, the bar is solid paper: nothing shows through it, not even the
+   big white headings of the navy band. Not frosted glass either: blurring
+   whatever scrolls beneath it cost integrated GPUs every frame of a scroll. */
 .nav.scrolled {
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
-  backdrop-filter: blur(12px) saturate(140%);
-  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  background: var(--bg);
   border-bottom-color: var(--border);
+  box-shadow: 0 10px 24px -20px rgba(0, 0, 0, 0.35);
 }
 
 .nav-inner {
@@ -422,57 +617,77 @@ ul {
 .nav-logo {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  font-weight: 600;
-  font-size: 0.95rem;
+  gap: 12px;
+}
+
+/* The wordmark in heavy type beside the ring; its domain in the second
+   colour. */
+.nav-wordmark {
+  color: var(--display);
+  font-family: var(--heading);
+  font-size: 1.08rem;
+  font-weight: 900;
+  line-height: 1;
   letter-spacing: -0.02em;
 }
 
+.nav-tld {
+  color: var(--highlight);
+}
+
+/* The monogram inside a thick ring, like a stamp. */
 .nav-mark {
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-sm);
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 50%;
   display: grid;
   place-items: center;
-  background: var(--fg);
-  color: var(--bg);
-  font-family: var(--mono);
-  font-weight: 600;
-  font-size: 0.76rem;
+  border: 3px solid var(--seal);
+  color: var(--seal);
+  font-family: var(--heading);
+  font-size: 0.8rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
 }
 
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: clamp(2px, 1vw, 14px);
 }
 
 .nav-link {
   position: relative;
-  padding: 7px 13px;
-  border-radius: var(--radius-sm);
-  font-size: 0.875rem;
-  font-weight: 450;
+  padding: 8px 8px;
+  font-family: var(--heading);
+  font-size: 0.9rem;
+  font-weight: 600;
   color: var(--muted-fg);
-  transition: color 0.18s ease;
+  transition: color 0.3s var(--ease);
   z-index: 1;
 }
 
-.nav-link:hover {
-  color: var(--fg);
-}
-
+.nav-link:hover,
 .nav-link.active {
   color: var(--fg);
-  font-weight: 500;
 }
 
+/* The current section is underlined in the teal; the bar slides from link
+   to link. */
 .nav-pill {
   position: absolute;
-  inset: 0;
-  border-radius: var(--radius-sm);
-  background: var(--secondary);
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--brand);
   z-index: -1;
+}
+
+.nav-cta .btn {
+  padding: 10px 18px;
 }
 
 .nav-cta {
@@ -488,17 +703,16 @@ ul {
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
+  border-radius: 10px;
+  border: 1px solid var(--border-hi);
   background: var(--card);
   color: var(--fg);
-  transition: background 0.18s ease, border-color 0.18s ease;
+  transition: border-color 0.3s var(--ease), color 0.3s var(--ease);
 }
 
 .theme-toggle:hover,
 .nav-toggle:hover {
-  background: var(--secondary);
-  border-color: var(--border-hi);
+  border-color: var(--fg);
 }
 
 .nav-toggle {
@@ -522,31 +736,36 @@ ul {
   gap: 2px;
 }
 
+/* The sheet's links; the current one is marked with a bar of the teal. */
 .nav-mobile a {
   display: block;
-  padding: 11px 12px;
-  border-radius: var(--radius);
-  font-size: 0.95rem;
-  color: var(--muted-fg);
+  padding: 13px 8px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--heading);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--fg);
+  transition: color 0.3s var(--ease), box-shadow 0.3s var(--ease), padding 0.3s var(--ease);
 }
 
 .nav-mobile a:hover,
 .nav-mobile a.active {
-  color: var(--fg);
-  background: var(--secondary);
+  padding-left: 16px;
+  color: var(--brand-text);
+  box-shadow: inset 3px 0 0 var(--brand);
 }
 
-/* The resume button keeps its own look: the plain link rules above must not
-   reach it (they turned it grey on white and broke its arrow onto a line). */
+/* The resume button keeps its own look: the link rules above must not
+   reach it. */
 .nav-mobile .btn,
 .nav-mobile .btn:hover {
   display: flex;
   width: 100%;
-  margin-top: 10px;
-  padding: 13px 18px;
-  font-size: 0.95rem;
-  color: var(--bg);
-  background: var(--fg);
+  margin-top: 16px;
+  padding: 14px 18px;
+  border-bottom: 0;
+  box-shadow: none;
+  color: var(--brand-fg);
 }
 
 /* Dims the page under the open sheet; a tap on it closes the menu. */
@@ -558,135 +777,31 @@ ul {
 }
 
 /* ============================================================
-   Portrait — the screens that open the page (PortraitIntro)
-   ============================================================ */
-/* The welcome screen, filling the card's stage (one screen) at its open
-   size: the print above, the welcome in particles below, overlapping the
-   print's faded waist. The welcome's size has it span about 86% of the
-   width (it is ~12.6em long in Geist at 800).
-   Each line's band is taller than its words: the particle text caps how
-   many particles it draws by its band's area, and a band only as tall as
-   the words thinned them into stripes. */
-.portrait-intro {
-  --welcome-size: clamp(1.75rem, 6.8vw, 7.5rem);
-  --welcome-band: 2.4; /* each line's band, in welcome sizes */
-  --welcome-lines: 1;
-  --welcome-overlap: 0.95; /* how far the bands rise over the print */
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  height: 100%;
-  padding-top: var(--nav-h);
-}
-
-/* Phones: two lines (PortraitIntro splits the welcome at the same width),
-   twice the size, set close together. */
-@media (max-width: 640px) {
-  .portrait-intro {
-    --welcome-size: 14vw;
-    --welcome-band: 1.3;
-    --welcome-lines: 2;
-    --welcome-overlap: 0.4;
-  }
-}
-
-/* The print is inked on the card's panel: its top fades out under the
-   nav, and the waist, where the picture is cut, fades out under the
-   welcome. */
-.portrait-print {
-  min-height: 0;
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 40px, #000 70%, transparent 98%);
-  mask-image: linear-gradient(to bottom, transparent, #000 40px, #000 70%, transparent 98%);
-}
-
-.portrait-welcome {
-  position: relative;
-  z-index: 1;
-  height: calc(var(--welcome-size) * var(--welcome-band) * var(--welcome-lines));
-  margin-top: calc(var(--welcome-size) * var(--welcome-overlap) * -1);
-  color: var(--fg);
-}
-
-.portrait-welcome .particle-text {
-  min-height: 0;
-  height: calc(var(--welcome-size) * var(--welcome-band));
-}
-
-/* The card holding the welcome screen, opening to the whole screen as the
-   page scrolls. Its heights until the component measures the window: one
-   screen, plus 1.2 to open and 0.35 held open (its defaults), so nothing
-   jumps when it hydrates. */
-.portrait-expand .scroll-expand__track {
-  height: calc(100svh * 2.55);
-}
-
-.portrait-expand .scroll-expand__stage {
-  height: 100svh;
-}
-
-/* Its resting card: the whole screen at 60% (70% on phones), as
-   PortraitIntro starts it, drawn by the prerendered page too so nothing
-   jumps when the script takes over. The panel sets the card off the page;
-   the print is inked on the same. */
-.portrait-expand .scroll-expand__frame {
-  clip-path: inset(20% round 24px);
-  background: var(--portrait-panel);
-}
-
-.portrait-expand .scroll-expand__media {
-  transform: scale(0.6);
-}
-
-/* The navbar starts inside the card: shrunk by the same amount towards the
-   middle of the screen (Navbar.jsx then follows the card's zoom). */
-.nav {
-  transform: scale(0.6);
-  transform-origin: 50% 50svh; /* the card's stage is the small viewport */
-}
-
-@media (max-width: 640px) {
-  .portrait-expand .scroll-expand__frame {
-    clip-path: inset(15% round 24px);
-  }
-
-  .portrait-expand .scroll-expand__media,
-  .nav {
-    transform: scale(0.7);
-  }
-}
-
-/* Inside the card the bar stays bare, as at the top of a page: its frosted
-   backing would square off the card's rounded corners. */
-.nav.is-miniature {
-  background: transparent;
-  border-bottom-color: transparent;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
-
-.portrait-print img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-/* ============================================================
    Hero
    ============================================================ */
+/* The intro opens the page and fills its first screen: who I am and what
+   I do on the left, the samurai on the right. */
 .hero {
   position: relative;
   display: flex;
   align-items: center;
-  padding-top: calc(var(--nav-h) + 72px);
-  padding-bottom: 88px;
+  min-height: 100svh;
+  padding-top: calc(var(--nav-h) + 32px);
+  padding-bottom: 48px;
 }
 
 .hero-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-  gap: clamp(40px, 5vw, 96px);
+  gap: clamp(32px, 5vw, 96px);
   align-items: center;
   width: 100%;
+}
+
+.hero-lines {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 /* The hero's two halves rise in from the first paint, before any JavaScript.
@@ -711,24 +826,21 @@ ul {
   animation-delay: 0.32s;
 }
 
+/* Availability: one quiet line over the name. */
 .hero-badge {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 12px 5px 9px;
-  border-radius: 99px;
-  border: 1px solid var(--border);
-  background: var(--secondary);
-  font-size: 0.78rem;
-  color: var(--muted-fg);
-  font-weight: 450;
+  gap: 10px;
   margin-bottom: 22px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--muted-fg);
 }
 
 .pulse-dot {
   position: relative;
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--success);
 }
@@ -753,102 +865,108 @@ ul {
   }
 }
 
+/* The name: first name in the navy, surname in the teal. */
 .hero-name {
-  font-size: clamp(2.6rem, 1.2rem + 3.2vw, 5.4rem);
-  font-weight: 700;
-  line-height: 1.05;
+  margin-bottom: 16px;
+  color: var(--display);
+  font-family: var(--heading);
+  font-size: clamp(3.4rem, 1.5rem + 5.6vw, 7.4rem);
+  font-weight: 800;
+  line-height: 0.95;
   letter-spacing: -0.04em;
-  margin-bottom: 12px;
 }
 
 .hero-name span {
   display: block;
 }
 
+/* What I do, in one line. */
 .hero-role {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-family: var(--mono);
-  font-size: clamp(0.9rem, 2vw, 1.05rem);
-  font-weight: 500;
+  margin-bottom: 16px;
   color: var(--brand-text);
-  min-height: 2em;
-  margin-bottom: 18px;
-}
-
-.hero-role .arrow {
-  color: var(--muted-fg);
-}
-
-.type-caret {
-  display: inline-block;
-  width: 2px;
-  height: 1.05em;
-  background: var(--brand);
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  animation: blink 1.1s steps(2) infinite;
-}
-
-@keyframes blink {
-  50% {
-    opacity: 0;
-  }
+  font-family: var(--heading);
+  font-size: clamp(1.1rem, 0.95rem + 0.6vw, 1.5rem);
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .hero-tagline {
-  font-size: clamp(1.02rem, 0.9rem + 0.25vw, 1.2rem);
+  max-width: 40em;
+  margin-bottom: 32px;
   color: var(--muted-fg);
-  max-width: 48ch;
-  margin-bottom: 28px;
+  font-size: clamp(1rem, 0.95rem + 0.25vw, 1.15rem);
+  line-height: 1.7;
 }
 
 .hero-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 28px;
+  gap: 12px;
+  margin-bottom: 30px;
+}
+
+/* On a phone the two buttons cannot share a row, so each takes all of one
+   rather than leaving two ragged widths. */
+@media (max-width: 480px) {
+  .hero-actions .btn {
+    flex: 1 1 100%;
+  }
 }
 
 .hero-socials {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .social-btn {
-  width: 38px;
-  height: 38px;
+  width: 42px;
+  height: 42px;
   display: grid;
   place-items: center;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-hi);
+  border-radius: 10px;
   background: var(--card);
-  color: var(--muted-fg);
-  font-size: 0.98rem;
-  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+  color: var(--fg);
+  font-size: 1rem;
+  transition: color 0.3s var(--ease), background-color 0.3s var(--ease),
+    border-color 0.3s var(--ease), transform 0.4s var(--ease);
 }
 
 .social-btn:hover {
-  color: var(--fg);
-  background: var(--secondary);
-  border-color: var(--border-hi);
+  border-color: var(--navy);
+  background-color: var(--navy);
+  color: var(--on-navy);
+  transform: translateY(-2px);
 }
 
-.social-divider {
-  width: 1px;
-  height: 20px;
-  background: var(--border);
-  margin-inline: 4px;
+.hero-visual {
+  position: relative;
+  display: flex;
+  justify-content: center;
 }
 
-.hero-location {
-  font-size: 0.82rem;
-  color: var(--muted-fg);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+/* My photo (cut out) on a rounded block of the teal, lit softly behind the
+   head so the black hoodie stands out, with a soft shadow of me on it and a
+   fine light edge round the card. */
+.hero-photo {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: min(100%, 460px);
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  border-radius: 28px;
+  background: radial-gradient(70% 55% at 50% 30%, rgba(255, 255, 255, 0.3), transparent 70%),
+    linear-gradient(170deg, #2dd4bf 0%, #0d9488 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22), var(--shadow-lg);
+}
+
+.hero-photo img {
+  display: block;
+  width: 92%;
+  height: auto;
+  filter: drop-shadow(0 18px 26px rgba(4, 47, 46, 0.32));
 }
 
 /* Code panel */
@@ -932,56 +1050,6 @@ ul {
   color: #e8b17a;
 }
 
-/* Pipeline strip */
-.pipeline {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: 14px;
-  padding: 12px 14px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: var(--card);
-}
-
-.pipe-node {
-  font-family: var(--mono);
-  font-size: 0.7rem;
-  color: var(--muted-fg);
-  padding: 4px 9px;
-  border-radius: var(--radius-sm);
-  background: var(--secondary);
-}
-
-.pipe-arrow {
-  color: var(--border-hi);
-  font-size: 0.72rem;
-}
-
-.pipe-step {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Phones: tighter steps, so the whole loop stays on one centred line. */
-@media (max-width: 520px) {
-  .pipeline {
-    justify-content: center;
-    gap: 4px;
-    padding: 12px 10px;
-  }
-
-  .pipe-step {
-    gap: 4px;
-  }
-
-  .pipe-node {
-    padding: 4px 7px;
-  }
-}
-
 /* Scroll hint */
 .scroll-hint {
   display: none;
@@ -990,62 +1058,32 @@ ul {
 /* ============================================================
    About
    ============================================================ */
-/* The story and the credo on the left, the figures on the right, and the
-   three focus areas in a row underneath. Nothing here moves. */
+/* The headline and the one paragraph that says who I am, four quick
+   figures under them, and the samurai beside. Nothing here moves. */
 .about-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 460px);
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
   gap: clamp(40px, 6vw, 112px);
-  align-items: start;
+  align-items: center;
 }
 
-.about-copy {
-  max-width: 720px;
+.about-copy .section-head {
+  margin-bottom: 24px;
 }
 
-.about-copy p {
-  color: var(--muted-fg);
-  font-size: 1rem;
+.about-lead {
+  max-width: 60ch;
+  color: var(--fg);
+  font-size: clamp(1.05rem, 0.98rem + 0.3vw, 1.22rem);
   line-height: 1.75;
-  margin-bottom: 18px;
 }
 
-/* The opening paragraph reads as a lead: larger, and in full ink. */
-.about-copy .about-lead {
-  font-size: clamp(1.1rem, 1.55vw, 1.24rem);
-  line-height: 1.62;
-  letter-spacing: -0.016em;
-  color: var(--fg);
-  margin-bottom: 20px;
-}
-
-.about-quote {
-  margin-top: 30px;
-  padding-left: 18px;
-  border-left: 2px solid var(--brand);
-}
-
-.about-copy .about-quote p {
-  margin: 0;
-  color: var(--fg);
-  line-height: 1.7;
-}
-
-.q-mark {
-  color: var(--brand-text);
-  font-family: var(--mono);
-  font-weight: 600;
-}
-
-/* The four figures, two by two, split by hairlines. */
+/* Four quick figures in a row, each under a short bar of the teal. */
 .about-stats {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  background: var(--card);
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(14px, 2vw, 28px);
+  margin-top: clamp(28px, 3vw, 44px);
 }
 
 /* The label comes first in the markup, so it is read before its figure;
@@ -1054,84 +1092,43 @@ ul {
   display: flex;
   flex-direction: column-reverse;
   justify-content: flex-end;
-  gap: 10px;
-  padding: 26px;
-}
-
-.stat:nth-child(odd) {
-  border-right: 1px solid var(--border);
-}
-
-.stat:nth-child(-n + 2) {
-  border-bottom: 1px solid var(--border);
+  gap: 6px;
+  padding-top: 14px;
+  border-top: 3px solid var(--brand);
 }
 
 .stat-value {
-  font-size: clamp(2rem, 3.2vw, 2.6rem);
-  font-weight: 700;
+  color: var(--display);
+  font-family: var(--heading);
+  font-size: clamp(2.2rem, 1.6rem + 1.6vw, 3.4rem);
+  font-weight: 800;
   line-height: 1;
-  letter-spacing: -0.04em;
-  font-variant-numeric: tabular-nums;
-  color: var(--fg);
+  letter-spacing: -0.03em;
+  font-variant-numeric: lining-nums;
 }
 
 .stat-label {
-  font-family: var(--mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--muted-fg);
-}
-
-/* The three focus areas, side by side. */
-.focus-list {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  margin-top: clamp(40px, 5vw, 64px);
-}
-
-.focus-item {
-  padding: 24px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--card);
-  box-shadow: var(--shadow-sm);
-}
-
-.focus-icon {
-  width: 40px;
-  height: 40px;
-  display: grid;
-  place-items: center;
-  margin-bottom: 18px;
-  border-radius: 10px;
-  border: 1px solid var(--brand-border);
-  background: var(--brand-soft);
-  color: var(--brand-text);
-  font-size: 1.05rem;
-}
-
-.focus-item h3 {
-  font-size: 1rem;
+  font-size: 0.84rem;
   font-weight: 600;
-  letter-spacing: -0.02em;
-  margin-bottom: 6px;
 }
 
-.focus-item p {
-  font-size: 0.9rem;
-  line-height: 1.6;
-  color: var(--muted-fg);
+/* The samurai's spot beside the copy: his stage sets its own height. */
+.samurai-spot {
+  position: relative;
 }
 
-@media (max-width: 760px) {
-  .focus-list {
-    grid-template-columns: 1fr;
+@media (max-width: 1024px) {
+  .about-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .stat {
-    padding: 20px;
+}
+
+@media (max-width: 640px) {
+  .about-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 22px;
   }
 }
 
@@ -1210,440 +1207,160 @@ ul {
    Projects
    ============================================================ */
 
-/* The way out to every repository, centred under the rail. */
+/* The projects: a gallery of cards, three to a row. Each is the landing
+   page in a rounded frame, its name and what it is underneath. Under the
+   pointer the picture eases forward inside its frame and the name takes
+   the teal. */
+.work-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(28px, 3vw, 44px) clamp(20px, 2.4vw, 32px);
+  list-style: none;
+}
+
+.work-hit {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.work-shot {
+  display: block;
+  aspect-ratio: 16 / 10;
+  margin-bottom: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #0b0c10;
+  box-shadow: var(--shadow-md);
+  transition: box-shadow 0.5s var(--ease);
+}
+
+.work-pic {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.work-pic img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 0;
+  transition: transform 0.9s var(--ease);
+}
+
+.work-name {
+  color: var(--display);
+  font-family: var(--heading);
+  font-size: clamp(1.15rem, 1rem + 0.4vw, 1.4rem);
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  transition: color 0.3s var(--ease);
+}
+
+.work-sub {
+  color: var(--muted-fg);
+  font-size: 0.95rem;
+}
+
+.work-hit:hover .work-pic img,
+.work-hit:focus-visible .work-pic img {
+  transform: scale(1.045);
+}
+
+.work-hit:hover .work-shot {
+  box-shadow: var(--shadow-lg);
+}
+
+.work-hit:hover .work-name,
+.work-hit:focus-visible .work-name {
+  color: var(--brand-text);
+}
+
+.work-hit:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 6px;
+  border-radius: 14px;
+}
+
+/* The way out to every project, centred under the gallery. */
 .projects-more {
   display: flex;
   justify-content: center;
-  margin-top: clamp(28px, 3.5vw, 44px);
+  margin-top: clamp(48px, 5vw, 80px);
 }
 
-/* Segmented filter: one track, and a pill that slides to the active tab. */
-.projects-filter {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  padding: 4px;
-  margin-bottom: 28px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg-subtle);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+@media (max-width: 1024px) {
+  .work-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
-.filter-btn {
-  position: relative;
-  padding: 6px 16px;
-  border-radius: 999px;
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: var(--muted-fg);
-  transition: color 0.2s ease;
+@media (max-width: 600px) {
+  .work-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
-.filter-btn:hover {
+/* The contact band (and the footer after it): the navy, white type, the
+   teal lifted to read on it. It redefines the tokens its contents use. */
+.band-dark {
+  --bg: var(--band-dark);
+  --fg: #f1f5fb;
+  --muted-fg: #9eb0c7;
+  --display: #f1f5fb;
+  --highlight: #2dd4bf;
+  --brand: #14b8a6;
+  --brand-text: #2dd4bf;
+  --brand-fg: #0b1d33;
+  --card: #13283f;
+  --border: rgba(241, 245, 251, 0.12);
+  --border-hi: rgba(241, 245, 251, 0.26);
+  --rule: rgba(241, 245, 251, 0.6);
+  --input: rgba(241, 245, 251, 0.28);
+  --navy: #f1f5fb;
+  --on-navy: #0b1d33;
   color: var(--fg);
 }
 
-.filter-btn.active {
-  color: var(--bg);
-}
-
-.filter-btn:focus-visible {
-  border-radius: 999px;
-}
-
-.filter-pill {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: var(--fg);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 6px 14px -6px rgba(0, 0, 0, 0.35);
-}
-
-.filter-label {
-  position: relative;
-}
-
-/* Phones: one row that scrolls sideways, never a stray tab on a second line,
-   and taller tabs for a thumb. */
-@media (max-width: 640px) {
-  .projects-filter {
-    display: flex;
-    flex-wrap: nowrap;
-    max-width: 100%;
-    overflow-x: auto;
-    scrollbar-width: none;
-    overscroll-behavior-x: contain;
-  }
-
-  .projects-filter::-webkit-scrollbar {
-    display: none;
-  }
-
-  .filter-btn {
-    flex: 0 0 auto;
-    padding: 10px 15px;
-  }
-}
-
-/* Dark glass surfaces — project frames and the detail view — are dark in
-   both themes, so they redefine the tokens their contents use. --glow is a
-   project's own colour. */
-.rail-frame,
+/* The detail view is a dark glass surface in both themes, so it redefines
+   the tokens its contents use. --glow is a project's own colour. */
 .project-modal {
-  --card: #141519;
-  --bg-subtle: #181a1f;
-  --fg: #f5f5f5;
-  --muted-fg: #a3a3a3;
+  --card: #101c2f;
+  --bg-subtle: #13223a;
+  --fg: #f1f5fb;
+  --muted-fg: #9eb0c7;
   --secondary: rgba(255, 255, 255, 0.06);
   --border: rgba(255, 255, 255, 0.1);
   --border-hi: rgba(255, 255, 255, 0.2);
   --ring: #8a8a8a;
-  --brand: #569fff;
-  --brand-soft: rgba(86, 159, 255, 0.1);
-  --shade: 20, 21, 25;
+  --brand: #14b8a6;
+  --brand-soft: rgba(20, 184, 166, 0.14);
+  --shade: 16, 28, 47;
   --glow: #60a5fa;
 }
 
-:is(.rail-frame, .project-modal)[data-accent='cyan'] {
+.project-modal[data-accent='cyan'] {
   --glow: #2dd4bf;
 }
-:is(.rail-frame, .project-modal)[data-accent='violet'] {
+.project-modal[data-accent='violet'] {
   --glow: #a78bfa;
 }
-:is(.rail-frame, .project-modal)[data-accent='sky'] {
+.project-modal[data-accent='sky'] {
   --glow: #60a5fa;
 }
-:is(.rail-frame, .project-modal)[data-accent='emerald'] {
+.project-modal[data-accent='emerald'] {
   --glow: #34d399;
 }
-:is(.rail-frame, .project-modal)[data-accent='amber'] {
+.project-modal[data-accent='amber'] {
   --glow: #fbbf24;
-}
-
-/* ---- The rail: every project as a framed photograph, shingled in a row ----
-   The open frame widens to carry its caption; the rest close to slivers.
-   The picture never scales. Its height is locked to the open frame's and its
-   width follows its own aspect, so as a frame widens the shot re-crops into
-   it and the subject stays the same size on screen. Sizes are in container
-   units of the stage, so every frame — and its caption — knows the open
-   width before the move starts. */
-.rail-stage {
-  container-type: inline-size;
-}
-
-.rail {
-  --gap: clamp(8px, 0.8vw, 14px);
-  --ease-rail: cubic-bezier(0.22, 1, 0.36, 1);
-  display: flex;
-  gap: var(--gap);
-  list-style: none;
-}
-
-.rail-frame {
-  /* What the frames share once the gaps are out: 40% open, and the closed
-     ones split the rest, at most 15% each. */
-  --share: calc(100cqw - (var(--n) - 1) * var(--gap));
-  --open-w: calc(var(--share) * 0.4);
-  /* Tall enough that the open frame shows the shot at 118% of its width, at
-     the picture's own aspect (1599 × 758) — and never under 340px, so the
-     caption leaves room for the picture on smaller screens. */
-  --open-h: max(340px, calc(var(--open-w) * 1.18 * 758 / 1599));
-  position: relative;
-  flex: 0 0 auto;
-  width: calc(var(--share) * min(0.15, 0.6 / max(var(--n) - 1, 1)));
-  height: var(--open-h);
-  border-radius: 16px;
-  overflow: hidden;
-  isolation: isolate;
-  background: var(--card);
-  color: var(--fg);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 18px 36px -24px rgba(0, 0, 0, 0.55);
-  transition: width 0.6s var(--ease-rail), height 0.6s var(--ease-rail), box-shadow 0.6s ease;
-}
-
-.rail-frame.is-open {
-  width: var(--open-w);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 30px 60px -30px rgba(0, 0, 0, 0.65),
-    0 24px 60px -34px color-mix(in srgb, var(--glow) 75%, transparent);
-}
-
-.rail-figure {
-  position: absolute;
-  inset: 0;
-}
-
-/* The photograph: dimmed while closed, full once open. */
-.rail-pic {
-  position: absolute;
-  inset: 0;
-  background-image: var(--shot, none);
-  background-repeat: no-repeat;
-  background-size: auto var(--open-h);
-  background-position: 50% 50%;
-  filter: brightness(0.74) saturate(0.8);
-  transition: background-position 0.6s var(--ease-rail), filter 0.6s ease;
-}
-
-.rail-frame.is-open .rail-pic {
-  background-position: 46% 50%;
-  filter: none;
-}
-
-/* No screenshot: light and a dot grid in the project's colour stand in. */
-.rail-frame.no-art .rail-pic {
-  background: radial-gradient(
-      70% 55% at 50% 30%,
-      color-mix(in srgb, var(--glow) 34%, transparent),
-      transparent 70%
-    ),
-    radial-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1.5px) 0 0 / 18px 18px,
-    var(--card);
-}
-
-/* The scrim the caption sits on, rising from the foot of the open frame. It
-   darkens and blurs the shot behind the words, so the landing page's own
-   headline can't compete with them; the top of the shot stays sharp. */
-.rail-frame::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  background: radial-gradient(
-      75% 70% at 0% 100%,
-      rgba(8, 9, 12, 0.6),
-      transparent 75%
-    ),
-    linear-gradient(
-      0deg,
-      rgba(8, 9, 12, 0.94) 0%,
-      rgba(8, 9, 12, 0.8) 36%,
-      rgba(8, 9, 12, 0.4) 60%,
-      rgba(8, 9, 12, 0) 82%
-    );
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  -webkit-mask-image: linear-gradient(0deg, #000 50%, transparent 85%);
-  mask-image: linear-gradient(0deg, #000 50%, transparent 85%);
-  opacity: 0;
-  transition: opacity 0.6s ease;
-}
-
-.rail-frame.is-open::after {
-  opacity: 1;
-}
-
-/* Glass rim, with a catch of light along the top edge. */
-.rail-frame::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  border-radius: inherit;
-  pointer-events: none;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.14);
-}
-
-/* The whole frame is one button: it opens the frame on a tap, and the
-   project's details otherwise. */
-.rail-hit {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  width: 100%;
-  height: 100%;
-  padding: 0;
-  border-radius: inherit;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.rail-hit:focus-visible {
-  outline: 2px solid #fff;
-  outline-offset: -5px;
-  border-radius: 14px;
-}
-
-/* The caption is laid out once at the open width, so it can't rewrap while
-   the frame moves; it fades and lifts in just after the frame starts to
-   open. Clicks pass through it to the frame, except on its buttons. */
-.rail-caption {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  z-index: 3;
-  width: var(--open-w);
-  padding: 0 clamp(18px, 2.2cqw, 32px) clamp(18px, 2cqw, 28px);
-  white-space: nowrap;
-  pointer-events: none;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(14px);
-  transition: opacity 0.25s ease, transform 0.4s var(--ease-rail), visibility 0s linear 0.25s;
-}
-
-.rail-frame.is-open .rail-caption {
-  opacity: 1;
-  visibility: visible;
-  transform: none;
-  transition: opacity 0.45s ease 0.14s, transform 0.6s var(--ease-rail) 0.14s, visibility 0s;
-}
-
-.rail-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.rail-title {
-  font-size: clamp(1.6rem, calc(var(--open-w) * 0.075), 3.4rem);
-  white-space: normal;
-  text-wrap: balance;
-}
-
-/* Lines break between words only, never after a hyphen inside a name. */
-.rail-word {
-  white-space: nowrap;
-}
-
-.rail-subtitle {
-  display: block;
-  margin-top: 10px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-family: var(--mono);
-  font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.66);
-}
-
-.rail-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 18px;
-}
-
-.rail-actions > * {
-  pointer-events: auto;
-}
-
-.rail-actions .bb-btn {
-  height: 40px;
-  padding: 0 18px;
-  font-size: 0.88rem;
-}
-
-.rail-round {
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  background: rgba(20, 21, 25, 0.45);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  color: #fff;
-  font-size: 1.05rem;
-  transition: background 0.18s ease, border-color 0.18s ease;
-}
-
-.rail-round:hover {
-  border-color: #fff;
-  background: rgba(20, 21, 25, 0.7);
-}
-
-.rail-round:focus-visible {
-  outline: 2px solid #fff;
-  outline-offset: 2px;
-  border-radius: 50%;
-}
-
-/* Brushed-silver display type for project names. The sweep is exactly one
-   line tall and repeats, so a name that wraps catches the light on every
-   line; the bottom padding keeps the last line's descenders inside the
-   painted box. */
-.rail-title {
-  padding-bottom: 0.12em;
-  font-weight: 800;
-  line-height: 0.92;
-  letter-spacing: -0.05em;
-  color: transparent;
-  background: linear-gradient(180deg, #ffffff 0%, #e2e2e2 40%, #9a9a9a 100%) 0 0 / 100% 0.92em
-    repeat-y;
-  -webkit-background-clip: text;
-  background-clip: text;
-  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.55));
-}
-
-/* Narrower screens: the same rail stood on end. Frames stack full width,
-   closed ones as short bands, and the open one grows in height instead. */
-@media (max-width: 900px) {
-  .rail {
-    flex-direction: column;
-  }
-
-  /* Open, the whole screenshot runs across the top, uncropped, and the
-     caption sits on the card under it. */
-  .rail-frame {
-    --open-w: 100cqw;
-    --open-h: calc(100cqw / 2.09 + 176px);
-    width: 100%;
-    height: 64px;
-  }
-
-  .rail-frame.is-open {
-    width: 100%;
-    height: var(--open-h);
-  }
-
-  .rail-pic,
-  .rail-frame.is-open .rail-pic {
-    background-size: 100% auto;
-    background-position: 50% 0;
-  }
-}
-
-/* Closed bands name their project, so a slice of a landing page is never all
-   there is to go on. Only where the rail stands on end. */
-.rail-band {
-  display: none;
-}
-
-@media (max-width: 900px) {
-  .rail-band {
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    display: flex;
-    align-items: center;
-    padding: 0 20px;
-    background: linear-gradient(
-      90deg,
-      rgba(8, 9, 12, 0.9) 0%,
-      rgba(8, 9, 12, 0.72) 50%,
-      rgba(8, 9, 12, 0.45) 100%
-    );
-    color: #fff;
-    font-size: 1rem;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-    pointer-events: none;
-    transition: opacity 0.35s ease;
-  }
-
-  .rail-frame.is-open .rail-band {
-    opacity: 0;
-  }
-
-  /* Behind the name, the slice of landing page goes soft and dim, so its own
-     headline never competes with the label. */
-  .rail-frame:not(.is-open) .rail-pic {
-    filter: brightness(0.6) saturate(0.7) blur(1.5px);
-  }
 }
 
 /* ---- Detail view: the project as a title page ---- */
@@ -1871,9 +1588,10 @@ ul {
 }
 
 .billboard-title {
-  font-size: clamp(2.2rem, 5vw, 3.5rem);
-  font-weight: 800;
-  letter-spacing: -0.05em;
+  font-family: var(--heading);
+  font-size: clamp(2.4rem, 5.4vw, 3.9rem);
+  font-weight: 900;
+  letter-spacing: -0.035em;
   line-height: 0.95;
   color: #fff;
   text-shadow: 0 4px 30px rgba(0, 0, 0, 0.45);
@@ -2284,127 +2002,6 @@ ul {
 }
 
 /* ============================================================
-   Journey
-   ============================================================ */
-/* A typeset ledger, like the page of a printed CV: each group's name in the
-   margin, its entries beside it with the date flush right, and a hairline
-   between groups. Nothing here moves. */
-.ledger {
-  max-width: 1120px;
-  border-bottom: 1px solid var(--border);
-}
-
-.ledger-group {
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 24px;
-  padding: 36px 0;
-  border-top: 1px solid var(--border);
-}
-
-.ledger-label {
-  padding-top: 6px;
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted-fg);
-}
-
-.ledger-entries {
-  display: grid;
-  gap: 32px;
-  list-style: none;
-}
-
-.ledger-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 24px;
-}
-
-.ledger-title {
-  font-size: 1.2rem;
-  font-weight: 600;
-  line-height: 1.35;
-  letter-spacing: -0.02em;
-  color: var(--fg);
-}
-
-.ledger-when {
-  flex-shrink: 0;
-  font-family: var(--mono);
-  font-size: 0.78rem;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  color: var(--muted-fg);
-}
-
-.ledger-org {
-  margin-top: 4px;
-  font-size: 0.95rem;
-  color: var(--muted-fg);
-}
-
-.ledger-points,
-.ledger-note {
-  max-width: 72ch;
-  margin-top: 14px;
-  font-size: 0.93rem;
-  line-height: 1.65;
-  color: var(--muted-fg);
-}
-
-.ledger-points li {
-  position: relative;
-  padding-left: 20px;
-}
-
-.ledger-points li + li {
-  margin-top: 6px;
-}
-
-.ledger-points li::before {
-  content: '–';
-  position: absolute;
-  left: 0;
-  color: var(--border-hi);
-}
-
-/* Narrow screens: the group name sits above its entries, and each date
-   above its title. */
-@media (max-width: 760px) {
-  .ledger-group {
-    grid-template-columns: 1fr;
-    gap: 18px;
-    padding: 28px 0;
-  }
-
-  .ledger-label {
-    padding-top: 0;
-  }
-
-  .ledger-entries {
-    gap: 26px;
-  }
-
-  .ledger-head {
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .ledger-when {
-    order: -1;
-  }
-
-  .ledger-title {
-    font-size: 1.1rem;
-  }
-}
-
-/* ============================================================
    Contact
    ============================================================ */
 .contact-grid {
@@ -2414,86 +2011,104 @@ ul {
   align-items: start;
 }
 
+/* The ways to reach me as a ruled list, each with its icon on a square of
+   the teal. */
 .contact-links {
   display: grid;
-  gap: 8px;
-  margin-top: 22px;
+  border-top: 4px solid var(--brand);
 }
 
 .contact-link {
   display: flex;
   align-items: center;
-  gap: 13px;
-  padding: 14px 16px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: var(--card);
-  transition: border-color 0.2s ease, background 0.2s ease;
-}
-
-a.contact-link:hover {
-  border-color: var(--border-hi);
-  background: var(--secondary);
+  gap: 18px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--border);
 }
 
 .contact-link-icon {
-  width: 34px;
-  height: 34px;
+  width: 42px;
+  height: 42px;
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  border-radius: var(--radius-sm);
-  background: var(--secondary);
-  border: 1px solid var(--border);
-  color: var(--fg);
-  font-size: 0.9rem;
+  border-radius: 10px;
+  background: var(--brand);
+  color: var(--brand-fg);
+  font-size: 1.05rem;
+  transition: transform 0.4s var(--ease);
+}
+
+a.contact-link:hover .contact-link-icon {
+  transform: translateX(4px);
 }
 
 .contact-link-label {
-  font-family: var(--mono);
+  font-family: var(--heading);
   font-size: 0.68rem;
-  letter-spacing: 0.04em;
+  font-weight: 800;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted-fg);
 }
 
 .contact-link-value {
-  font-size: 0.9rem;
+  margin-top: 4px;
   color: var(--fg);
-  word-break: break-word;
+  font-size: clamp(1.02rem, 0.95rem + 0.3vw, 1.2rem);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+  overflow-wrap: anywhere;
+  transition: color 0.18s ease;
 }
 
+a.contact-link:hover .contact-link-value {
+  color: var(--brand-text);
+}
+
+/* The form sits on the band like the list beside it: under a thick bar of
+   the teal, each field a ruled line to write on. */
 .form-card {
-  padding: 26px 26px 24px;
+  padding: 26px 0 0;
+  border: none;
+  border-top: 4px solid var(--brand);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
 }
 
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  gap: 16px;
 }
 
 .field {
   display: grid;
-  gap: 6px;
-  margin-bottom: 15px;
+  gap: 8px;
+  margin-bottom: 18px;
 }
 
 .field label {
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: var(--fg);
+  font-family: var(--heading);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-fg);
 }
 
 .field input,
 .field textarea {
   width: 100%;
-  padding: 10px 13px;
-  border-radius: var(--radius);
-  border: 1px solid var(--input);
-  background: var(--bg);
+  padding: 8px 0 12px;
+  border: none;
+  border-bottom: 1px solid var(--border-hi);
+  border-radius: 0;
+  background: transparent;
   color: var(--fg);
-  font-size: 0.9rem;
+  font-size: 1.05rem;
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
@@ -2503,11 +2118,12 @@ a.contact-link:hover {
   opacity: 0.75;
 }
 
+/* Focused, the line turns teal and thickens. */
 .field input:focus,
 .field textarea:focus {
   outline: none;
   border-color: var(--brand);
-  box-shadow: 0 0 0 3px var(--brand-soft);
+  box-shadow: 0 1px 0 0 var(--brand);
 }
 
 .field textarea {
@@ -2564,8 +2180,8 @@ a.contact-link:hover {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--bg) 40%, transparent);
-  border-top-color: var(--bg);
+  border: 2px solid color-mix(in srgb, var(--brand-fg) 40%, transparent);
+  border-top-color: var(--brand-fg);
   animation: spin 0.7s linear infinite;
 }
 
@@ -2578,10 +2194,14 @@ a.contact-link:hover {
 /* ============================================================
    Footer
    ============================================================ */
+/* The footer closes the navy band the contact section opened. */
 .footer {
-  border-top: 1px solid var(--border);
-  padding: 28px 0;
-  margin-top: 72px;
+  --fg: #f1f5fb;
+  --muted-fg: #9eb0c7;
+  padding: 28px 0 34px;
+  border-top: 1px solid rgba(241, 245, 251, 0.12);
+  background: var(--band-dark);
+  color: var(--fg);
 }
 
 .footer-inner {
@@ -2592,42 +2212,43 @@ a.contact-link:hover {
   flex-wrap: wrap;
 }
 
+/* Clear of the back-to-top button in the corner (phones stack the footer
+   on the left, under it). */
+@media (min-width: 561px) {
+  .footer-inner {
+    padding-right: max(var(--gutter), 84px);
+  }
+}
+
 .footer p {
   font-size: 0.82rem;
   color: var(--muted-fg);
-}
-
-.footer-built {
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  color: var(--muted-fg);
-}
-
-.footer-built b {
-  color: var(--fg);
-  font-weight: 500;
 }
 
 .to-top {
   position: fixed;
   right: 22px;
   bottom: 22px;
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   display: grid;
   place-items: center;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
+  border-radius: 10px;
+  border: 1px solid var(--border-hi);
   background: var(--card);
-  color: var(--fg);
+  /* Not --fg: the footer, its parent, sets that to white for the band. */
+  color: var(--secondary-fg);
   box-shadow: var(--shadow-md);
   z-index: 90;
-  transition: background 0.18s ease, border-color 0.18s ease;
+  transition: background-color 0.3s var(--ease), border-color 0.3s var(--ease),
+    color 0.3s var(--ease), transform 0.4s var(--ease);
 }
 
+/* The teal under the pointer: it reads on the page and on the navy band. */
 .to-top:hover {
-  background: var(--secondary);
-  border-color: var(--border-hi);
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--brand-fg);
 }
 
 /* ============================================================
@@ -2645,6 +2266,10 @@ a.contact-link:hover {
     padding-top: calc(var(--nav-h) + 52px);
     padding-bottom: 64px;
   }
+
+  .hero-photo {
+    width: min(78%, 400px);
+  }
 }
 
 @media (max-width: 860px) {
@@ -2658,36 +2283,6 @@ a.contact-link:hover {
   }
 }
 
-@media (max-width: 560px) {
-  .form-row {
-    grid-template-columns: 1fr;
-    gap: 0;
-  }
-
-  .lightbox {
-    padding: 12px;
-  }
-
-  .form-card {
-    padding: 20px 18px;
-  }
-
-  .hero-actions .btn {
-    flex: 1 1 100%;
-  }
-
-  .footer-inner {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-
-  .to-top {
-    right: 14px;
-    bottom: 14px;
-  }
-}
-
 /* Touch screens: every control gets a full fingertip (44px). */
 @media (pointer: coarse) {
   .theme-toggle,
@@ -2695,8 +2290,7 @@ a.contact-link:hover {
   .social-btn,
   .to-top,
   .modal-close,
-  .billboard-zoom,
-  .rail-round {
+  .billboard-zoom {
     width: 44px;
     height: 44px;
   }
@@ -2706,15 +2300,7 @@ a.contact-link:hover {
   }
 
   .bb-btn,
-  .rail-actions .bb-btn {
-    height: 44px;
-  }
-
-  .filter-btn {
-    padding-block: 12px;
-  }
-
-  .move-key {
+  .btn {
     min-height: 44px;
   }
 
@@ -2759,14 +2345,14 @@ a.contact-link:hover {
   border: 0;
 }
 
-/* The stage supplies the section's space, so it drops the usual padding. */
+/* The stage supplies the section's space, so it drops the usual padding
+   except room at the top for the wave coming in from About. Clipped
+   sideways only, so that wave may reach a pixel above the section. */
 .skills-section {
-  overflow: hidden;
-  padding-block: 0;
+  overflow-x: clip;
+  padding-block: var(--edge-h) 0;
 }
 
-/* The title sits in the middle; the icons scatter around it, out to the
-   edges of the screen, and follow the cursor across the whole stage. */
 .skills-stage {
   position: relative;
   display: grid;
@@ -2784,13 +2370,22 @@ a.contact-link:hover {
   pointer-events: none;
 }
 
+/* Centred here, one column: the magazine layout is for the other heads. */
 .skills-center .section-head {
-  max-width: 520px;
+  display: block;
+  max-width: 780px;
   margin: 0 auto;
 }
 
+
+
 .skills-center .section-title {
-  font-size: clamp(2rem, 5vw, 3.1rem);
+  margin-bottom: 16px;
+  font-size: clamp(3rem, 1.6rem + 4.4vw, 6rem);
+}
+
+.skills-center .section-sub {
+  margin-inline: auto;
 }
 
 .skills-swarm {
@@ -2821,21 +2416,20 @@ a.contact-link:hover {
   bottom: 22px;
   transform: translateX(-50%);
   white-space: nowrap;
-  font-family: var(--mono);
-  font-size: 0.76rem;
-  letter-spacing: 0.02em;
-  color: var(--muted-fg);
-  padding: 5px 12px;
-  border-radius: 99px;
-  border: 1px solid var(--border);
+  padding: 7px 14px;
+  border: 1px solid var(--border-hi);
+  border-radius: 999px;
   background: var(--card);
+  color: var(--muted-fg);
+  font-size: 0.8rem;
+  font-weight: 600;
   pointer-events: none;
-  transition: color 0.2s ease, border-color 0.2s ease;
+  transition: color 0.3s var(--ease), border-color 0.3s var(--ease);
 }
 
 .skills-hint.on {
   color: var(--brand-text);
-  border-color: var(--brand-border);
+  border-color: var(--brand);
 }
 
 @media (max-width: 640px) {
@@ -2855,22 +2449,23 @@ a.contact-link:hover {
   height: var(--stage-h);
   cursor: grab;
   touch-action: pan-y;
+  /* Shaded in the navy, soft on the page. */
   background: radial-gradient(
     56% 52% at 50% 40%,
-    rgba(18, 22, 29, 0.5) 0%,
-    rgba(18, 22, 29, 0.22) 45%,
-    rgba(18, 22, 29, 0) 72%
+    rgba(15, 27, 45, 0.38) 0%,
+    rgba(15, 27, 45, 0.16) 45%,
+    rgba(15, 27, 45, 0) 72%
   );
 }
 
-/* On the dark page the pool is a cool backlight instead, so his black
-   lacquer reads against it rather than sinking into it. */
+/* On the dark page the pool is a backlight in the teal instead, so his
+   black lacquer reads against it rather than sinking into it. */
 :root[data-theme='dark'] .samurai3d {
   background: radial-gradient(
     56% 52% at 50% 40%,
-    rgba(78, 98, 135, 0.34) 0%,
-    rgba(44, 56, 78, 0.18) 42%,
-    rgba(18, 22, 29, 0) 72%
+    rgba(20, 184, 166, 0.24) 0%,
+    rgba(13, 110, 100, 0.12) 42%,
+    rgba(10, 19, 34, 0) 72%
   );
 }
 
@@ -3198,108 +2793,7 @@ a.contact-link:hover {
   }
 }
 
-/* ============================================================
-   Samurai moves — keycaps under the hero samurai
-   ============================================================ */
-.samurai-moves {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
-}
-
-.samurai-moves-label {
-  font-family: var(--mono);
-  font-size: 0.68rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted-fg);
-  margin-right: 4px;
-}
-
-.move-key {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 10px 4px 5px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--card);
-  color: var(--muted-fg);
-  font: 500 0.72rem var(--font);
-  cursor: pointer;
-  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
-}
-
-.move-key kbd {
-  display: grid;
-  place-items: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 5px;
-  border-radius: 5px;
-  border: 1px solid var(--border-hi);
-  border-bottom-width: 2px;
-  background: var(--secondary);
-  color: var(--fg);
-  font: 600 0.72rem var(--mono);
-  transition: transform 0.12s ease, border-color 0.18s ease, color 0.18s ease;
-}
-
-.move-key:hover {
-  color: var(--fg);
-  border-color: var(--border-hi);
-}
-
-.move-key:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
-.move-key:active kbd,
-.move-key.is-lit kbd {
-  transform: translateY(1px);
-  border-bottom-width: 1px;
-}
-
-.move-key.is-lit {
-  color: var(--brand-text);
-  border-color: var(--brand-border);
-  background: var(--brand-soft);
-}
-
-.move-key.is-lit kbd {
-  color: var(--brand-text);
-  border-color: var(--brand-border);
-}
-
-/* Phones: five keys across the full width, each a full fingertip tall, the
-   key above its name. */
-@media (max-width: 520px) {
-  .samurai-moves {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 6px;
-  }
-
-  .samurai-moves-label {
-    grid-column: 1 / -1;
-    text-align: center;
-    margin: 0 0 2px;
-  }
-
-  .move-key {
-    flex-direction: column;
-    justify-content: center;
-    gap: 5px;
-    min-height: 58px;
-    padding: 7px 4px 6px;
-    font-size: 0.72rem;
-  }
-}
-
+/* The samurai's tooltip: its key hints. */
 .samurai-tip {
   display: flex;
   flex-direction: column;

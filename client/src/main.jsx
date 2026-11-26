@@ -2,8 +2,11 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 // Served with the site: no render-blocking request to another origin.
-import '@fontsource-variable/geist'
+// Montserrat sets the page, heavy for headings; Geist Mono sets the small
+// technical labels (chips, the project view's details, the samurai's tooltip).
+import '@fontsource-variable/montserrat'
 import '@fontsource-variable/geist-mono'
+import 'lenis/dist/lenis.css'
 import './index.css'
 
 const root = document.getElementById('root')

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FiArrowUp } from 'react-icons/fi'
 import { profile } from '../data/content.js'
+import { scrollToTop } from '../lib/smooth-scroll.js'
 
 export default function Footer() {
   const [show, setShow] = useState(false)
@@ -19,11 +20,8 @@ export default function Footer() {
         <div className="container footer-inner">
           {/* The year is the build's in the prerendered HTML; this one wins. */}
           <p suppressHydrationWarning>
-            {`© ${new Date().getFullYear()} ${profile.name} · ${profile.role}`}
+            {`© ${new Date().getFullYear()} ${profile.name}`}
           </p>
-          <span className="footer-built">
-            Built with <b>React</b> · <b>Vite</b> · <b>Node.js</b> · <b>Express</b>
-          </span>
         </div>
       </footer>
 
@@ -31,7 +29,7 @@ export default function Footer() {
         {show && (
           <motion.button
             className="to-top"
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            onClick={scrollToTop}
             initial={{ opacity: 0, scale: 0.8, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.8, y: 10 }}

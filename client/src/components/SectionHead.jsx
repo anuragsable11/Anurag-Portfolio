@@ -1,5 +1,21 @@
 import Reveal from './Reveal.jsx'
 
+/**
+ * Heading text with its hyphenated words kept whole: a line may break
+ * between words, never after a hyphen inside one ("AI-" / "driven").
+ */
+function keepHyphenated(text) {
+  return text.split(/(\s+)/).map((part, i) =>
+    part.includes('-') ? (
+      <span key={i} className="nowrap">
+        {part}
+      </span>
+    ) : (
+      part
+    )
+  )
+}
+
 export default function SectionHead({ eyebrow, title, highlight, sub }) {
   return (
     <div className="section-head">
@@ -8,7 +24,8 @@ export default function SectionHead({ eyebrow, title, highlight, sub }) {
       </Reveal>
       <Reveal delay={0.08}>
         <h2 className="section-title">
-          {title} {highlight && <span className="gradient-text">{highlight}</span>}
+          {keepHyphenated(title)}{' '}
+          {highlight && <span className="gradient-text">{keepHyphenated(highlight)}</span>}
         </h2>
       </Reveal>
       {sub && (

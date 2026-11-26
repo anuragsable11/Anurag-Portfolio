@@ -188,10 +188,10 @@ function paintTile(logo, tech, { size, ratio, tile, edge }) {
 
 // What to try next, by input: `home` hints show while the icons are away.
 const HINTS = {
-  gather: 'Move through the stack',
-  gatherTouch: 'Drag a finger across the stack',
-  home: 'Click to send them home',
-  homeTouch: 'Let go to send them home',
+  gather: 'Move your mouse over the icons',
+  gatherTouch: 'Drag your finger over the icons',
+  home: 'Click to reset',
+  homeTouch: 'Let go to reset',
 }
 
 export default function SkillsSwarm({ centerRef }) {

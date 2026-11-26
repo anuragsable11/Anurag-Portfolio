@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AnimatePresence, motion, useInView, useReducedMotion } from 'framer-motion'
-import { FiArrowRight, FiInfo, FiLock, FiMaximize2, FiPlus, FiX } from 'react-icons/fi'
+import { AnimatePresence, motion } from 'framer-motion'
+import { FiArrowRight, FiLock, FiMaximize2, FiX } from 'react-icons/fi'
 import { FaGithub, FaPlay } from 'react-icons/fa'
-import Reveal from './Reveal.jsx'
 import SectionHead from './SectionHead.jsx'
 import { projects, projectsHead } from '../data/content.js'
 import { useHydrated } from '../hooks/useHydrated.js'
-import { act, celebrate } from '../lib/companion.js'
+import { celebrate } from '../lib/companion.js'
+import { holdScroll } from '../lib/smooth-scroll.js'
 
 const ease = [0.22, 1, 0.36, 1]
 
@@ -16,8 +16,10 @@ function useScrollLock() {
   useEffect(() => {
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
+    const release = holdScroll()
     return () => {
       document.body.style.overflow = prev
+      release()
     }
   }, [])
 }
@@ -73,6 +75,7 @@ function Lightbox({ showcase, name, onClose }) {
   return (
     <motion.div
       className="lightbox"
+      data-lenis-prevent
       role="dialog"
       aria-modal="true"
       aria-label={`${name} landing page`}
@@ -183,6 +186,7 @@ function ProjectModal({ project, returnFocusTo, onClose }) {
   return (
     <motion.div
       className="project-modal-backdrop"
+      data-lenis-prevent
       onClick={onClose}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -287,244 +291,57 @@ function ProjectModal({ project, returnFocusTo, onClose }) {
   )
 }
 
-/** The frame opened by default: the middle one. */
-const middleOf = (count) => Math.floor((count - 1) / 2)
-
-/** False on screens that can't hover — phones and most tablets. */
-function useCanHover() {
-  const query = '(hover: hover)'
-  const [canHover, setCanHover] = useState(
-    () => typeof window === 'undefined' || window.matchMedia(query).matches
-  )
-  useEffect(() => {
-    const mq = window.matchMedia(query)
-    const update = () => setCanHover(mq.matches)
-    mq.addEventListener('change', update)
-    return () => mq.removeEventListener('change', update)
-  }, [])
-  return canHover
-}
-
 /**
- * One project as a framed photograph in the rail. Closed, it is a sliver of
- * its landing page; open, it widens, the shot re-crops into the new width,
- * and the caption fades in over a scrim.
+ * A project in the gallery: its landing page, then its name and what it
+ * is. The whole card opens the project's details, where its links are.
  */
-function RailFrame({ project, open, onActivate, onOpen }) {
-  const { showcase, links = {} } = project
-  const hitRef = useRef(null)
-  const lastPointer = useRef('')
-
-  const showDetails = () => {
-    celebrate()
-    onOpen(project, hitRef.current)
-  }
-
+function ProjectCard({ project, onOpen }) {
+  const { showcase } = project
   return (
-    <li
-      className={`rail-frame ${open ? 'is-open' : ''} ${showcase ? '' : 'no-art'}`}
-      data-accent={project.accent}
-      onPointerEnter={(e) => {
-        if (e.pointerType === 'mouse') onActivate()
-      }}
-      onFocus={(e) => {
-        // Keyboard focus only: a tap focuses too on some browsers, and a tap
-        // has its own rule below.
-        if (e.target.matches(':focus-visible')) onActivate()
-      }}
-    >
-      <figure className="rail-figure">
-        <div
-          className="rail-pic"
-          style={showcase ? { '--shot': `url(${showcase.image})` } : undefined}
-          aria-hidden="true"
-        />
-        <span className="rail-band" aria-hidden="true">
-          {project.name}
+    <li className="work-card">
+      <button
+        className="work-hit"
+        onClick={(e) => {
+          celebrate()
+          onOpen(project, e.currentTarget)
+        }}
+        aria-label={`${project.name}, ${project.subtitle}. Open details`}
+      >
+        <span className="work-shot">
+          <span className="work-pic">
+            {showcase && (
+              <Shot
+                showcase={showcase}
+                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+              />
+            )}
+          </span>
         </span>
-        <button
-          ref={hitRef}
-          className="rail-hit"
-          onPointerDown={(e) => {
-            lastPointer.current = e.pointerType
-          }}
-          onClick={() => {
-            // A tap on a closed frame opens it; anything else shows the details.
-            const tap = lastPointer.current === 'touch'
-            lastPointer.current = ''
-            if (tap && !open) onActivate()
-            else showDetails()
-          }}
-          aria-label={`${project.name}, ${project.subtitle}. Open details`}
-        />
-        <figcaption className="rail-caption">
-          <div className="rail-meta">
-            <span className="billboard-category">{project.category}</span>
-            <span className="billboard-year">{project.year}</span>
-          </div>
-          <h3 className="rail-title">
-            {project.name.split(' ').map((word, i) => (
-              <span key={i}>
-                {i > 0 && ' '}
-                <span className="rail-word">{word}</span>
-              </span>
-            ))}
-          </h3>
-          <span className="rail-subtitle">{project.subtitle}</span>
-          {/* The summary is otherwise only in the details view: here it is in
-              the page's HTML, for screen readers and crawlers. */}
-          <p className="visually-hidden">{project.summary}</p>
-          <div className="rail-actions">
-            {links.live ? (
-              <a
-                className="bb-btn bb-play"
-                href={links.live}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={`${project.name} live demo (opens in a new tab)`}
-                onClick={celebrate}
-              >
-                <FaPlay aria-hidden="true" />
-                Live
-              </a>
-            ) : (
-              <button className="bb-btn bb-play" onClick={showDetails}>
-                <FiInfo aria-hidden="true" />
-                What I built
-              </button>
-            )}
-            {links.github && (
-              <a
-                className="bb-btn bb-glass"
-                href={links.github}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={`${project.name} source code on GitHub (opens in a new tab)`}
-                onClick={celebrate}
-              >
-                <FaGithub aria-hidden="true" />
-                Code
-              </a>
-            )}
-            {links.live && (
-              <button
-                className="rail-round"
-                onClick={showDetails}
-                aria-label={`What I built: ${project.name}`}
-                title="What I built"
-              >
-                <FiPlus aria-hidden="true" />
-              </button>
-            )}
-          </div>
-        </figcaption>
-      </figure>
+        <span className="work-name">{project.name}</span>
+        <span className="work-sub">{project.subtitle}</span>
+      </button>
     </li>
   )
 }
 
-const countFor = (cat) =>
-  cat === 'All' ? projects.length : projects.filter((p) => p.category === cat).length
-
 export default function Projects() {
-  const categories = useMemo(
-    () => ['All', ...Array.from(new Set(projects.map((p) => p.category)))],
-    []
-  )
-  const [filter, setFilter] = useState('All')
-  const [openIndex, setOpenIndex] = useState(() => middleOf(projects.length))
   const [detail, setDetail] = useState(null)
   const hydrated = useHydrated()
-
-  const visible = useMemo(
-    () => (filter === 'All' ? projects : projects.filter((p) => p.category === filter)),
-    [filter]
-  )
-
   const openProject = useCallback((project, from) => setDetail({ project, from }), [])
   const closeProject = useCallback(() => setDetail(null), [])
 
-  // Screens that can't hover play the rail themselves: the next frame opens
-  // every 2.4s while the rail is on screen. A touch holds it for a while.
-  const stageRef = useRef(null)
-  const inView = useInView(stageRef, { amount: 0.35 })
-  const canHover = useCanHover()
-  const reduceMotion = useReducedMotion()
-  const holdUntil = useRef(0)
-  const autoplay = !canHover && !reduceMotion && inView && !detail && visible.length > 1
-
-  useEffect(() => {
-    if (!autoplay) return
-    const id = setInterval(() => {
-      if (document.hidden || Date.now() < holdUntil.current) return
-      setOpenIndex((i) => (i + 1) % visible.length)
-    }, 2400)
-    return () => clearInterval(id)
-  }, [autoplay, visible.length])
-
   return (
-    <section id="projects" className="section">
+    <section id="projects" className="section band-tint band-warm">
       <div className="container">
         <SectionHead {...projectsHead} />
 
-        <Reveal>
-          <div className="projects-filter">
-            {categories.map((cat) => (
-              <button
-                key={cat}
-                className={`filter-btn ${filter === cat ? 'active' : ''}`}
-                aria-pressed={filter === cat}
-                onClick={() => {
-                  if (cat === filter) return
-                  act('nod')
-                  setFilter(cat)
-                  setOpenIndex(middleOf(countFor(cat)))
-                }}
-              >
-                {filter === cat && (
-                  <motion.span
-                    layoutId="projects-filter-pill"
-                    className="filter-pill"
-                    transition={{ type: 'spring', stiffness: 420, damping: 36 }}
-                  />
-                )}
-                <span className="filter-label">{cat}</span>
-              </button>
-            ))}
-          </div>
-        </Reveal>
-
-        <Reveal delay={0.08}>
-          <div
-            className="rail-stage"
-            ref={stageRef}
-            onPointerDown={(e) => {
-              if (e.pointerType === 'touch') holdUntil.current = Date.now() + 8000
-            }}
-          >
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.ol
-                key={filter}
-                className="rail"
-                style={{ '--n': visible.length }}
-                initial={{ opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.35, ease }}
-              >
-                {visible.map((project, i) => (
-                  <RailFrame
-                    key={project.id}
-                    project={project}
-                    open={i === openIndex}
-                    onActivate={() => setOpenIndex(i)}
-                    onOpen={openProject}
-                  />
-                ))}
-              </motion.ol>
-            </AnimatePresence>
-          </div>
-        </Reveal>
+        {/* Every project as a card in the gallery, in the order the data
+            lists them: the three LLM systems first, then the web apps. */}
+        <ol className="work-grid">
+          {projects.map((project) => (
+            <ProjectCard key={project.id} project={project} onOpen={openProject} />
+          ))}
+        </ol>
 
         {/* Every project on one page: a sphere of covers you can turn. */}
         <div className="projects-more">

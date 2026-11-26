@@ -25,28 +25,27 @@ export const profile = {
     'LLM Systems Developer',
     'Python Developer',
   ],
-  tagline:
-    'I build backend systems that let LLMs think, remember and act — orchestration layers, RAG pipelines and async task queues in Python.',
+  tagline: 'I build the backend for AI apps.',
   location: 'Diva, Thane, Maharashtra',
   phone: '+91 7045877301',
   email: 'anuragsable01@gmail.com',
   linkedin: 'https://linkedin.com/in/anurag-sable-4181382a6/',
   github: 'https://github.com/anuragsable11',
   resume: '/Anurag_Sable_Resume.pdf',
-  availability: 'Open to backend / AI engineering roles',
+  availability: 'Open to work',
   // Gathered out of particles on the opening screen, under the portrait.
   welcome: 'Welcome to my portfolio',
   summary: [
-    'Computer Science & Engineering graduate specializing in backend engineering for AI-driven systems, with hands-on experience building LLM-integrated applications — conversational pipelines with asynchronous task orchestration, and Retrieval-Augmented Generation (RAG) systems that ground LLM outputs in external data.',
+    'Computer Science graduate who codes in Python, Django and FastAPI.',
     'Strong foundation in Python, Django, FastAPI and REST API design, with a growing focus on agentic AI engineering — orchestrating LLMs, tools and stateful context into reliable backend systems.',
   ],
 }
 
 export const stats = [
-  { value: '6', label: 'Projects shipped' },
-  { value: '3', label: 'LLM systems built' },
-  { value: '3', label: 'Live web apps' },
-  { value: '2026', label: 'B.E. graduate' },
+  { value: '6', label: 'Projects' },
+  { value: '3', label: 'AI apps' },
+  { value: '3', label: 'Web apps' },
+  { value: '2026', label: 'Graduated' },
 ]
 
 export const skillGroups = [
@@ -111,16 +110,48 @@ export const skillGroups = [
 /** The Projects section's heading — also the title of the all-projects page. */
 export const projectsHead = {
   eyebrow: 'Projects',
-  title: 'Things I have',
-  highlight: 'designed and shipped',
-  sub: 'Three LLM systems built end to end, plus the web applications where I learned the fundamentals.',
+  title: 'Things I',
+  highlight: 'built',
+  sub: '3 AI apps and 3 web apps.',
+}
+
+/**
+ * Every section's heading, keyed by its id in navLinks: the label, the
+ * title with its highlighted words, and the deck under it. The hero's
+ * contents strip lists the same titles.
+ */
+export const sectionHeads = {
+  about: {
+    eyebrow: 'About',
+    title: 'Hi, I’m',
+    highlight: 'Anurag',
+    sub: 'I care about the layer beneath the model — the part that decides what the model sees, remembers and does next.',
+  },
+  skills: {
+    eyebrow: 'Skills',
+    title: 'Tools I',
+    highlight: 'work with',
+  },
+  projects: projectsHead,
+  journey: {
+    eyebrow: 'Journey',
+    title: 'Experience, training and',
+    highlight: 'education',
+    sub: 'Where the foundations came from — and what I picked up along the way.',
+  },
+  contact: {
+    eyebrow: 'Contact',
+    title: 'Let’s work',
+    highlight: 'together',
+    sub: 'Email me or use the form.',
+  },
 }
 
 export const projects = [
   {
     id: 'verus',
     name: 'Verus AI',
-    subtitle: 'Conversational LLM Orchestration Platform',
+    subtitle: 'Private AI chat app',
     year: '2025',
     featured: true,
     category: 'Agentic AI',
@@ -161,7 +192,7 @@ export const projects = [
   {
     id: 'docmind',
     name: 'DocMind',
-    subtitle: 'Retrieval-Augmented Reasoning Pipeline',
+    subtitle: 'Chat with your PDFs',
     year: '2025',
     featured: true,
     category: 'RAG',
@@ -194,7 +225,7 @@ export const projects = [
   {
     id: 'cursus',
     name: 'Cursus AI',
-    subtitle: 'Career Intelligence for AI Engineers',
+    subtitle: 'Turns your resume into a learning plan',
     year: '2026',
     featured: true,
     category: 'Full Stack',
@@ -226,7 +257,7 @@ export const projects = [
   {
     id: 'skysnap',
     name: 'SkySnap',
-    subtitle: 'Weather Web Application',
+    subtitle: 'Weather app',
     year: '2024',
     featured: false,
     category: 'Web App',
@@ -254,7 +285,7 @@ export const projects = [
   {
     id: 'doneward',
     name: 'Doneward',
-    subtitle: 'Task Management Web Application',
+    subtitle: 'To-do app',
     year: '2024',
     featured: false,
     category: 'Web App',
@@ -286,7 +317,7 @@ export const projects = [
   {
     id: 'quizverse',
     name: 'Quizverse',
-    subtitle: 'Timed Trivia Quiz Web Application',
+    subtitle: 'Quiz game',
     year: '2025',
     featured: false,
     category: 'Web App',
@@ -315,6 +346,9 @@ export const projects = [
   },
 ]
 
+// Experience and education. Not on the home page since the Journey section
+// came off it (the resume carries them); kept here, with its heading in
+// sectionHeads.journey, so it can come back.
 export const timeline = [
   {
     id: 'shubham-tanks',
@@ -363,6 +397,5 @@ export const navLinks = [
   { id: 'about', label: 'About' },
   { id: 'skills', label: 'Skills' },
   { id: 'projects', label: 'Projects' },
-  { id: 'journey', label: 'Journey' },
   { id: 'contact', label: 'Contact' },
 ]

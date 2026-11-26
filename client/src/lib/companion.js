@@ -27,7 +27,6 @@ export const SECTION_MOODS = Object.freeze({
   about: 'thinking',
   skills: 'focused',
   projects: 'attentive',
-  journey: 'thinking',
   contact: 'calm',
 })
 

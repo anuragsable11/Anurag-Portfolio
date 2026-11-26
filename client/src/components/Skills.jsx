@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import SectionHead from './SectionHead.jsx'
 import SkillsSwarm from './SkillsSwarm.jsx'
+import { sectionHeads } from '../data/content.js'
 import { TECH } from '../data/tech.js'
 
 export default function Skills() {
@@ -11,12 +12,7 @@ export default function Skills() {
       {/* The title sits in the middle; the icons burst out around it. */}
       <div className="skills-stage">
         <div className="skills-center" ref={centerRef}>
-          <SectionHead
-            eyebrow="Skills"
-            title="Tools I"
-            highlight="work with"
-            sub="The stack behind my projects — backend services, LLMs and the ML frameworks around them, and the data layers underneath."
-          />
+          <SectionHead {...sectionHeads.skills} />
         </div>
         <SkillsSwarm centerRef={centerRef} />
       </div>

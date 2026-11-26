@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { HiOutlineMenuAlt4, HiX } from 'react-icons/hi'
 import { FiArrowUpRight } from 'react-icons/fi'
 import ThemeToggle from './ThemeToggle.jsx'
 import { navLinks, profile } from '../data/content.js'
 import { useActiveSection, useScrolled } from '../hooks/useActiveSection.js'
-import { watchOpeningZoom } from '../lib/opening.js'
+import { holdScroll } from '../lib/smooth-scroll.js'
 
 const ids = navLinks.map((l) => l.id)
 
@@ -14,43 +14,26 @@ export default function Navbar() {
   const scrolled = useScrolled(24)
   const active = useActiveSection(ids)
 
-  // Inside the opening card the bar shrinks with it, towards the middle of
-  // the screen (see .nav in the CSS), so it reads as the card's own navbar
-  // and becomes the page's as the card fills the screen. Written straight
-  // to the element: it changes every frame of the zoom.
-  const headerRef = useRef(null)
-  const [miniature, setMiniature] = useState(false)
-  useEffect(
-    () =>
-      watchOpeningZoom((zoom) => {
-        const inside = zoom < 0.999
-        // `none` rather than scale(1) once out: no transform left behind.
-        if (headerRef.current) headerRef.current.style.transform = inside ? `scale(${zoom})` : 'none'
-        setMiniature(inside)
-      }),
-    []
-  )
-
-  // Lock body scroll while the mobile sheet is open.
+  // Lock body scroll while the mobile sheet is open (the smooth scroller
+  // holds still too).
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : ''
+    const release = open ? holdScroll() : null
     return () => {
       document.body.style.overflow = ''
+      release?.()
     }
   }, [open])
 
   return (
     <>
       {/* Drops in with CSS (.nav), from the prerendered page's first paint. */}
-      <header
-        ref={headerRef}
-        className={`nav${scrolled ? ' scrolled' : ''}${miniature ? ' is-miniature' : ''}`}
-      >
+      <header className={`nav${scrolled ? ' scrolled' : ''}`}>
         <nav className="nav-inner">
           <a href="#home" className="nav-logo" aria-label="Back to top">
             <span className="nav-mark">AS</span>
-            <span>
-              Anurag<span style={{ color: 'var(--text-mute)' }}>.dev</span>
+            <span className="nav-wordmark">
+              Anurag<span className="nav-tld">.dev</span>
             </span>
           </a>
 
@@ -113,6 +96,7 @@ export default function Navbar() {
           <motion.div
             key="sheet"
             className="nav-mobile"
+            data-lenis-prevent
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}

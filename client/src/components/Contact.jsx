@@ -4,7 +4,7 @@ import { FiAlertCircle, FiCheckCircle, FiMail, FiMapPin, FiPhone, FiSend } from 
 import { FaLinkedinIn } from 'react-icons/fa'
 import Reveal from './Reveal.jsx'
 import SectionHead from './SectionHead.jsx'
-import { profile } from '../data/content.js'
+import { profile, sectionHeads } from '../data/content.js'
 import { celebrate, setMood } from '../lib/companion.js'
 
 const channels = [
@@ -120,14 +120,9 @@ export default function Contact() {
   const sending = status.state === 'sending'
 
   return (
-    <section id="contact" className="section">
+    <section id="contact" className="section band-dark">
       <div className="container">
-        <SectionHead
-          eyebrow="Contact"
-          title="Let us build something"
-          highlight="together"
-          sub="Open to backend and AI engineering roles, internships and collaboration. The fastest way to reach me is email — or use the form and it lands in my inbox."
-        />
+        <SectionHead {...sectionHeads.contact} />
 
         <div className="contact-grid">
           <div>

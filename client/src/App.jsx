@@ -1,16 +1,15 @@
 import { Suspense, useEffect } from 'react'
 import Background from './components/Background.jsx'
 import Navbar from './components/Navbar.jsx'
-import PortraitIntro from './components/PortraitIntro.jsx'
 import Hero from './components/Hero.jsx'
 import About from './components/About.jsx'
 import Skills from './components/Skills.jsx'
 import Projects from './components/Projects.jsx'
-import Journey from './components/Journey.jsx'
 import Contact from './components/Contact.jsx'
 import Footer from './components/Footer.jsx'
 import { navLinks } from './data/content.js'
 import { startCompanion } from './lib/companion.js'
+import { startSmoothScroll } from './lib/smooth-scroll.js'
 
 const sectionIds = navLinks.map((l) => l.id)
 
@@ -19,12 +18,14 @@ export default function App() {
   // and one hidden key. Runs even when the 3D samurai itself does not.
   useEffect(() => startCompanion(sectionIds), [])
 
+  // Wheel and trackpad scrolling glide (see lib/smooth-scroll.js).
+  useEffect(() => startSmoothScroll(), [])
+
   return (
     <>
       <Background />
       <Navbar />
       <main>
-        <PortraitIntro />
         <Hero />
         {/* Each section below the hero is its own Suspense boundary, so React
             hydrates the prerendered page a section at a time instead of in
@@ -37,9 +38,6 @@ export default function App() {
         </Suspense>
         <Suspense>
           <Projects />
-        </Suspense>
-        <Suspense>
-          <Journey />
         </Suspense>
         <Suspense>
           <Contact />
