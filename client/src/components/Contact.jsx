@@ -1,6 +1,14 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { FiAlertCircle, FiCheckCircle, FiMail, FiMapPin, FiPhone, FiSend } from 'react-icons/fi'
+import {
+  FiAlertCircle,
+  FiCheckCircle,
+  FiFileText,
+  FiMail,
+  FiMapPin,
+  FiPhone,
+  FiSend,
+} from 'react-icons/fi'
 import { FaLinkedinIn } from 'react-icons/fa'
 import Reveal from './Reveal.jsx'
 import SectionHead from './SectionHead.jsx'
@@ -13,6 +21,12 @@ const channels = [
     label: 'Email',
     value: profile.email,
     href: `mailto:${profile.email}`,
+  },
+  {
+    icon: <FiFileText />,
+    label: 'Resume',
+    value: 'Download PDF',
+    href: profile.resume,
   },
   {
     icon: <FiPhone />,
@@ -146,7 +160,7 @@ export default function Contact() {
                       key={c.label}
                       className="contact-link"
                       href={c.href}
-                      target={c.href.startsWith('http') ? '_blank' : undefined}
+                      target={c.href.startsWith('http') || c.href.endsWith('.pdf') ? '_blank' : undefined}
                       rel="noreferrer"
                     >
                       {inner}

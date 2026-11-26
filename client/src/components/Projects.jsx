@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { FiArrowRight, FiLock, FiMaximize2, FiX } from 'react-icons/fi'
+import { FiArrowRight, FiArrowUpRight, FiLock, FiMaximize2, FiX } from 'react-icons/fi'
 import { FaGithub, FaPlay } from 'react-icons/fa'
 import SectionHead from './SectionHead.jsx'
 import { projects, projectsHead } from '../data/content.js'
@@ -293,7 +293,8 @@ function ProjectModal({ project, returnFocusTo, onClose }) {
 
 /**
  * A project in the gallery: its landing page, then its name and what it
- * is. The whole card opens the project's details, where its links are.
+ * is; the card opens the project's details. Under it, the live app and the
+ * code, one click away (links can't sit inside the card's button).
  */
 function ProjectCard({ project, onOpen }) {
   const { showcase } = project
@@ -320,6 +321,28 @@ function ProjectCard({ project, onOpen }) {
         <span className="work-name">{project.name}</span>
         <span className="work-sub">{project.subtitle}</span>
       </button>
+      <div className="work-links">
+        {project.links?.live && (
+          <a
+            href={project.links.live}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={`${project.name}: open the live app`}
+          >
+            Live <FiArrowUpRight aria-hidden="true" />
+          </a>
+        )}
+        {project.links?.github && (
+          <a
+            href={project.links.github}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={`${project.name}: code on GitHub`}
+          >
+            <FaGithub aria-hidden="true" /> Code
+          </a>
+        )}
+      </div>
     </li>
   )
 }

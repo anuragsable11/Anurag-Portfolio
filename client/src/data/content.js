@@ -33,6 +33,8 @@ export const profile = {
   github: 'https://github.com/anuragsable11',
   resume: '/Anurag_Sable_Resume.pdf',
   availability: 'Open to work',
+  // The one line on the page about where I work now (from timeline[0]).
+  now: 'Python Full Stack Developer Intern at Shubham Tanks and Liners',
   // Gathered out of particles on the opening screen, under the portrait.
   welcome: 'Welcome to my portfolio',
   summary: [

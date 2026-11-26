@@ -3,7 +3,7 @@ import SamuraiSpot from './SamuraiSpot.jsx'
 import { profile, sectionHeads, stats } from '../data/content.js'
 
 // Only what a visitor needs here: the headline, the one line that says who
-// I am, four quick figures, and the samurai beside them.
+// I am, where I work now, four quick figures, and the samurai beside them.
 const { sub: _deck, ...aboutHead } = sectionHeads.about
 
 export default function About() {
@@ -14,6 +14,10 @@ export default function About() {
           <div className="about-copy">
             <SectionHead {...aboutHead} />
             <p className="about-lead">{profile.summary[0]}</p>
+            <p className="about-now">
+              <span className="about-now-label">Now</span>{' '}
+              <span>{profile.now}</span>
+            </p>
 
             <dl className="about-stats">
               {stats.map((s) => (
