@@ -1,4 +1,20 @@
+import { Fragment } from 'react'
 import Reveal from './Reveal.jsx'
+
+/**
+ * A word with its apostrophes tucked in: the Mincho sets ’ on a wide body,
+ * which leaves a gap inside the word ("I’ m", "Let’ s"); .apos closes it.
+ */
+function tuckApostrophes(word) {
+  const bits = word.split('’')
+  if (bits.length === 1) return word
+  return bits.map((bit, i) => (
+    <Fragment key={i}>
+      {i > 0 && <span className="apos">’</span>}
+      {bit}
+    </Fragment>
+  ))
+}
 
 /**
  * Heading text with its hyphenated words kept whole: a line may break
@@ -8,10 +24,10 @@ function keepHyphenated(text) {
   return text.split(/(\s+)/).map((part, i) =>
     part.includes('-') ? (
       <span key={i} className="nowrap">
-        {part}
+        {tuckApostrophes(part)}
       </span>
     ) : (
-      part
+      <Fragment key={i}>{tuckApostrophes(part)}</Fragment>
     )
   )
 }

@@ -43,6 +43,7 @@ export default function Navbar() {
                 <a
                   href={`#${link.id}`}
                   className={`nav-link ${active === link.id ? 'active' : ''}`}
+                  aria-current={active === link.id ? 'location' : undefined}
                 >
                   {active === link.id && (
                     <motion.span
@@ -108,6 +109,7 @@ export default function Navbar() {
                   <a
                     href={`#${link.id}`}
                     className={active === link.id ? 'active' : ''}
+                    aria-current={active === link.id ? 'location' : undefined}
                     onClick={() => setOpen(false)}
                   >
                     {link.label}

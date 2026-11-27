@@ -21,11 +21,21 @@ export default function App() {
   // Wheel and trackpad scrolling glide (see lib/smooth-scroll.js).
   useEffect(() => startSmoothScroll(), [])
 
+  // For keyboard and screen-reader users: past the navbar, straight to the
+  // page. (Focus is moved by hand: the smooth scroller takes anchor clicks.)
+  const skipToMain = (e) => {
+    e.preventDefault()
+    document.getElementById('main')?.focus({ preventScroll: true })
+  }
+
   return (
     <>
+      <a className="skip-link" href="#main" onClick={skipToMain}>
+        Skip to content
+      </a>
       <Background />
       <Navbar />
-      <main>
+      <main id="main" tabIndex={-1}>
         <Hero />
         {/* Each section below the hero is its own Suspense boundary, so React
             hydrates the prerendered page a section at a time instead of in

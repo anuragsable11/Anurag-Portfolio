@@ -302,6 +302,32 @@ ul {
   z-index: 200;
 }
 
+/* Out of sight until it takes keyboard focus (the first Tab on the page). */
+.skip-link {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 300;
+  padding: 10px 16px;
+  border-radius: 4px;
+  background: var(--brand);
+  color: var(--brand-fg);
+  font-family: var(--heading);
+  font-size: 0.9rem;
+  font-weight: 700;
+  transform: translateY(-200%);
+}
+
+/* Plain :focus: only the keyboard can reach it while it is off screen. */
+.skip-link:focus {
+  transform: none;
+}
+
+/* The page takes focus from that link, not a focus ring round all of it. */
+main:focus {
+  outline: none;
+}
+
 /* ============================================================
    Layout primitives
    ============================================================ */
@@ -535,6 +561,12 @@ ul {
 /* The highlighted words in each heading take the second colour. */
 .gradient-text {
   color: var(--highlight);
+}
+
+/* The Mincho sets the apostrophe on a wide body, leaving a gap inside the
+   word ("I’ m"); this draws the next letter back in (SectionHead). */
+.section-title .apos {
+  margin-right: -0.12em;
 }
 
 /* A hyphenated word in a heading stays on one line (SectionHead). */
@@ -1005,92 +1037,6 @@ ul {
   filter: drop-shadow(0 16px 22px rgba(28, 27, 25, 0.28));
 }
 
-/* Code panel */
-.terminal {
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
-  background: var(--card);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-}
-
-.terminal-bar {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
-  background: var(--secondary);
-}
-
-.term-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--border-hi);
-}
-
-.terminal-title {
-  margin-left: 8px;
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  color: var(--muted-fg);
-}
-
-.terminal-body {
-  padding: 18px 18px 20px;
-  font-family: var(--mono);
-  font-size: 0.76rem;
-  line-height: 1.8;
-  overflow-x: auto;
-  background: var(--bg-subtle);
-}
-
-.terminal-body .ln {
-  white-space: pre;
-}
-
-/* Syntax tones — restrained, readable in both themes */
-.tk-key {
-  color: #8250df;
-}
-.tk-fn {
-  color: #0969da;
-}
-.tk-str {
-  color: #0a7d4f;
-}
-.tk-num {
-  color: #b35900;
-}
-.tk-cmt {
-  color: var(--muted-fg);
-}
-.tk-var {
-  color: var(--fg);
-}
-.tk-op {
-  color: var(--muted-fg);
-}
-
-:root[data-theme='dark'] .tk-key {
-  color: #c095f0;
-}
-:root[data-theme='dark'] .tk-fn {
-  color: #79b8ff;
-}
-:root[data-theme='dark'] .tk-str {
-  color: #6fd39a;
-}
-:root[data-theme='dark'] .tk-num {
-  color: #e8b17a;
-}
-
-/* Scroll hint */
-.scroll-hint {
-  display: none;
-}
-
 /* ============================================================
    About
    ============================================================ */
@@ -1188,77 +1134,6 @@ ul {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     row-gap: 22px;
   }
-}
-
-/* ============================================================
-   Skills
-   ============================================================ */
-.skills-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 12px;
-}
-
-.skill-card {
-  padding: 22px 20px;
-  overflow: hidden;
-}
-
-.skill-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(
-    360px circle at var(--mx, 50%) var(--my, 0%),
-    var(--brand-soft),
-    transparent 45%
-  );
-  opacity: 0;
-  transition: opacity 0.25s ease;
-  pointer-events: none;
-}
-
-.skill-card:hover::before {
-  opacity: 1;
-}
-
-.skill-head {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  margin-bottom: 4px;
-}
-
-.skill-icon {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-sm);
-  background: var(--secondary);
-  border: 1px solid var(--border);
-  color: var(--fg);
-  font-size: 1.02rem;
-  flex-shrink: 0;
-}
-
-.skill-card h3 {
-  font-size: 0.98rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-.skill-blurb {
-  font-size: 0.8rem;
-  color: var(--muted-fg);
-  margin-bottom: 15px;
-}
-
-.skill-items {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
 }
 
 /* ============================================================
@@ -2306,10 +2181,10 @@ a.contact-link:hover .contact-link-value {
    ============================================================ */
 /* The footer closes the navy band the contact section opened. */
 .footer {
-  --fg: #f1f5fb;
-  --muted-fg: #9eb0c7;
+  --fg: #f1ece3;
+  --muted-fg: #a9b3bf;
   padding: 28px 0 34px;
-  border-top: 1px solid rgba(241, 245, 251, 0.12);
+  border-top: 1px solid rgba(241, 236, 227, 0.12);
   background: var(--band-dark);
   color: var(--fg);
 }

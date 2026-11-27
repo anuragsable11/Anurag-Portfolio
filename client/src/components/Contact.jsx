@@ -9,7 +9,7 @@ import {
   FiPhone,
   FiSend,
 } from 'react-icons/fi'
-import { FaLinkedinIn } from 'react-icons/fa'
+import { FaGithub, FaLinkedinIn } from 'react-icons/fa'
 import Reveal from './Reveal.jsx'
 import SectionHead from './SectionHead.jsx'
 import { profile, sectionHeads } from '../data/content.js'
@@ -45,6 +45,12 @@ const channels = [
     label: 'LinkedIn',
     value: 'anurag-sable-4181382a6',
     href: profile.linkedin,
+  },
+  {
+    icon: <FaGithub />,
+    label: 'GitHub',
+    value: profile.github.split('/').filter(Boolean).pop(),
+    href: profile.github,
   },
   {
     icon: <FiMapPin />,
