@@ -5,6 +5,10 @@ import App from './App.jsx'
 // Montserrat sets the page, heavy for headings; Geist Mono sets the small
 // technical labels (chips, the project view's details, the samurai's tooltip).
 import '@fontsource-variable/montserrat'
+// Shippori Mincho for the headings: its Latin letters only (the few kanji
+// use the system's Mincho), two weights.
+import '@fontsource/shippori-mincho/latin-500.css'
+import '@fontsource/shippori-mincho/latin-700.css'
 import '@fontsource-variable/geist-mono'
 import 'lenis/dist/lenis.css'
 import './index.css'

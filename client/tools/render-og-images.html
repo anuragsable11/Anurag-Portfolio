@@ -23,7 +23,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400..900&family=Playfair+Display:wght@400&family=Inter:wght@300;400&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400..900&family=Shippori+Mincho:wght@500;700&family=Playfair+Display:wght@400&family=Inter:wght@300;400&display=swap"
       rel="stylesheet"
     />
     <style>
@@ -44,12 +44,12 @@
       }
 
       /* ---- The portfolio: the hero, as a card ---- */
-      /* The site's light theme: soft white, the name in heavy Montserrat,
-         navy then teal, what I do under it in the teal, and my photo on its
-         teal card, as the hero shows them. */
+      /* The site's light theme: washi paper, the name in Mincho, ink then
+         red, what I do in spaced capitals, and my photo on its plain paper
+         card, as the hero shows them. */
       .home {
-        background: #f6f8fb;
-        color: #0f1b2d;
+        background: #f6f3ec;
+        color: #1c1b19;
         font-family: 'Montserrat', system-ui, sans-serif;
       }
 
@@ -67,23 +67,24 @@
         gap: 12px;
         font-size: 20px;
         font-weight: 600;
-        color: #4b5a6e;
+        color: #6b655c;
       }
 
       .badge i {
         width: 9px;
         height: 9px;
         border-radius: 50%;
-        background: #15803d;
+        background: #b7282e;
       }
 
       .name {
-        margin-top: 26px;
-        font-size: 150px;
-        font-weight: 800;
-        line-height: 0.92;
-        letter-spacing: -0.045em;
-        color: #0f1b2d;
+        margin-top: 22px;
+        font-family: 'Shippori Mincho', serif;
+        font-size: 138px;
+        font-weight: 500;
+        line-height: 1.02;
+        letter-spacing: -0.02em;
+        color: #1c1b19;
       }
 
       .name span {
@@ -91,15 +92,16 @@
       }
 
       .name span + span {
-        color: #0d9488;
+        color: #b7282e;
       }
 
       .role {
-        margin-top: 32px;
-        font-size: 32px;
-        font-weight: 700;
-        letter-spacing: -0.01em;
-        color: #0f766e;
+        margin-top: 30px;
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #1c1b19;
       }
 
       .photo {
@@ -113,16 +115,15 @@
         width: 400px;
         height: 500px;
         overflow: hidden;
-        border-radius: 28px;
-        background: radial-gradient(70% 55% at 50% 30%, rgba(255, 255, 255, 0.3), transparent 70%),
-          linear-gradient(170deg, #2dd4bf 0%, #0d9488 100%);
-        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22), 0 24px 48px -22px rgba(15, 27, 45, 0.3);
+        border-radius: 6px;
+        background: #ece5d8;
+        box-shadow: 0 10px 28px -14px rgba(28, 27, 25, 0.2);
       }
 
       .photo img {
         display: block;
         width: 92%;
-        filter: drop-shadow(0 18px 26px rgba(4, 47, 46, 0.32));
+        filter: drop-shadow(0 16px 22px rgba(28, 27, 25, 0.28));
       }
 
       /* ---- The projects page: its title and its covers ---- */

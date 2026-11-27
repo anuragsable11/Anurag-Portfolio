@@ -16,11 +16,23 @@ function keepHyphenated(text) {
   )
 }
 
-export default function SectionHead({ eyebrow, title, highlight, sub }) {
+/** The label over a heading: the section's formal kanji numeral (壱, 弐…) when it
+ *  has one, then its name. */
+function Label({ eyebrow, kanji }) {
+  if (!kanji) return <span className="eyebrow">{eyebrow}</span>
+  return (
+    <span className="eyebrow eyebrow-jp">
+      <b aria-hidden="true">{kanji}</b>
+      {eyebrow}
+    </span>
+  )
+}
+
+export default function SectionHead({ eyebrow, kanji, title, highlight, sub }) {
   return (
     <div className="section-head">
       <Reveal>
-        <span className="eyebrow">{eyebrow}</span>
+        <Label eyebrow={eyebrow} kanji={kanji} />
       </Reveal>
       <Reveal delay={0.08}>
         <h2 className="section-title">

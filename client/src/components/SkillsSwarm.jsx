@@ -41,6 +41,7 @@ const lerp = (a, b, t) => a + (b - a) * t
 const clamp01 = (t) => Math.min(Math.max(t, 0), 1)
 /** Overshoots by about 10% at c = 1.70158, and about 18% at c = 2.4. */
 const easeOutBack = (t, c = 1.70158) => 1 + (c + 1) * (t - 1) ** 3 + c * (t - 1) ** 2
+const easeOutCubic = (t) => 1 - (1 - t) ** 3
 
 /** Seeded, so the icons land in the same places on every visit. */
 function rng(seed) {
@@ -301,10 +302,16 @@ export default function SkillsSwarm({ centerRef }) {
       const titleX = title.left + title.width / 2 - (stage.left + w / 2)
       const titleY = title.top + title.height / 2 - (stage.top + h / 2)
       const clear = size * 0.55 + 8
-      const margin = size * 0.62
-      const spots = scatter(icons.length, Math.min(w / 2 - margin, 820), h / 2 - margin, [
+      // Sideways the tiles keep inside the page's gutter (the CSS --gutter,
+      // clamp(20px, 4vw, 80px)) even as they float; up and down, a little
+      // under a tile's size from the stage edge.
+      const gutter = Math.min(80, Math.max(20, window.innerWidth * 0.04))
+      const marginX = gutter + size / 2 + FLOAT
+      const marginY = size * 0.62
+      // The hint pill: about 38px tall, 22px off the bottom, ~250px wide.
+      const spots = scatter(icons.length, Math.min(w / 2 - marginX, 820), h / 2 - marginY, [
         { x: titleX, y: titleY, hw: title.width / 2 + clear, hh: title.height / 2 + clear },
-        { x: 0, y: h / 2 - 36, hw: 120 + clear, hh: 14 + clear },
+        { x: 0, y: h / 2 - 41, hw: 125 + clear, hh: 19 + clear + FLOAT },
       ])
       icons.forEach((icon, i) => {
         icon.homeX = spots[i].x
@@ -340,7 +347,9 @@ export default function SkillsSwarm({ centerRef }) {
       for (const icon of icons) {
         const k = clamp01((now - enterAt - icon.delay) / POP)
         if (k < 1) done = false
-        const e = k > 0 ? easeOutBack(k) : 0
+        // They glide to their spots without overshooting (onto a neighbour,
+        // the hint or past the gutter); only their size springs.
+        const e = k > 0 ? easeOutCubic(k) : 0
         icon.x = icon.px = icon.homeX * e
         icon.y = icon.py = icon.homeY * e
         icon.scale = k > 0 ? easeOutBack(k, 2.4) : 0

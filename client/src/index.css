@@ -1,33 +1,34 @@
 /* ============================================================
-   Design tokens — navy and teal: soft white paper, deep navy type
-   and dark bands, teal for buttons and highlights. Dark mode turns
-   the page night-navy and lifts the teal.
+   Design tokens — Japanese minimal: washi paper, sumi ink for the
+   type and the buttons, one red (beni) for the few accents, and
+   indigo (ai) for the contact band. Dark mode is a night of sumi with
+   the red lifted.
    ============================================================ */
 :root,
 :root[data-theme='light'] {
-  --bg: #f6f8fb; /* soft white */
-  --page: #f6f8fb; /* the page itself: bands redefine --bg, never this */
-  --bg-tint: #dcefed; /* About: a pale wash of the teal (small teal text 4.6:1) */
-  --bg-warm: #fbebc8; /* Projects: warm sand */
-  --warm: #f59e0b; /* gold: the label tab on the sand, the ribbons into Contact */
-  --warm-text: #92400e; /* small gold text on the sand (6:1) */
-  --warm-display: #b45309; /* the highlighted heading words on the sand (4.3:1, large type) */
-  --edge-depth: 0.6; /* how dark the shadow under each section edge falls */
-  --bg-subtle: #eef2f7;
-  --bg-glow: rgba(20, 184, 166, 0.07); /* a breath of the teal over the top of the page */
-  --fg: #0f1b2d; /* deep navy: text */
-  --display: #0f1b2d; /* headings */
-  --highlight: #0d9488; /* the highlighted words in a heading (3.5:1, large type only) */
-  --card: #ffffff;
-  --secondary: #eef2f7;
-  --secondary-fg: #0f1b2d;
-  --muted-fg: #4b5a6e;
-  --border: #e3e8ef;
-  --border-hi: #c9d2de;
-  --rule: #0f1b2d;
-  --input: #c9d2de;
-  --ring: #14b8a6;
-  --band-dark: #0b1d33; /* the contact band and the footer: navy */
+  --bg: #f6f3ec; /* soft white */
+  --page: #f6f3ec; /* the page itself: bands redefine --bg, never this */
+  --bg-tint: #ece5d8; /* About: a pale wash of the teal (small teal text 4.6:1) */
+  --bg-warm: #e8e3da; /* Projects: warm sand */
+  --warm: #b7282e; /* gold: the label tab on the sand, the ribbons into Contact */
+  --warm-text: #a3262b; /* small gold text on the sand (6:1) */
+  --warm-display: #b7282e; /* the highlighted heading words on the sand (4.3:1, large type) */
+  --edge-depth: 0.35; /* how dark the shadow under each section edge falls */
+  --bg-subtle: #efeae1;
+  --bg-glow: rgba(0, 0, 0, 0); /* a breath of the teal over the top of the page */
+  --fg: #1c1b19; /* deep navy: text */
+  --display: #1c1b19; /* headings */
+  --highlight: #b7282e; /* the highlighted words in a heading (3.5:1, large type only) */
+  --card: #fbf9f4;
+  --secondary: #efeae1;
+  --secondary-fg: #1c1b19;
+  --muted-fg: #6b655c;
+  --border: #e3ddd2;
+  --border-hi: #cfc7b9;
+  --rule: #1c1b19;
+  --input: #cfc7b9;
+  --ring: #b7282e;
+  --band-dark: #1e2a36; /* the contact band and the footer: navy */
 
   --robot-shell: #ccd5e0;
   --robot-plate: #8d99ab;
@@ -53,13 +54,13 @@
   --samurai-rim: 0.04; /* fresnel edge light: the dark armour already stands out */
   --samurai-rim-color: #7fd4ff; /* cool, like the cyan rim light behind him */
 
-  --brand: #14b8a6; /* teal: buttons, bars, icons, focus rings */
-  --brand-text: #0f766e; /* small teal text (5.1:1) */
-  --brand-fg: #0b1d33; /* navy on a teal fill (6.8:1) */
-  --brand-soft: rgba(20, 184, 166, 0.1);
-  --brand-border: rgba(20, 184, 166, 0.35);
-  --seal: #0d9488; /* the AS mark in the navbar */
-  --navy: #0b1d33; /* what a primary button turns to under the pointer */
+  --brand: #1c1b19; /* teal: buttons, bars, icons, focus rings */
+  --brand-text: #a3262b; /* small teal text (5.1:1) */
+  --brand-fg: #f6f3ec; /* navy on a teal fill (6.8:1) */
+  --brand-soft: rgba(28, 27, 25, 0.06);
+  --brand-border: rgba(28, 27, 25, 0.25);
+  --seal: #b7282e; /* the AS mark in the navbar */
+  --navy: #b7282e; /* what a primary button turns to under the pointer */
   --on-navy: #ffffff;
 
   --success: #15803d;
@@ -67,35 +68,35 @@
   --danger: #c81e3c;
   --danger-soft: rgba(200, 30, 60, 0.08);
 
-  --shadow-sm: 0 1px 2px rgba(15, 27, 45, 0.06);
-  --shadow-md: 0 10px 28px -14px rgba(15, 27, 45, 0.22);
-  --shadow-lg: 0 24px 48px -22px rgba(15, 27, 45, 0.3);
+  --shadow-sm: 0 1px 2px rgba(28, 27, 25, 0.06);
+  --shadow-md: 0 10px 28px -14px rgba(28, 27, 25, 0.2);
+  --shadow-lg: 0 24px 48px -22px rgba(28, 27, 25, 0.28);
 }
 
 :root[data-theme='dark'] {
-  --bg: #0a1322; /* night navy */
-  --page: #0a1322;
-  --bg-tint: #0d2433; /* a step lighter, toward the teal */
-  --bg-warm: #1e1b2b; /* a step lighter, toward plum */
-  --warm: #f59e0b;
-  --warm-text: #fbbf24;
-  --warm-display: #fbbf24;
-  --edge-depth: 1;
-  --bg-subtle: #0e1a2c;
-  --bg-glow: rgba(20, 184, 166, 0.06);
-  --fg: #e6edf6;
-  --display: #f1f5fb;
-  --highlight: #2dd4bf; /* the teal, lifted to read on the navy (10:1) */
-  --card: #101d31;
-  --secondary: #15243a;
-  --secondary-fg: #e6edf6;
-  --muted-fg: #9eb0c7;
-  --border: rgba(230, 237, 246, 0.1);
-  --border-hi: rgba(230, 237, 246, 0.2);
-  --rule: #e6edf6;
-  --input: rgba(230, 237, 246, 0.22);
-  --ring: #2dd4bf;
-  --band-dark: #070e1a; /* the contact band and footer: a step deeper than the page and the tint above it */
+  --bg: #151412; /* night navy */
+  --page: #151412;
+  --bg-tint: #1f1d1a; /* a step lighter, toward the teal */
+  --bg-warm: #1b1c1f; /* a step lighter, toward plum */
+  --warm: #e8655a;
+  --warm-text: #ec7a6e;
+  --warm-display: #e8655a;
+  --edge-depth: 0.8;
+  --bg-subtle: #1b1a17;
+  --bg-glow: rgba(0, 0, 0, 0);
+  --fg: #ebe5da;
+  --display: #f3eee5;
+  --highlight: #e8655a; /* the teal, lifted to read on the navy (10:1) */
+  --card: #1d1b18;
+  --secondary: #24211d;
+  --secondary-fg: #ebe5da;
+  --muted-fg: #a59d90;
+  --border: rgba(235, 229, 218, 0.1);
+  --border-hi: rgba(235, 229, 218, 0.2);
+  --rule: #ebe5da;
+  --input: rgba(235, 229, 218, 0.22);
+  --ring: #e8655a;
+  --band-dark: #0f1720; /* the contact band and footer: a step deeper than the page and the tint above it */
 
   --robot-shell: #46525f;
   --robot-plate: #2b3540;
@@ -121,14 +122,14 @@
   --samurai-rim: 0.14; /* fresnel edge light, a cool hairline carving him off the dark page (the rim lights do the rest) */
   --samurai-rim-color: #7fd4ff; /* cool, like the cyan rim light behind him */
 
-  --brand: #14b8a6;
-  --brand-text: #2dd4bf;
-  --brand-fg: #0a1322;
-  --brand-soft: rgba(20, 184, 166, 0.14);
-  --brand-border: rgba(45, 212, 191, 0.4);
-  --seal: #2dd4bf;
-  --navy: #e6edf6;
-  --on-navy: #0a1322;
+  --brand: #ebe5da;
+  --brand-text: #ec7a6e;
+  --brand-fg: #151412;
+  --brand-soft: rgba(235, 229, 218, 0.08);
+  --brand-border: rgba(235, 229, 218, 0.3);
+  --seal: #d64a3f;
+  --navy: #e8655a;
+  --on-navy: #151412;
 
   --success: #4ade80;
   --success-soft: rgba(74, 222, 128, 0.1);
@@ -146,6 +147,10 @@
      labels and buttons; regular for reading. */
   --font: 'Montserrat Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --heading: 'Montserrat Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Shippori Mincho (Latin only, self-hosted) for the headings; the few
+     kanji fall back to the system's Mincho. */
+  --serif: 'Shippori Mincho', 'Yu Mincho', 'YuMincho', 'Hiragino Mincho ProN', 'Noto Serif JP',
+    'Noto Serif CJK JP', Georgia, serif;
   --mono: 'Geist Mono Variable', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
 
   --radius: 10px;
@@ -173,7 +178,7 @@
   --edge-wave-shade: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 140' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='b' x='-10%' y='-60%' width='120%' height='220%'%3E%3CfeGaussianBlur stdDeviation='8'/%3E%3C/filter%3E%3CclipPath id='c'%3E%3Cpath d='M1480 140V40L1440 40C1400 26 1350 18 1290 24C1210 32 1180 70 1090 74C1000 78 960 44 880 34C800 24 760 26 700 40C620 58 560 80 470 76C380 72 340 36 250 30C160 24 90 52 0 64L-40 64V140Z'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23c)'%3E%3Cpath d='M1480 0V40L1440 40C1400 26 1350 18 1290 24C1210 32 1180 70 1090 74C1000 78 960 44 880 34C800 24 760 26 700 40C620 58 560 80 470 76C380 72 340 36 250 30C160 24 90 52 0 64L-40 64V0Z' transform='translate(0 6)' fill='%23000' fill-opacity='0.5' filter='url(%23b)'/%3E%3C/g%3E%3C/svg%3E");
   --edge-arch-shade: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 140' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='b' x='-10%' y='-60%' width='120%' height='220%'%3E%3CfeGaussianBlur stdDeviation='8'/%3E%3C/filter%3E%3CclipPath id='c'%3E%3Cpath d='M1480 140V96L1440 96C1080 4 360 4 0 96L-40 96V140Z'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23c)'%3E%3Cpath d='M1480 0V96L1440 96C1080 4 360 4 0 96L-40 96V0Z' transform='translate(0 6)' fill='%23000' fill-opacity='0.5' filter='url(%23b)'/%3E%3C/g%3E%3C/svg%3E");
   --edge-slant-shade: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 140' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='b' x='-10%' y='-60%' width='120%' height='220%'%3E%3CfeGaussianBlur stdDeviation='8'/%3E%3C/filter%3E%3CclipPath id='c'%3E%3Cpath d='M1480 140V92L1440 92L0 8L-40 8V140Z'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23c)'%3E%3Cpath d='M1480 0V92L1440 92L0 8L-40 8V0Z' transform='translate(0 6)' fill='%23000' fill-opacity='0.5' filter='url(%23b)'/%3E%3C/g%3E%3C/svg%3E");
-  --edge-layers-shade: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 140' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='b' x='-10%' y='-60%' width='120%' height='220%'%3E%3CfeGaussianBlur stdDeviation='7'/%3E%3C/filter%3E%3CclipPath id='n'%3E%3Cpath d='M-40 0V60L0 60C180 80 420 86 640 74C860 62 1000 50 1180 54C1270 56 1380 62 1440 64L1480 64V0Z'/%3E%3C/clipPath%3E%3CclipPath id='c1'%3E%3Cpath d='M-40 140V22L0 22C220 40 460 46 700 32C900 20 1060 8 1240 12C1330 14 1400 20 1440 22L1480 22V140Z'/%3E%3C/clipPath%3E%3CclipPath id='c2'%3E%3Cpath d='M-40 140V40L0 40C200 60 440 66 660 52C880 38 1020 28 1200 32C1290 34 1380 40 1440 42L1480 42V140Z'/%3E%3C/clipPath%3E%3CclipPath id='c3'%3E%3Cpath d='M-40 140V60L0 60C180 80 420 86 640 74C860 62 1000 50 1180 54C1270 56 1380 62 1440 64L1480 64V140Z'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23n)'%3E%3Cpath d='M-40 140V22L0 22C220 40 460 46 700 32C900 20 1060 8 1240 12C1330 14 1400 20 1440 22L1480 22V140Z' fill='%23f59e0b' fill-opacity='.2'/%3E%3Cpath d='M-40 140V40L0 40C200 60 440 66 660 52C880 38 1020 28 1200 32C1290 34 1380 40 1440 42L1480 42V140Z' fill='%23f59e0b' fill-opacity='.45'/%3E%3C/g%3E%3Cg clip-path='url(%23c1)'%3E%3Cpath d='M-40 0V22L0 22C220 40 460 46 700 32C900 20 1060 8 1240 12C1330 14 1400 20 1440 22L1480 22V0Z' transform='translate(0 5)' fill='%23000' fill-opacity='0.16' filter='url(%23b)'/%3E%3C/g%3E%3Cg clip-path='url(%23c2)'%3E%3Cpath d='M-40 0V40L0 40C200 60 440 66 660 52C880 38 1020 28 1200 32C1290 34 1380 40 1440 42L1480 42V0Z' transform='translate(0 5)' fill='%23000' fill-opacity='0.2' filter='url(%23b)'/%3E%3C/g%3E%3Cg clip-path='url(%23c3)'%3E%3Cpath d='M-40 0V60L0 60C180 80 420 86 640 74C860 62 1000 50 1180 54C1270 56 1380 62 1440 64L1480 64V0Z' transform='translate(0 6)' fill='%23000' fill-opacity='0.38' filter='url(%23b)'/%3E%3C/g%3E%3C/svg%3E");
+  --edge-layers-shade: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 140' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='b' x='-10%' y='-60%' width='120%' height='220%'%3E%3CfeGaussianBlur stdDeviation='7'/%3E%3C/filter%3E%3CclipPath id='n'%3E%3Cpath d='M-40 0V60L0 60C180 80 420 86 640 74C860 62 1000 50 1180 54C1270 56 1380 62 1440 64L1480 64V0Z'/%3E%3C/clipPath%3E%3CclipPath id='c1'%3E%3Cpath d='M-40 140V22L0 22C220 40 460 46 700 32C900 20 1060 8 1240 12C1330 14 1400 20 1440 22L1480 22V140Z'/%3E%3C/clipPath%3E%3CclipPath id='c2'%3E%3Cpath d='M-40 140V40L0 40C200 60 440 66 660 52C880 38 1020 28 1200 32C1290 34 1380 40 1440 42L1480 42V140Z'/%3E%3C/clipPath%3E%3CclipPath id='c3'%3E%3Cpath d='M-40 140V60L0 60C180 80 420 86 640 74C860 62 1000 50 1180 54C1270 56 1380 62 1440 64L1480 64V140Z'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg clip-path='url(%23n)'%3E%3Cpath d='M-40 140V22L0 22C220 40 460 46 700 32C900 20 1060 8 1240 12C1330 14 1400 20 1440 22L1480 22V140Z' fill='%231e2a36' fill-opacity='.2'/%3E%3Cpath d='M-40 140V40L0 40C200 60 440 66 660 52C880 38 1020 28 1200 32C1290 34 1380 40 1440 42L1480 42V140Z' fill='%231e2a36' fill-opacity='.45'/%3E%3C/g%3E%3Cg clip-path='url(%23c1)'%3E%3Cpath d='M-40 0V22L0 22C220 40 460 46 700 32C900 20 1060 8 1240 12C1330 14 1400 20 1440 22L1480 22V0Z' transform='translate(0 5)' fill='%23000' fill-opacity='0.16' filter='url(%23b)'/%3E%3C/g%3E%3Cg clip-path='url(%23c2)'%3E%3Cpath d='M-40 0V40L0 40C200 60 440 66 660 52C880 38 1020 28 1200 32C1290 34 1380 40 1440 42L1480 42V0Z' transform='translate(0 5)' fill='%23000' fill-opacity='0.2' filter='url(%23b)'/%3E%3C/g%3E%3Cg clip-path='url(%23c3)'%3E%3Cpath d='M-40 0V60L0 60C180 80 420 86 640 74C860 62 1000 50 1180 54C1270 56 1380 62 1440 64L1480 64V0Z' transform='translate(0 6)' fill='%23000' fill-opacity='0.38' filter='url(%23b)'/%3E%3C/g%3E%3C/svg%3E");
 }
 
 /* ============================================================
@@ -301,8 +306,13 @@ ul {
    Layout primitives
    ============================================================ */
 /* Full width at every size, a fluid gutter in from each edge. */
+/* Full width up to 1600px, then centred: on big screens the columns stay
+   together instead of drifting to the far edges. The navbar (.nav-inner)
+   keeps the same edges. */
 .container {
   width: 100%;
+  max-width: 1600px;
+  margin-inline: auto;
   padding-inline: var(--gutter);
 }
 
@@ -413,7 +423,7 @@ ul {
 /* Depth: the section above each edge lies over the one below like a sheet
    of paper and casts a soft shadow just under the edge, drawn on ::after
    in a strip a little taller than the edge so the shadow can fade out.
-   On the contact band the strip also carries its two gold ribbons, each
+   On the contact band the strip also carries its two ribbons of indigo wash, each
    ribbon a sheet with its own shadow. */
 .band-tint::after,
 .band-dark::after,
@@ -465,13 +475,51 @@ ul {
   background: var(--brand);
 }
 
+/* A section's label: its formal kanji numeral (壱 弐 参 肆, as on bank notes)
+   in red Mincho, a
+   hairline, then the name in small spaced capitals. */
+.eyebrow-jp {
+  gap: 14px;
+  line-height: 1;
+  color: var(--muted-fg);
+  font-family: var(--font);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+}
+
+.eyebrow-jp::before {
+  display: none;
+}
+
+.eyebrow-jp b {
+  display: inline-flex;
+  align-items: center;
+  color: var(--brand-text);
+  font-family: var(--serif);
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.eyebrow-jp b::after {
+  content: '';
+  display: inline-block;
+  width: 32px;
+  height: 1px;
+  margin-left: 14px;
+  background: currentColor;
+  opacity: 0.6;
+}
+
 .section-title {
   color: var(--display);
-  font-family: var(--heading);
-  font-size: clamp(2.5rem, 1.2rem + 3.8vw, 5.2rem);
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 1.02;
+  font-family: var(--serif);
+  font-size: clamp(2.4rem, 1.2rem + 3.6vw, 4.9rem);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.12;
   text-wrap: balance;
   margin-bottom: 20px;
 }
@@ -510,7 +558,7 @@ ul {
   gap: 10px;
   padding: 13px 22px;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 4px;
   font-family: var(--heading);
   font-size: 0.9rem;
   font-weight: 700;
@@ -529,14 +577,14 @@ ul {
   border-color: var(--brand);
   background-color: var(--brand);
   color: var(--brand-fg);
-  box-shadow: 0 10px 24px -14px rgba(13, 148, 136, 0.8);
+  box-shadow: 0 10px 24px -16px rgba(28, 27, 25, 0.7);
 }
 
 .btn-primary:hover:not(:disabled) {
   border-color: var(--navy);
   background-color: var(--navy);
   color: var(--on-navy);
-  box-shadow: 0 14px 28px -14px rgba(11, 29, 51, 0.55);
+  box-shadow: 0 14px 28px -16px rgba(183, 40, 46, 0.55);
   transform: translateY(-2px);
 }
 
@@ -607,6 +655,8 @@ ul {
 
 .nav-inner {
   width: 100%;
+  max-width: 1600px;
+  margin-inline: auto;
   padding-inline: var(--gutter);
   display: flex;
   align-items: center;
@@ -620,35 +670,34 @@ ul {
   gap: 12px;
 }
 
-/* The wordmark in heavy type beside the ring; its domain in the second
-   colour. */
+/* The wordmark in Mincho beside the seal; its domain in the red. */
 .nav-wordmark {
   color: var(--display);
-  font-family: var(--heading);
-  font-size: 1.08rem;
-  font-weight: 900;
+  font-family: var(--serif);
+  font-size: 1.14rem;
+  font-weight: 700;
   line-height: 1;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .nav-tld {
   color: var(--highlight);
 }
 
-/* The monogram inside a thick ring, like a stamp. */
+/* The monogram as a hanko: white letters on a square seal of the red. */
 .nav-mark {
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   flex-shrink: 0;
-  border-radius: 50%;
+  border-radius: 6px;
   display: grid;
   place-items: center;
-  border: 3px solid var(--seal);
-  color: var(--seal);
-  font-family: var(--heading);
-  font-size: 0.8rem;
-  font-weight: 900;
-  letter-spacing: -0.02em;
+  background: var(--seal);
+  color: #fff;
+  font-family: var(--serif);
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .nav-links {
@@ -703,7 +752,7 @@ ul {
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  border-radius: 10px;
+  border-radius: 4px;
   border: 1px solid var(--border-hi);
   background: var(--card);
   color: var(--fg);
@@ -837,57 +886,39 @@ ul {
   color: var(--muted-fg);
 }
 
+/* A small, still red dot. */
 .pulse-dot {
-  position: relative;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--success);
+  background: var(--highlight);
 }
 
-.pulse-dot::after {
-  content: '';
-  position: absolute;
-  inset: -3px;
-  border-radius: 50%;
-  border: 1px solid var(--success);
-  animation: pulse-ring 2.4s ease-out infinite;
-}
-
-@keyframes pulse-ring {
-  0% {
-    transform: scale(0.6);
-    opacity: 0.8;
-  }
-  100% {
-    transform: scale(1.7);
-    opacity: 0;
-  }
-}
-
-/* The name: first name in the navy, surname in the teal. */
+/* The name in Mincho: first name in ink, surname in the red. */
 .hero-name {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
   color: var(--display);
-  font-family: var(--heading);
-  font-size: clamp(3.4rem, 1.5rem + 5.6vw, 7.4rem);
-  font-weight: 800;
-  line-height: 0.95;
-  letter-spacing: -0.04em;
+  font-family: var(--serif);
+  font-size: clamp(3.4rem, 1.5rem + 5.4vw, 7rem);
+  font-weight: 500;
+  line-height: 1.02;
+  letter-spacing: -0.02em;
 }
 
 .hero-name span {
   display: block;
 }
 
-/* What I do, in one line. */
+/* What I do, in one line of small spaced capitals. */
 .hero-role {
-  margin-bottom: 16px;
-  color: var(--brand-text);
-  font-family: var(--heading);
-  font-size: clamp(1.1rem, 0.95rem + 0.6vw, 1.5rem);
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  text-wrap: balance;
+  margin-bottom: 18px;
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: clamp(0.82rem, 0.76rem + 0.25vw, 0.98rem);
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
 }
 
 .hero-tagline {
@@ -925,7 +956,7 @@ ul {
   display: grid;
   place-items: center;
   border: 1px solid var(--border-hi);
-  border-radius: 10px;
+  border-radius: 4px;
   background: var(--card);
   color: var(--fg);
   font-size: 1rem;
@@ -940,15 +971,15 @@ ul {
   transform: translateY(-2px);
 }
 
+/* On wide screens the photo's right edge lines up with the content edge
+   (the navbar's Resume button, the samurai stage, the form above it). */
 .hero-visual {
   position: relative;
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
 }
 
-/* My photo (cut out) on a rounded block of the teal, lit softly behind the
-   head so the black hoodie stands out, with a soft shadow of me on it and a
-   fine light edge round the card. */
+/* My photo (cut out) on a plain card of unbleached paper. */
 .hero-photo {
   display: flex;
   align-items: flex-end;
@@ -956,17 +987,22 @@ ul {
   width: min(100%, 460px);
   aspect-ratio: 4 / 5;
   overflow: hidden;
-  border-radius: 28px;
-  background: radial-gradient(70% 55% at 50% 30%, rgba(255, 255, 255, 0.3), transparent 70%),
-    linear-gradient(170deg, #2dd4bf 0%, #0d9488 100%);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22), var(--shadow-lg);
+  border-radius: 6px;
+  background: var(--bg-tint);
+  box-shadow: var(--shadow-md);
+}
+
+/* At night the card stays a muted paper, like a print on a dark table, so
+   the black hoodie keeps its outline instead of sinking into the dark. */
+:root[data-theme='dark'] .hero-photo {
+  background: #d6cfc2;
 }
 
 .hero-photo img {
   display: block;
   width: 92%;
   height: auto;
-  filter: drop-shadow(0 18px 26px rgba(4, 47, 46, 0.32));
+  filter: drop-shadow(0 16px 22px rgba(28, 27, 25, 0.28));
 }
 
 /* Code panel */
@@ -1116,16 +1152,16 @@ ul {
   justify-content: flex-end;
   gap: 6px;
   padding-top: 14px;
-  border-top: 3px solid var(--brand);
+  border-top: 1px solid var(--rule);
 }
 
 .stat-value {
   color: var(--display);
-  font-family: var(--heading);
+  font-family: var(--serif);
   font-size: clamp(2.2rem, 1.6rem + 1.6vw, 3.4rem);
-  font-weight: 800;
+  font-weight: 500;
   line-height: 1;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.01em;
   font-variant-numeric: lining-nums;
 }
 
@@ -1256,7 +1292,7 @@ ul {
   margin-bottom: 12px;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 6px;
   background: #0b0c10;
   box-shadow: var(--shadow-md);
   transition: box-shadow 0.5s var(--ease);
@@ -1280,16 +1316,17 @@ ul {
 
 .work-name {
   color: var(--display);
-  font-family: var(--heading);
-  font-size: clamp(1.15rem, 1rem + 0.4vw, 1.4rem);
-  font-weight: 800;
-  letter-spacing: -0.015em;
+  font-family: var(--serif);
+  font-size: clamp(1.2rem, 1.04rem + 0.4vw, 1.48rem);
+  font-weight: 700;
+  letter-spacing: 0;
   transition: color 0.3s var(--ease);
 }
 
 .work-sub {
   color: var(--muted-fg);
   font-size: 0.95rem;
+  text-wrap: pretty;
 }
 
 /* The live app and the code, one click from the card: small heavy links
@@ -1337,7 +1374,7 @@ ul {
 .work-hit:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 6px;
-  border-radius: 14px;
+  border-radius: 6px;
 }
 
 /* The way out to every project, centred under the gallery. */
@@ -1363,37 +1400,37 @@ ul {
    teal lifted to read on it. It redefines the tokens its contents use. */
 .band-dark {
   --bg: var(--band-dark);
-  --fg: #f1f5fb;
-  --muted-fg: #9eb0c7;
-  --display: #f1f5fb;
-  --highlight: #2dd4bf;
-  --brand: #14b8a6;
-  --brand-text: #2dd4bf;
-  --brand-fg: #0b1d33;
-  --card: #13283f;
-  --border: rgba(241, 245, 251, 0.12);
-  --border-hi: rgba(241, 245, 251, 0.26);
-  --rule: rgba(241, 245, 251, 0.6);
-  --input: rgba(241, 245, 251, 0.28);
-  --navy: #f1f5fb;
-  --on-navy: #0b1d33;
+  --fg: #f1ece3;
+  --muted-fg: #a9b3bf;
+  --display: #f1ece3;
+  --highlight: #ef8a7c;
+  --brand: #f1ece3;
+  --brand-text: #ef8a7c;
+  --brand-fg: #1e2a36;
+  --card: #263443;
+  --border: rgba(241, 236, 227, 0.12);
+  --border-hi: rgba(241, 236, 227, 0.26);
+  --rule: rgba(241, 236, 227, 0.6);
+  --input: rgba(241, 236, 227, 0.28);
+  --navy: #d9534a;
+  --on-navy: #ffffff;
   color: var(--fg);
 }
 
 /* The detail view is a dark glass surface in both themes, so it redefines
    the tokens its contents use. --glow is a project's own colour. */
 .project-modal {
-  --card: #101c2f;
-  --bg-subtle: #13223a;
+  --card: #1b1a18;
+  --bg-subtle: #22201d;
   --fg: #f1f5fb;
   --muted-fg: #9eb0c7;
   --secondary: rgba(255, 255, 255, 0.06);
   --border: rgba(255, 255, 255, 0.1);
   --border-hi: rgba(255, 255, 255, 0.2);
   --ring: #8a8a8a;
-  --brand: #14b8a6;
-  --brand-soft: rgba(20, 184, 166, 0.14);
-  --shade: 16, 28, 47;
+  --brand: #e8655a;
+  --brand-soft: rgba(232, 101, 90, 0.14);
+  --shade: 28, 27, 25;
   --glow: #60a5fa;
 }
 
@@ -1959,7 +1996,7 @@ ul {
   width: min(1280px, 100%);
   max-height: 100%;
   overflow: auto;
-  border-radius: 14px;
+  border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: #0b0c10;
   box-shadow: 0 40px 100px -24px rgba(0, 0, 0, 0.7);
@@ -2065,7 +2102,7 @@ ul {
    the teal. */
 .contact-links {
   display: grid;
-  border-top: 4px solid var(--brand);
+  border-top: 1px solid var(--rule);
 }
 
 .contact-link {
@@ -2082,7 +2119,7 @@ ul {
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  border-radius: 10px;
+  border-radius: 4px;
   background: var(--brand);
   color: var(--brand-fg);
   font-size: 1.05rem;
@@ -2093,7 +2130,11 @@ a.contact-link:hover .contact-link-icon {
   transform: translateX(4px);
 }
 
+/* The label sits on a tight line, so the label-and-value block is only as
+   tall as its text and centres on the icon square by its letters. */
 .contact-link-label {
+  display: block;
+  line-height: 1.2;
   font-family: var(--heading);
   font-size: 0.68rem;
   font-weight: 800;
@@ -2109,7 +2150,7 @@ a.contact-link:hover .contact-link-icon {
   font-weight: 600;
   line-height: 1.3;
   letter-spacing: 0.01em;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   transition: color 0.18s ease;
 }
 
@@ -2122,7 +2163,7 @@ a.contact-link:hover .contact-link-value {
 .form-card {
   padding: 26px 0 0;
   border: none;
-  border-top: 4px solid var(--brand);
+  border-top: 1px solid var(--rule);
   border-radius: 0;
   background: none;
   box-shadow: none;
@@ -2132,6 +2173,25 @@ a.contact-link:hover .contact-link-value {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+}
+
+/* On phones each field gets the full width, like Subject and Message. */
+@media (max-width: 480px) {
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+
+/* On the narrowest phones the email fits on one line. */
+@media (max-width: 360px) {
+  .contact-link {
+    gap: 14px;
+  }
+
+  .contact-link-value {
+    font-size: 0.95rem;
+  }
 }
 
 .field {
@@ -2283,7 +2343,7 @@ a.contact-link:hover .contact-link-value {
   height: 42px;
   display: grid;
   place-items: center;
-  border-radius: 10px;
+  border-radius: 4px;
   border: 1px solid var(--border-hi);
   background: var(--card);
   /* Not --fg: the footer, its parent, sets that to white for the band. */
@@ -2319,6 +2379,26 @@ a.contact-link:hover .contact-link-value {
 
   .hero-photo {
     width: min(78%, 400px);
+  }
+
+  /* Stacked, the photo starts on the same left edge as the text above it. */
+  .hero-visual {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero-photo {
+    width: 100%;
+  }
+}
+
+/* On phones the gutter is narrower than the back-to-top button, so its
+   right edge lines up with the content edge instead. */
+@media (max-width: 640px) {
+  .to-top {
+    right: var(--gutter);
+    bottom: 20px;
   }
 }
 
@@ -2503,9 +2583,9 @@ a.contact-link:hover .contact-link-value {
   /* Shaded in the navy, soft on the page. */
   background: radial-gradient(
     56% 52% at 50% 40%,
-    rgba(15, 27, 45, 0.38) 0%,
-    rgba(15, 27, 45, 0.16) 45%,
-    rgba(15, 27, 45, 0) 72%
+    rgba(28, 27, 25, 0.32) 0%,
+    rgba(28, 27, 25, 0.13) 45%,
+    rgba(28, 27, 25, 0) 72%
   );
 }
 
@@ -2514,8 +2594,8 @@ a.contact-link:hover .contact-link-value {
 :root[data-theme='dark'] .samurai3d {
   background: radial-gradient(
     56% 52% at 50% 40%,
-    rgba(20, 184, 166, 0.24) 0%,
-    rgba(13, 110, 100, 0.12) 42%,
+    rgba(235, 229, 218, 0.16) 0%,
+    rgba(235, 229, 218, 0.06) 42%,
     rgba(10, 19, 34, 0) 72%
   );
 }

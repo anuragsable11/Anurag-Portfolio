@@ -19,7 +19,13 @@ const channels = [
   {
     icon: <FiMail />,
     label: 'Email',
-    value: profile.email,
+    // If it must wrap, it wraps after the @, never mid-word.
+    value: (
+      <>
+        {profile.email.split('@')[0]}@<wbr />
+        {profile.email.split('@')[1]}
+      </>
+    ),
     href: `mailto:${profile.email}`,
   },
   {

@@ -112,6 +112,7 @@ export const skillGroups = [
 /** The Projects section's heading — also the title of the all-projects page. */
 export const projectsHead = {
   eyebrow: 'Projects',
+  kanji: '参',
   title: 'Things I',
   highlight: 'built',
   sub: '3 AI apps and 3 web apps.',
@@ -125,12 +126,14 @@ export const projectsHead = {
 export const sectionHeads = {
   about: {
     eyebrow: 'About',
+    kanji: '壱',
     title: 'Hi, I’m',
     highlight: 'Anurag',
     sub: 'I care about the layer beneath the model — the part that decides what the model sees, remembers and does next.',
   },
   skills: {
     eyebrow: 'Skills',
+    kanji: '弐',
     title: 'Tools I',
     highlight: 'work with',
   },
@@ -143,6 +146,7 @@ export const sectionHeads = {
   },
   contact: {
     eyebrow: 'Contact',
+    kanji: '肆',
     title: 'Let’s work',
     highlight: 'together',
     sub: 'Email me or use the form.',
