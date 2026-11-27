@@ -10,10 +10,14 @@ import { reportSkill } from '../lib/companion.js'
  *  - Entrance: when the section scrolls into view, the icons rise out from
  *    behind the title in a ripple, nearest first, each with a soft overshoot.
  *  - Rest: each icon floats a few pixels around its spot on its own slow loop.
- *  - Cursor: move through the section and the icons nearest the pointer
- *    string out behind it along the path it drew, evenly spaced at any speed;
- *    stop, and the chain holds its shape. Leave, click or lift a finger, and
- *    they glide home.
+ *  - Cursor: an icon the pointer touches says what it is (a small label
+ *    with the tool's name) and comes along under the pointer; the ones
+ *    touched before it string out behind along the path the pointer drew,
+ *    evenly spaced at any speed. Stop, and the chain holds its shape.
+ *    Leave, click or lift a finger, and they glide home, the last name
+ *    lingering a moment. So pointing at a logo (or tapping it) names it.
+ *  - With reduced motion nothing moves, but pointing at or tapping an icon
+ *    still shows its name.
  *
  * The simulation steps at a fixed 60 Hz, so it feels the same everywhere,
  * and each frame is drawn between the last two steps, so the motion stays
@@ -36,6 +40,12 @@ const FOLLOW = 0.16
 const REGATHER = 24
 // The resting float, in px.
 const FLOAT = 5
+// The name label: how long it stays once the icons are let go (longer after
+// a tap, which is how a phone asks), and its fades, in milliseconds.
+const LINGER = 1300
+const LINGER_TAP = 2200
+const FADE_IN = 140
+const FADE_OUT = 300
 
 const lerp = (a, b, t) => a + (b - a) * t
 const clamp01 = (t) => Math.min(Math.max(t, 0), 1)
@@ -187,10 +197,22 @@ function paintTile(logo, tech, { size, ratio, tile, edge }) {
   return { canvas, full }
 }
 
+/** A pill-shaped path, `h` tall, with its top-left corner at (x, y). */
+function pill(ctx, x, y, w, h) {
+  const r = h / 2
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.arcTo(x + w, y, x + w, y + h, r)
+  ctx.arcTo(x + w, y + h, x, y + h, r)
+  ctx.arcTo(x, y + h, x, y, r)
+  ctx.arcTo(x, y, x + w, y, r)
+  ctx.closePath()
+}
+
 // What to try next, by input: `home` hints show while the icons are away.
 const HINTS = {
   gather: 'Move your mouse over the icons',
-  gatherTouch: 'Drag your finger over the icons',
+  gatherTouch: 'Tap or drag the icons',
   home: 'Click to reset',
   homeTouch: 'Let go to reset',
 }
@@ -244,9 +266,14 @@ export default function SkillsSwarm({ centerRef }) {
     const view = { w: 0, h: 0, ratio: 1, size: 0, gap: 1, maxTrail: 1 }
     const pointer = { x: 0, y: 0, active: false, heldAt: null }
     const trail = []
+    // The chain, newest first: order[0] is the icon under the pointer.
     let order = []
-    // waiting → entering → idle. Once idle, the icons trail the pointer while
-    // it moves through the stage, and float on their spots otherwise.
+    // The name on show: whose it is, when it appeared, and when it goes
+    // (Infinity while its icon is being held). Colours follow the theme.
+    const label = { icon: null, born: 0, until: Infinity }
+    const labelLook = { bg: '#fbf9f4', fg: '#1c1b19', border: '#cfc7b9' }
+    // waiting → entering → idle. Once idle, the icons the pointer has touched
+    // trail it through the stage, and the rest float on their spots.
     let mode = still ? 'idle' : 'waiting'
     let enterAt = 0
     let clock = 0
@@ -257,6 +284,12 @@ export default function SkillsSwarm({ centerRef }) {
     const paintTiles = async () => {
       const job = ++paintJob
       const dark = document.documentElement.dataset.theme === 'dark'
+      // The name label wears the page's card, ink and hairline.
+      const css = getComputedStyle(wrap)
+      const token = (name, fallback) => css.getPropertyValue(name).trim() || fallback
+      labelLook.bg = token('--card', labelLook.bg)
+      labelLook.fg = token('--fg', labelLook.fg)
+      labelLook.border = token('--border-hi', labelLook.border)
       const tile = dark ? '#232327' : '#141416'
       const look = {
         size: view.size,
@@ -392,20 +425,11 @@ export default function SkillsSwarm({ centerRef }) {
       for (const icon of icons) icon.chained = false
       if (pointer.active) {
         extendTrail()
-        // The chain forms nearest-first, fixed when the pointer arrives.
-        if (!order.length) {
-          order = icons
-            .map((icon, i) => [i, Math.hypot(icon.x - pointer.x, icon.y - pointer.y)])
-            .sort((a, b) => a[1] - b[1])
-            .map(([i]) => i)
-          // The icon leading the chain is the one being played with.
-          reportSkill(icons[order[0]]?.tech.group)
-        }
-        // Each icon closes on its own point along the path; the ones the
-        // path has not reached yet keep floating at home until it does.
+        // Each icon in the chain (see collect) closes on its own point along
+        // the path: the newest under the pointer, the rest a fixed distance
+        // apart behind it, bunched at the path's start while it is short.
         order.forEach((i, k) => {
-          const at = trail.length - 1 - k * view.gap
-          if (at < 0) return
+          const at = Math.max(0, trail.length - 1 - k * view.gap)
           const icon = icons[i]
           const x = lerp(icon.x, trail[at].x, FOLLOW)
           const y = lerp(icon.y, trail[at].y, FOLLOW)
@@ -445,6 +469,62 @@ export default function SkillsSwarm({ centerRef }) {
       for (let k = order.length - 1; k >= 0; k--) {
         if (icons[order[k]].chained) paint(icons[order[k]])
       }
+      drawLabel(alpha)
+    }
+
+    /**
+     * The name of the icon last touched, on a small pill beside it: under
+     * it for a mouse, over it for a finger (which hides what is below), kept
+     * inside the stage and off the hint. It fades in, and out once its time
+     * is up.
+     */
+    const drawLabel = (alpha) => {
+      const icon = label.icon
+      if (!icon) return
+      const now = performance.now()
+      if (now >= label.until + FADE_OUT) {
+        label.icon = null
+        return
+      }
+      const fade =
+        clamp01((now - label.born) / FADE_IN) *
+        (now > label.until ? 1 - (now - label.until) / FADE_OUT : 1)
+      if (fade <= 0) return
+
+      const { w, h, size } = view
+      const x = lerp(icon.px, icon.x, alpha)
+      const y = lerp(icon.py, icon.y, alpha)
+      const tall = 26
+      ctx.font = '600 13px "Montserrat Variable", ui-sans-serif, system-ui, sans-serif'
+      const wide = Math.ceil(ctx.measureText(icon.tech.name).width) + 24
+      const edge = 8
+      const gap = touch ? 12 : 8
+      const left = Math.min(Math.max(x - wide / 2, -w / 2 + edge), w / 2 - edge - wide)
+      const below = y + size / 2 + gap
+      const above = y - size / 2 - gap - tall
+      // The hint pill sits centred along the bottom (see layout).
+      const overHint = Math.abs(left + wide / 2) < 130 + wide / 2
+      const fitsBelow = below + tall <= (overHint ? h / 2 - 62 : h / 2 - edge)
+      const fitsAbove = above >= -h / 2 + edge
+      const top = (touch ? fitsAbove || !fitsBelow : !fitsBelow && fitsAbove) ? above : below
+
+      ctx.save()
+      ctx.globalAlpha = fade
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.18)'
+      ctx.shadowBlur = 12
+      ctx.shadowOffsetY = 3
+      pill(ctx, left, top, wide, tall)
+      ctx.fillStyle = labelLook.bg
+      ctx.fill()
+      ctx.shadowColor = 'transparent'
+      ctx.lineWidth = 1
+      ctx.strokeStyle = labelLook.border
+      ctx.stroke()
+      ctx.fillStyle = labelLook.fg
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(icon.tech.name, left + wide / 2, top + tall / 2 + 0.5)
+      ctx.restore()
     }
 
     /* ---- Loop: runs only while the stage is on screen ---- */
@@ -498,7 +578,71 @@ export default function SkillsSwarm({ centerRef }) {
       pointer.x = clientX - r.left - r.width / 2
       pointer.y = clientY - r.top - r.height / 2
     }
+    /** The icon nearest (x, y) among those within `reach` of it, if any. */
+    const iconAt = (x, y, reach) => {
+      let best = null
+      let bestD = reach
+      for (const icon of icons) {
+        const d = Math.hypot(icon.x - x, icon.y - y)
+        if (d <= bestD) {
+          best = icon
+          bestD = d
+        }
+      }
+      return best
+    }
+    // Most of the tile for a cursor; a fingertip is blunter.
+    const reach = () => view.size * (touch ? 0.66 : 0.55)
+    let reportedAt = -Infinity
+
+    /**
+     * Icons the pointer has just touched join the chain at its head, and the
+     * last of them is named. A stroke's first point (a tap, or the pointer
+     * coming in) takes just the icon under it; after that the whole stroke
+     * since the last event counts (`from` to here), so a fast sweep misses
+     * none.
+     */
+    const collect = (from) => {
+      if (mode !== 'idle') return
+      const r = reach()
+      const hits = []
+      if (!from) {
+        const i = icons.indexOf(iconAt(pointer.x, pointer.y, r))
+        if (i >= 0 && !order.includes(i)) hits.push(i)
+      } else {
+        const dx = pointer.x - from.x
+        const dy = pointer.y - from.y
+        const len2 = dx * dx + dy * dy || 1
+        const passed = []
+        icons.forEach((icon, i) => {
+          if (order.includes(i)) return
+          // Where along the stroke it came closest to this icon, and how close.
+          const t = clamp01(((icon.x - from.x) * dx + (icon.y - from.y) * dy) / len2)
+          const d = Math.hypot(icon.x - (from.x + dx * t), icon.y - (from.y + dy * t))
+          if (d <= r) passed.push([t, d, i])
+        })
+        // In the order they were crossed (at a tie, the nearer one last), so
+        // the last one touched leads.
+        passed.sort((a, b) => a[0] - b[0] || b[1] - a[1])
+        for (const [, , i] of passed) hits.push(i)
+      }
+      if (!hits.length) return
+      for (const i of hits) order.unshift(i)
+      const head = icons[order[0]]
+      const now = performance.now()
+      if (label.icon !== head) label.born = now
+      label.icon = head
+      label.until = Infinity
+      // The icon leading the chain is the one being played with; a quick
+      // sweep reports once, so the samurai is not set nodding at each icon.
+      if (now - reportedAt > 700) {
+        reportedAt = now
+        reportSkill(head.tech.group)
+      }
+    }
+
     const gather = (clientX, clientY, hintKey) => {
+      const from = pointer.active ? { x: pointer.x, y: pointer.y } : null
       toStage(clientX, clientY)
       // Just sent home with a click: wait for a deliberate move, so a hand's
       // tremor does not pull them straight back out.
@@ -507,16 +651,28 @@ export default function SkillsSwarm({ centerRef }) {
         pointer.heldAt = null
       }
       pointer.active = true
-      showHint(hintKey)
+      collect(from)
+      // Nothing to send home until something has been picked up.
+      if (order.length) showHint(hintKey)
     }
     const sendHome = () => {
       pointer.active = false
       trail.length = 0
       order = []
       for (const icon of icons) icon.chained = false
+      // The name stays a moment with its icon as it glides home.
+      if (label.icon && label.until === Infinity) {
+        label.until = performance.now() + (touch ? LINGER_TAP : LINGER)
+      }
       showHint(touch ? 'gatherTouch' : 'gather')
     }
+
+    // A tap is followed by the mouse events a mouse would send; those are
+    // ignored, so a tap is handled once, as a touch.
+    let touchedAt = -Infinity
+    const byTouch = () => performance.now() - touchedAt < 800
     const onClick = () => {
+      if (byTouch()) return
       sendHome()
       pointer.heldAt = { x: pointer.x, y: pointer.y }
     }
@@ -524,10 +680,46 @@ export default function SkillsSwarm({ centerRef }) {
       sendHome()
       pointer.heldAt = null
     }
-    const onMouseMove = (e) => gather(e.clientX, e.clientY, 'home')
+    const onMouseMove = (e) => {
+      if (!byTouch()) gather(e.clientX, e.clientY, 'home')
+    }
     const onTouchMove = (e) => {
+      touchedAt = performance.now()
       const t = e.touches[0]
       if (t) gather(t.clientX, t.clientY, 'homeTouch')
+    }
+    // Each touch is a stroke of its own, wherever the last one ended.
+    const onTouchStart = (e) => {
+      pointer.active = false
+      onTouchMove(e)
+    }
+    const onTouchEnd = () => {
+      touchedAt = performance.now()
+      onLeave()
+    }
+
+    // With reduced motion nothing moves and no loop runs: pointing at an
+    // icon (or tapping it) just shows its name, drawn on the spot.
+    let stillTimer = 0
+    const nameStill = (icon) => {
+      if (icon === label.icon) return
+      label.icon = icon
+      label.born = 0
+      label.until = Infinity
+      draw()
+    }
+    const onStillMove = (e) => {
+      toStage(e.clientX, e.clientY)
+      nameStill(iconAt(pointer.x, pointer.y, reach()))
+    }
+    const onStillLeave = () => nameStill(null)
+    const onStillTouch = (e) => {
+      const t = e.touches[0]
+      if (!t) return
+      toStage(t.clientX, t.clientY)
+      nameStill(iconAt(pointer.x, pointer.y, reach()))
+      clearTimeout(stillTimer)
+      stillTimer = setTimeout(() => nameStill(null), LINGER_TAP)
     }
 
     const resizeWatcher = new ResizeObserver(layout)
@@ -546,15 +738,24 @@ export default function SkillsSwarm({ centerRef }) {
       wrap.addEventListener('mousemove', onMouseMove)
       wrap.addEventListener('mouseleave', onLeave)
       wrap.addEventListener('click', onClick)
-      wrap.addEventListener('touchstart', onTouchMove, { passive: true })
+      wrap.addEventListener('touchstart', onTouchStart, { passive: true })
       wrap.addEventListener('touchmove', onTouchMove, { passive: true })
-      wrap.addEventListener('touchend', onLeave)
+      wrap.addEventListener('touchend', onTouchEnd)
+      wrap.addEventListener('touchcancel', onTouchEnd)
       frame = requestAnimationFrame(tick)
+    } else {
+      wrap.addEventListener('mousemove', onStillMove)
+      wrap.addEventListener('mouseleave', onStillLeave)
+      wrap.addEventListener('touchstart', onStillTouch, { passive: true })
     }
 
     return () => {
       destroyed = true
       cancelAnimationFrame(frame)
+      clearTimeout(stillTimer)
+      wrap.removeEventListener('mousemove', onStillMove)
+      wrap.removeEventListener('mouseleave', onStillLeave)
+      wrap.removeEventListener('touchstart', onStillTouch)
       seen.disconnect()
       entrance.disconnect()
       resizeWatcher.disconnect()
@@ -562,9 +763,10 @@ export default function SkillsSwarm({ centerRef }) {
       wrap.removeEventListener('mousemove', onMouseMove)
       wrap.removeEventListener('mouseleave', onLeave)
       wrap.removeEventListener('click', onClick)
-      wrap.removeEventListener('touchstart', onTouchMove)
+      wrap.removeEventListener('touchstart', onTouchStart)
       wrap.removeEventListener('touchmove', onTouchMove)
-      wrap.removeEventListener('touchend', onLeave)
+      wrap.removeEventListener('touchend', onTouchEnd)
+      wrap.removeEventListener('touchcancel', onTouchEnd)
     }
   }, [centerRef])
 
