@@ -1,4 +1,4 @@
-import { checkRateLimit, validateContact } from './_lib/contact.js'
+import { checkRateLimit, rateLimitMessage, recordMessage, validateContact } from './_lib/contact.js'
 import { mailerStatus, sendContactEmail } from './_lib/mailer.js'
 
 /**
@@ -22,11 +22,7 @@ export default async function handler(req, res) {
     'unknown'
 
   const limit = checkRateLimit(ip)
-  if (!limit.ok) {
-    return res.status(429).json({
-      error: `Too many messages sent. Please try again in ${limit.retryMinutes} minute(s).`,
-    })
-  }
+  if (!limit.ok) return res.status(429).json({ error: rateLimitMessage(limit.retryMinutes) })
 
   const { error, data } = validateContact(req.body)
   if (error) return res.status(400).json({ error })
@@ -42,6 +38,8 @@ export default async function handler(req, res) {
 
   const delivery = await sendContactEmail(entry)
   if (delivery.sent) {
+    // Only a message that reached the inbox counts toward the limit.
+    recordMessage(ip)
     console.log(`[contact] emailed to ${mailerStatus().to} (${delivery.id ?? 'no id'})`)
   } else {
     // Never lose the message over a delivery failure — it is already logged.

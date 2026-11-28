@@ -24,7 +24,12 @@ export function validateContact(body) {
 }
 
 /* ------------------------------------------------------------------
-   Rate limiting — 5 submissions per IP per 15 minutes.
+   Rate limiting — at most 5 messages per IP per 15 minutes.
+
+   Only messages that got through count (the caller says so with
+   recordMessage): a visitor whose form was rejected for a typo, or whose
+   message failed to send, can simply try again instead of being locked
+   out for trying.
 
    In-memory, so on serverless it only holds within a warm instance.
    That is fine as a first line of defence against casual spam.
@@ -33,21 +38,28 @@ const WINDOW_MS = 15 * 60 * 1000
 const MAX_HITS = 5
 const hits = new Map()
 
+/** Whether this IP may send another message now. Counts nothing. */
 export function checkRateLimit(ip = 'unknown') {
   const now = Date.now()
   const record = hits.get(ip)
 
-  if (!record || now > record.resetAt) {
-    hits.set(ip, { count: 1, resetAt: now + WINDOW_MS })
-    return { ok: true }
-  }
+  if (!record || now > record.resetAt || record.count < MAX_HITS) return { ok: true }
+  return { ok: false, retryMinutes: Math.ceil((record.resetAt - now) / 60000) }
+}
 
-  if (record.count >= MAX_HITS) {
-    return { ok: false, retryMinutes: Math.ceil((record.resetAt - now) / 60000) }
-  }
+/** Counts one message from this IP that got through. */
+export function recordMessage(ip = 'unknown') {
+  const now = Date.now()
+  const record = hits.get(ip)
 
-  record.count += 1
-  return { ok: true }
+  if (!record || now > record.resetAt) hits.set(ip, { count: 1, resetAt: now + WINDOW_MS })
+  else record.count += 1
+}
+
+/** What a visitor sees once they reach the limit. */
+export function rateLimitMessage(retryMinutes) {
+  const wait = retryMinutes <= 1 ? 'a minute' : `${retryMinutes} minutes`
+  return `You have already sent ${MAX_HITS} messages. Please try again in ${wait}.`
 }
 
 /** Drops expired buckets so the map cannot grow unbounded. */

@@ -860,29 +860,29 @@ main:focus {
 /* ============================================================
    Hero
    ============================================================ */
-/* The intro opens the page and fills its first screen: who I am and what
-   I do on the left, the samurai on the right. */
+/* The intro fills the first screen like a magazine spread: who I am and
+   what I do on the left-hand page, the name set as large as a poster's; my
+   photo on the right-hand page, a sheet of plain paper that runs to the top
+   and right edges of the screen. */
 .hero {
+  /* The photo's page: a little under half the screen. */
+  --page-w: min(44vw, 1200px);
   position: relative;
-  display: flex;
-  align-items: center;
-  min-height: 100svh;
-  padding-top: calc(var(--nav-h) + 32px);
-  padding-bottom: 48px;
-}
-
-.hero-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-  gap: clamp(32px, 5vw, 96px);
-  align-items: center;
-  width: 100%;
+  grid-template-columns: minmax(0, 1fr) var(--page-w);
+  min-height: 100svh;
+  /* The text keeps to the navbar's left edge (and every section's). */
+  padding-left: max(var(--gutter), calc((100% - 1600px) / 2 + var(--gutter)));
 }
 
 .hero-lines {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  align-self: center;
+  padding: calc(var(--nav-h) + 40px) clamp(24px, 4vw, 72px) 56px 0;
 }
 
 /* The hero's two halves rise in from the first paint, before any JavaScript.
@@ -926,15 +926,17 @@ main:focus {
   background: var(--highlight);
 }
 
-/* The name in Mincho: first name in ink, surname in the red. */
+/* The name in Mincho, set like a poster's: first name in ink, surname in
+   the red. Capped by the screen's height too, so the page still fits on a
+   short laptop screen. */
 .hero-name {
-  margin-bottom: 20px;
+  margin: 0 0 28px -0.04em;
   color: var(--display);
   font-family: var(--serif);
-  font-size: clamp(3.4rem, 1.5rem + 5.4vw, 7rem);
+  font-size: clamp(3.4rem, min(1rem + 11vw, 25svh), 13.5rem);
   font-weight: 500;
-  line-height: 1.02;
-  letter-spacing: -0.02em;
+  line-height: 0.98;
+  letter-spacing: -0.025em;
 }
 
 .hero-name span {
@@ -1003,38 +1005,38 @@ main:focus {
   transform: translateY(-2px);
 }
 
-/* On wide screens the photo's right edge lines up with the content edge
-   (the navbar's Resume button, the samurai stage, the form above it). */
-.hero-visual {
+/* The right-hand page: a deeper, unbleached paper from the top of the
+   screen down past the hero, under the About band, whose wave then laps
+   over its foot, and over my photo (cut out) standing on it: one sheet
+   tucked under the next. */
+.hero-page {
   position: relative;
-  display: flex;
-  justify-content: flex-end;
-}
-
-/* My photo (cut out) on a plain card of unbleached paper. */
-.hero-photo {
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  width: min(100%, 460px);
-  aspect-ratio: 4 / 5;
+  z-index: -1;
+  margin: 0 0 calc(-1 * var(--edge-h));
   overflow: hidden;
-  border-radius: 6px;
-  background: var(--bg-tint);
-  box-shadow: var(--shadow-md);
+  background: #e4dccc;
 }
 
-/* At night the card stays a muted paper, like a print on a dark table, so
-   the black hoodie keeps its outline instead of sinking into the dark. */
-:root[data-theme='dark'] .hero-photo {
-  background: #d6cfc2;
+/* Its head a little under the navbar, and never wider than the page. */
+.hero-page img {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: auto;
+  max-width: none;
+  height: min(calc(100% - var(--nav-h) - 9svh), calc(var(--page-w) * 1.16));
+  translate: -50% 0;
+  filter: drop-shadow(0 18px 26px rgba(28, 27, 25, 0.24));
 }
 
-.hero-photo img {
-  display: block;
-  width: 92%;
-  height: auto;
-  filter: drop-shadow(0 16px 22px rgba(28, 27, 25, 0.28));
+/* At night the page is the indigo of the contact band, and a thin warm rim
+   of light keeps the black hoodie's outline from sinking into it. */
+:root[data-theme='dark'] .hero-page {
+  background: #1e2a36;
+}
+
+:root[data-theme='dark'] .hero-page img {
+  filter: drop-shadow(0 0 1px rgba(255, 240, 222, 0.5)) drop-shadow(0 18px 26px rgba(0, 0, 0, 0.5));
 }
 
 /* ============================================================
@@ -2117,6 +2119,28 @@ a.contact-link:hover .contact-link-value {
   line-height: 1.6;
 }
 
+/* The browser's autofill paints a filled field pale blue (or yellow), a
+   bright block on the indigo band. A shadow the band's colour covers it
+   (the browser's own background cannot be overridden), the text keeps the
+   band's ink, and the focus line still shows. */
+.field input:-webkit-autofill {
+  -webkit-text-fill-color: var(--fg);
+  caret-color: var(--fg);
+  box-shadow: inset 0 0 0 100px var(--bg);
+}
+
+.field input:-webkit-autofill:focus {
+  box-shadow: inset 0 0 0 100px var(--bg), 0 1px 0 0 var(--brand);
+}
+
+.field input:autofill {
+  box-shadow: inset 0 0 0 100px var(--bg);
+}
+
+.field input:autofill:focus {
+  box-shadow: inset 0 0 0 100px var(--bg), 0 1px 0 0 var(--brand);
+}
+
 .field-error {
   font-size: 0.78rem;
   color: var(--danger);
@@ -2240,31 +2264,36 @@ a.contact-link:hover .contact-link-value {
    Responsive
    ============================================================ */
 @media (max-width: 1024px) {
-  .hero-grid,
   .about-grid,
   .contact-grid {
     grid-template-columns: 1fr;
     gap: 40px;
   }
-
-  .hero {
-    padding-top: calc(var(--nav-h) + 52px);
-    padding-bottom: 64px;
-  }
-
-  .hero-photo {
-    width: min(78%, 400px);
-  }
-
-  /* Stacked, the photo starts on the same left edge as the text above it. */
-  .hero-visual {
-    justify-content: flex-start;
-  }
 }
 
-@media (max-width: 480px) {
-  .hero-photo {
-    width: 100%;
+/* Too narrow for the spread: the words, then the photo's page across the
+   full width. */
+@media (max-width: 960px) {
+  .hero {
+    display: block;
+    padding-left: 0;
+  }
+
+  .hero-lines {
+    padding: calc(var(--nav-h) + 52px) var(--gutter) 0;
+  }
+
+  .hero-name {
+    font-size: clamp(3.4rem, 20vw, 9rem);
+  }
+
+  .hero-page {
+    height: min(118vw, 680px);
+    margin-top: 48px;
+  }
+
+  .hero-page img {
+    height: 92%;
   }
 }
 

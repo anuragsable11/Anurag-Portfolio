@@ -8,6 +8,8 @@ import {
   WINDOW_MS,
   checkRateLimit,
   pruneRateLimits,
+  rateLimitMessage,
+  recordMessage,
   validateContact,
 } from '../api/_lib/contact.js'
 import { mailerStatus, sendContactEmail } from '../api/_lib/mailer.js'
@@ -29,16 +31,11 @@ app.use(
    Rate limiting — rules live in api/_lib/contact.js so that this server
    and the Vercel function enforce exactly the same limits.
    ------------------------------------------------------------------ */
+const ipOf = (req) => req.ip || req.socket.remoteAddress || 'unknown'
+
 function rateLimit(req, res, next) {
-  const ip = req.ip || req.socket.remoteAddress || 'unknown'
-  const limit = checkRateLimit(ip)
-
-  if (!limit.ok) {
-    return res.status(429).json({
-      error: `Too many messages sent. Please try again in ${limit.retryMinutes} minute(s).`,
-    })
-  }
-
+  const limit = checkRateLimit(ipOf(req))
+  if (!limit.ok) return res.status(429).json({ error: rateLimitMessage(limit.retryMinutes) })
   next()
 }
 
@@ -93,6 +90,8 @@ app.post('/api/contact', rateLimit, async (req, res) => {
 
   try {
     await saveMessage(entry)
+    // Stored, so it got through: it counts toward the limit.
+    recordMessage(ipOf(req))
     console.log(`[contact] ${entry.name} <${entry.email}> — ${entry.subject}`)
   } catch (err) {
     console.error('[contact] failed to store message:', err)
