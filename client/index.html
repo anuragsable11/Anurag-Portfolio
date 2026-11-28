@@ -12,6 +12,9 @@
       content="Anurag Sable, Backend &amp; Agentic AI Engineer. I build the backend for AI apps with Python, Django and FastAPI. Open to work."
     />
     <meta name="author" content="Anurag Sable" />
+    <!-- Proves to Google Search Console that this site is mine. Keep it: the
+         ownership is rechecked from time to time. -->
+    <meta name="google-site-verification" content="E233T2UkvN8VeoBxNwbcfq62-M4C3qv2y3SBOtoWsGg" />
     <!-- The site URL in these tags is filled in at build time (see prerender.js). -->
     <link rel="canonical" href="%SITE_URL%/" />
 
@@ -30,17 +33,55 @@
     <meta property="og:image:alt" content="Anurag Sable, Backend &amp; Agentic AI Engineer, beside his photo." />
     <meta name="twitter:card" content="summary_large_image" />
 
-    <!-- Who this page is about, for search engines (keep in step with
-         profile in src/data/content.js). -->
+    <!-- For search engines: this site is Anurag Sable's, and this page is
+         his profile, with the facts that tie the name to him (keep in step
+         with profile and timeline in src/data/content.js). sameAs links his
+         other profiles, so a search for the name can find them together. -->
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "Person",
-        "name": "Anurag Sable",
-        "jobTitle": "Backend & Agentic AI Engineer",
-        "url": "%SITE_URL%/",
-        "image": "%SITE_URL%/og/home.jpg",
-        "sameAs": ["https://linkedin.com/in/anurag-sable-4181382a6/", "https://github.com/anuragsable11"]
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "%SITE_URL%/#website",
+            "url": "%SITE_URL%/",
+            "name": "Anurag Sable",
+            "alternateName": "Anurag Sable Portfolio",
+            "publisher": { "@id": "%SITE_URL%/#person" }
+          },
+          {
+            "@type": "ProfilePage",
+            "@id": "%SITE_URL%/#profile",
+            "url": "%SITE_URL%/",
+            "name": "Anurag Sable — Backend & Agentic AI Engineer",
+            "isPartOf": { "@id": "%SITE_URL%/#website" },
+            "mainEntity": { "@id": "%SITE_URL%/#person" }
+          },
+          {
+            "@type": "Person",
+            "@id": "%SITE_URL%/#person",
+            "name": "Anurag Sable",
+            "givenName": "Anurag",
+            "familyName": "Sable",
+            "jobTitle": "Backend & Agentic AI Engineer",
+            "description": "Computer Science graduate who builds the backend for AI apps with Python, Django and FastAPI.",
+            "url": "%SITE_URL%/",
+            "image": "%SITE_URL%/og/home.jpg",
+            "worksFor": { "@type": "Organization", "name": "Shubham Tanks and Liners Pvt Ltd" },
+            "alumniOf": [
+              { "@type": "CollegeOrUniversity", "name": "ARMIET College, Thane" },
+              { "@type": "CollegeOrUniversity", "name": "University of Mumbai" }
+            ],
+            "address": {
+              "@type": "PostalAddress",
+              "addressLocality": "Thane",
+              "addressRegion": "Maharashtra",
+              "addressCountry": "IN"
+            },
+            "knowsAbout": ["Python", "Django", "FastAPI", "REST APIs", "Agentic AI", "LLMs", "PostgreSQL", "Docker"],
+            "sameAs": ["https://linkedin.com/in/anurag-sable-4181382a6/", "https://github.com/anuragsable11"]
+          }
+        ]
       }
     </script>
 
